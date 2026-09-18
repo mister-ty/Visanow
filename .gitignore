@@ -1,0 +1,38 @@
+# --- Datos sensibles: NUNCA al repositorio ---
+# Los archivos de 02_Datos_Fuente/ tienen pasaportes, DS-160 y
+# credenciales de portales consulares en texto plano.
+*.xlsx
+*.xls
+*.csv
+almacenamiento/
+datos_fuente/
+*.dump
+*.sql.gz
+
+# --- Secretos ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Node ---
+node_modules/
+dist/
+.vite/
+*.local
+
+# --- Sistema operativo y editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
