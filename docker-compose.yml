@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: visanow-db
+    environment:
+      POSTGRES_DB: ${DB_NOMBRE:-visanow}
+      POSTGRES_USER: ${DB_USUARIO:-visanow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?define DB_PASSWORD en el .env}
+    # 5432 lo ocupa un PostgreSQL nativo de Windows: el puerto del host
+    # se configura con DB_PUERTO_HOST (ver .env).
+    ports: ["${DB_PUERTO_HOST:-5435}:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USUARIO:-visanow} -d ${DB_NOMBRE:-visanow}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
