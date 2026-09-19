@@ -30,7 +30,7 @@ def yo(u: Usuarios = Depends(usuario_actual), db: Session = Depends(get_db)):
     return esq.YoSalida(
         id=u.id, nombre=u.nombre, email=u.email, rol=u.rol.codigo, alcance=u.alcance,
         permisos=sorted(permisos_de_rol(db, u.rol_id)), mfa_habilitado=u.mfa_habilitado,
-        debe_cambiar_password=u.debe_cambiar_password, mfa_requerido=mfa_pendiente(u),
+        debe_cambiar_password=u.debe_cambiar_password, mfa_requerido=mfa_pendiente(db, u),
         ultimo_acceso=u.ultimo_acceso)
 
 
@@ -39,18 +39,21 @@ def iniciar_mfa(u: Usuarios = Depends(usuario_actual), db: Session = Depends(get
     return servicio.iniciar_mfa(db, u)
 
 
-@router.post('/mfa/confirmar', status_code=status.HTTP_204_NO_CONTENT)
+@router.post('/mfa/confirmar', response_model=esq.TokenSalida)
 def confirmar_mfa(datos: esq.CodigoEntrada, request: Request,
                   u: Usuarios = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Activar el doble factor cierra las sesiones abiertas con solo contraseña.
+    Devuelve una nueva para quien lo acaba de activar: acaba de demostrar que
+    tiene el teléfono."""
     servicio.confirmar_mfa(db, u, datos.codigo, ip_cliente(request))
+    return servicio.emitir_acceso(u)
 
 
-@router.post('/cambiar-password', response_model=esq.TokenSalida)
+@router.post('/cambiar-password', status_code=status.HTTP_204_NO_CONTENT)
 def cambiar_password(datos: esq.CambioPasswordEntrada, request: Request,
                      u: Usuarios = Depends(usuario_actual), db: Session = Depends(get_db)):
-    """Cierra todas las demás sesiones y devuelve un token nuevo para esta."""
+    """Cierra todas las sesiones, incluida esta: hay que volver a ingresar."""
     servicio.cambiar_password(db, u, datos.actual, datos.nueva, ip_cliente(request))
-    return servicio.emitir_acceso(u)
 
 
 @router.post('/recuperar', status_code=status.HTTP_202_ACCEPTED)

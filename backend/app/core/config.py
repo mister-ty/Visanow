@@ -12,7 +12,9 @@ class Ajustes(BaseSettings):
     model_config = SettingsConfigDict(env_file=RAIZ / '.env', env_file_encoding='utf-8',
                                       extra='ignore')
 
-    app_env: str = 'local'
+    # Falla cerrado: si nadie define APP_ENV se asume producción (sin /docs,
+    # sin enlaces de recuperación en el log). El .env de desarrollo dice 'local'.
+    app_env: str = 'produccion'
     app_secret: str
     database_url: str
     cifrado_llave: str

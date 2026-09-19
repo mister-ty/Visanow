@@ -43,10 +43,22 @@ def test_cinco_intentos_bloquean_aunque_despues_acierte(cliente, usuario, db):
     for _ in range(5):
         cliente.post(LOGIN, json={'email': p.email, 'password': 'errada-123'})
     r = cliente.post(LOGIN, json={'email': p.email, 'password': p.password})
-    assert r.status_code == 423
-    assert r.json()['codigo'] == 'cuenta_bloqueada'
+    assert r.status_code == 401, 'con la contraseña correcta no debe entrar: está bloqueada'
     assert db.scalar(select(Auditoria).where(Auditoria.entidad_id == p.u.id,
                                              Auditoria.operacion == 'bloqueo'))
+    assert db.scalar(select(Auditoria).where(Auditoria.entidad_id == p.u.id,
+                                             Auditoria.operacion == 'login_bloqueado'))
+
+
+def test_el_bloqueo_no_revela_si_la_cuenta_existe(cliente, usuario):
+    """Hallazgo de la revisión: el 423 delataba qué correos tienen cuenta,
+    porque un correo inexistente nunca se bloquea."""
+    p = usuario('comercial')
+    for _ in range(6):
+        bloqueada = cliente.post(LOGIN, json={'email': p.email, 'password': 'errada-123'})
+        inexistente = cliente.post(LOGIN, json={'email': 'nadie@visanow.co', 'password': 'errada-123'})
+    assert bloqueada.status_code == inexistente.status_code == 401
+    assert bloqueada.json() == inexistente.json()
 
 
 def test_sin_token_con_token_alterado_o_de_otro_tipo(cliente, usuario):
@@ -67,8 +79,9 @@ def test_contrasena_temporal_obliga_a_cambiarla(cliente, usuario):
 
     r = cliente.post('/api/v1/auth/cambiar-password', headers=cab,
                      json={'actual': p.password, 'nueva': 'NuevaClave2026'})
-    assert r.status_code == 200
-    nueva = {'Authorization': f"Bearer {r.json()['access_token']}"}
+    assert r.status_code == 204
+    p.password = 'NuevaClave2026'
+    nueva = entrar(cliente, p)
     # Ya no la frena la contraseña: ahora la frena el permiso, que comercial no tiene
     r = cliente.get('/api/v1/usuarios', headers=nueva)
     assert r.status_code == 403 and r.json()['codigo'] == 'sin_permiso'
@@ -79,10 +92,26 @@ def test_cambiar_contrasena_cierra_las_demas_sesiones(cliente, usuario):
     vieja = entrar(cliente, p)
     r = cliente.post('/api/v1/auth/cambiar-password', headers=vieja,
                      json={'actual': p.password, 'nueva': 'OtraClave2026x'})
-    nueva = {'Authorization': f"Bearer {r.json()['access_token']}"}
+    assert r.status_code == 204 and r.content == b'', 'no debe devolver un token nuevo'
     r = cliente.get(YO, headers=vieja)
     assert r.status_code == 401 and r.json()['codigo'] == 'sesion_cerrada'
-    assert cliente.get(YO, headers=nueva).status_code == 200
+    p.password = 'OtraClave2026x'
+    assert cliente.get(YO, headers=entrar(cliente, p)).status_code == 200
+
+
+def test_cambiar_contrasena_cuenta_para_el_bloqueo(cliente, usuario):
+    """Hallazgo de la revisión: con un token robado se podía adivinar la
+    contraseña actual sin límite y renovar la sesión indefinidamente."""
+    p = usuario('comercial')
+    cab = entrar(cliente, p)
+    for _ in range(5):
+        r = cliente.post('/api/v1/auth/cambiar-password', headers=cab,
+                         json={'actual': 'adivinando-1', 'nueva': 'Atacante2026x'})
+        assert r.status_code == 422
+    r = cliente.post('/api/v1/auth/cambiar-password', headers=cab,
+                     json={'actual': p.password, 'nueva': 'Atacante2026x'})
+    assert r.status_code == 423, 'tras 5 fallos ni la contraseña correcta debe servir'
+    assert cliente.post(LOGIN, json={'email': p.email, 'password': p.password}).status_code == 401
 
 
 def test_politica_de_contrasena(cliente, usuario):
@@ -105,8 +134,8 @@ def test_activar_doble_factor_y_entrar_con_el(cliente, usuario, db):
     assert seg.descifrar(p.u.mfa_secreto) == inicio['secreto']
 
     totp = pyotp.TOTP(inicio['secreto'])
-    assert cliente.post('/api/v1/auth/mfa/confirmar', headers=cab,
-                        json={'codigo': totp.now()}).status_code == 204
+    r = cliente.post('/api/v1/auth/mfa/confirmar', headers=cab, json={'codigo': totp.now()})
+    assert r.status_code == 200 and 'access_token' in r.json()
 
     desafio = cliente.post(LOGIN, json={'email': p.email, 'password': p.password}).json()
     assert desafio['requiere_mfa'] is True and 'access_token' not in desafio
@@ -127,18 +156,46 @@ def test_perfiles_sensibles_no_operan_sin_doble_factor(cliente, usuario):
     assert yo['mfa_requerido'] is True
 
     inicio = cliente.post('/api/v1/auth/mfa/iniciar', headers=cab).json()
-    cliente.post('/api/v1/auth/mfa/confirmar', headers=cab,
+    r = cliente.post('/api/v1/auth/mfa/confirmar', headers=cab,
+                     json={'codigo': pyotp.TOTP(inicio['secreto']).now()})
+    nueva = {'Authorization': f"Bearer {r.json()['access_token']}"}
+    assert cliente.get('/api/v1/usuarios', headers=nueva).status_code == 200
+
+
+def test_token_sin_doble_factor_muere_al_activarlo(cliente, usuario):
+    """Hallazgo de la revisión: un token obtenido solo con contraseña quedaba
+    con acceso pleno en cuanto la dueña activaba el doble factor."""
+    p = usuario('finanzas', con_mfa=False)
+    robado = entrar(cliente, p)
+    legitimo = entrar(cliente, p)
+    inicio = cliente.post('/api/v1/auth/mfa/iniciar', headers=legitimo).json()
+    cliente.post('/api/v1/auth/mfa/confirmar', headers=legitimo,
                  json={'codigo': pyotp.TOTP(inicio['secreto']).now()})
-    assert cliente.get('/api/v1/usuarios', headers=cab).status_code == 200
+    r = cliente.get(YO, headers=robado)
+    assert r.status_code == 401 and r.json()['codigo'] == 'sesion_cerrada'
 
 
-def test_recuperacion_sirve_una_sola_vez(cliente, usuario, monkeypatch):
+def test_solo_lectura_tambien_exige_doble_factor(cliente, usuario):
+    """Hallazgo de la revisión: solo_lectura veía comisiones, gastos, usuarios y
+    auditoría con la sola contraseña, mientras que finanzas necesitaba doble factor."""
+    cab = entrar(cliente, usuario('solo_lectura', con_mfa=False))
+    r = cliente.get('/api/v1/usuarios', headers=cab)
+    assert r.status_code == 403 and r.json()['codigo'] == 'mfa_requerido'
+    # Comercial y operaciones no ven nada sensible: no se les exige
+    cab = entrar(cliente, usuario('comercial'))
+    assert cliente.get(YO, headers=cab).json()['mfa_requerido'] is False
+
+
+def test_recuperacion_sirve_una_sola_vez(cliente, usuario, monkeypatch, db):
     enviados = []
     monkeypatch.setattr(notificaciones, 'enviar_recuperacion', lambda email, token: enviados.append(token))
     p = usuario('comercial')
 
     assert cliente.post('/api/v1/auth/recuperar', json={'email': 'nadie@visanow.co'}).status_code == 202
     assert enviados == []
+    # Mismo INSERT y COMMIT que el caso real: el tiempo de respuesta no delata la cuenta
+    assert db.scalar(select(Auditoria).where(Auditoria.operacion == 'recuperacion',
+                                             Auditoria.usuario_id.is_(None)))
     assert cliente.post('/api/v1/auth/recuperar', json={'email': p.email}).status_code == 202
     assert len(enviados) == 1
 

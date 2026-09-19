@@ -52,11 +52,14 @@ def restablecer_password(usuario_id: int, request: Request,
                                       password_temporal=temporal)
 
 
-@router.post('/usuarios/{usuario_id}/reiniciar-mfa', status_code=status.HTTP_204_NO_CONTENT)
+@router.post('/usuarios/{usuario_id}/reiniciar-mfa', response_model=esq.PasswordTemporalSalida)
 def reiniciar_mfa(usuario_id: int, request: Request,
                   actor: Usuarios = Depends(requiere('usuarios.editar')),
                   db: Session = Depends(get_db)):
-    servicio.reiniciar_mfa(db, actor, usuario_id, ip=ip_cliente(request))
+    """Reinicia el doble factor y la contraseña a la vez: ver services.usuarios.reiniciar_mfa."""
+    temporal = servicio.reiniciar_mfa(db, actor, usuario_id, ip=ip_cliente(request))
+    return esq.PasswordTemporalSalida(usuario=_salida(db.get(Usuarios, usuario_id)),
+                                      password_temporal=temporal)
 
 
 @router.get('/roles', response_model=list[esq.RolSalida])

@@ -41,6 +41,7 @@ from app.core import seguridad as seg  # noqa: E402
 from app.db.session import get_db, motor  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services import usuarios as servicio_usuarios  # noqa: E402
+from app.services.usuarios import exige_mfa  # noqa: E402
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -84,14 +85,14 @@ def cliente(db):
 @pytest.fixture
 def usuario(db):
     """Fábrica: usuario('finanzas') devuelve uno listo para entrar.
-    Los roles que exigen doble factor salen con él activado, salvo con_mfa=False."""
+    Quien por sus permisos exige doble factor sale con él activado, salvo con_mfa=False."""
     def _crear(rol: str = 'operaciones', *, listo: bool = True, con_mfa: bool | None = None):
         email = f'{rol}.{secrets.token_hex(3)}@visanow.co'
         u, temporal = servicio_usuarios.crear(db, None, nombre=f'Prueba {rol}', email=email, rol=rol)
         if listo:
             u.debe_cambiar_password = False
         if con_mfa is None:
-            con_mfa = listo and rol in ('administradora', 'finanzas')
+            con_mfa = listo and exige_mfa(db, u)
         secreto = None
         if con_mfa:
             secreto = pyotp.random_base32()

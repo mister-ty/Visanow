@@ -14,7 +14,7 @@ from app.models.esquema import Usuarios
 from app.services import notificaciones
 from app.services.auditoria import auditar
 
-CREDENCIALES_INVALIDAS = 'Correo o contraseña incorrectos.'
+
 MINUTOS_TOKEN_MFA = 5
 MINUTOS_TOKEN_RECUPERACION = 30
 EMISOR_TOTP = 'VisaNow'
@@ -24,10 +24,21 @@ def _ahora() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def version_password(u: Usuarios) -> str:
-    """Viaja dentro del token de acceso. Si la contraseña cambia, deja de
-    coincidir y todas las sesiones anteriores quedan cerradas."""
-    return seg.huella_password(u.password_hash)[:8]
+def _credenciales_invalidas() -> NoAutenticado:
+    """Una sola respuesta para correo inexistente, contraseña errada, cuenta
+    inactiva y cuenta bloqueada: ninguna revela si el correo tiene cuenta."""
+    a = ajustes()
+    return NoAutenticado(f'Correo o contraseña incorrectos. Por seguridad, tras {a.login_max_intentos} '
+                         f'intentos fallidos la cuenta se bloquea {a.login_bloqueo_minutos} minutos.',
+                         codigo='credenciales_invalidas')
+
+
+def version_credenciales(u: Usuarios) -> str:
+    """Viaja dentro del token. Cambia cuando cambia la contraseña o cuando se
+    activa o reinicia el doble factor: en cualquiera de esos casos todas las
+    sesiones anteriores quedan cerradas. Así un token obtenido solo con
+    contraseña no gana acceso pleno cuando después se activa el doble factor."""
+    return seg.huella_password(u.password_hash + ('|mfa' if u.mfa_habilitado else ''))[:8]
 
 
 # ----------------------------------------------------------------- ingreso
@@ -53,23 +64,30 @@ def _verificar_no_bloqueado(u: Usuarios) -> None:
 def autenticar(db: Session, email: str, password: str, ip: str | None) -> Usuarios:
     """Valida correo y contraseña. No distingue «no existe» de «contraseña
     errada»: ni en el mensaje ni en el tiempo de respuesta."""
-    u = db.scalar(select(Usuarios).where(Usuarios.email == email))
+    # FOR UPDATE: los intentos simultáneos sobre la misma cuenta se atienden de a
+    # uno. Sin esto, varias solicitudes leían el mismo contador y lo escribían
+    # con el mismo valor, y el límite de intentos se podía pasar muchas veces.
+    u = db.scalar(select(Usuarios).where(Usuarios.email == email).with_for_update())
     if u is None:
         seg.verificar_password(None, password)
         auditar(db, operacion='login_fallido', entidad='usuarios',
                 despues={'motivo': 'correo_inexistente', 'email': email}, ip=ip)
         db.commit()
-        raise NoAutenticado(CREDENCIALES_INVALIDAS, codigo='credenciales_invalidas')
+        raise _credenciales_invalidas()
 
-    _verificar_no_bloqueado(u)
+    if u.bloqueado_hasta and u.bloqueado_hasta > _ahora():
+        auditar(db, operacion='login_bloqueado', entidad='usuarios', usuario_id=u.id,
+                entidad_id=u.id, ip=ip)
+        db.commit()
+        raise _credenciales_invalidas()
     if not seg.verificar_password(u.password_hash, password):
         _registrar_fallo(db, u, ip, 'password')
-        raise NoAutenticado(CREDENCIALES_INVALIDAS, codigo='credenciales_invalidas')
+        raise _credenciales_invalidas()
     if not u.activo:
         auditar(db, operacion='login_fallido', entidad='usuarios', usuario_id=u.id,
                 entidad_id=u.id, despues={'motivo': 'inactivo'}, ip=ip)
         db.commit()
-        raise NoAutenticado(CREDENCIALES_INVALIDAS, codigo='credenciales_invalidas')
+        raise _credenciales_invalidas()
 
     if seg.necesita_rehash(u.password_hash):
         u.password_hash = seg.hash_password(password)
@@ -90,13 +108,13 @@ def _ingreso_exitoso(db: Session, u: Usuarios, ip: str | None) -> None:
 
 def emitir_acceso(u: Usuarios) -> dict:
     minutos = ajustes().jwt_expira_minutos
-    token = seg.crear_token(u.id, 'acceso', minutos, pv=version_password(u))
+    token = seg.crear_token(u.id, 'acceso', minutos, pv=version_credenciales(u))
     return {'access_token': token, 'token_type': 'bearer', 'expira_en_segundos': minutos * 60}
 
 
 def emitir_desafio_mfa(u: Usuarios) -> dict:
     return {'requiere_mfa': True,
-            'token_mfa': seg.crear_token(u.id, 'mfa', MINUTOS_TOKEN_MFA, pv=version_password(u))}
+            'token_mfa': seg.crear_token(u.id, 'mfa', MINUTOS_TOKEN_MFA, pv=version_credenciales(u))}
 
 
 # ---------------------------------------------------------- doble factor
@@ -134,8 +152,8 @@ def verificar_segundo_factor(db: Session, token_mfa: str, codigo: str, ip: str |
         carga = seg.leer_token(token_mfa, 'mfa')
     except seg.TokenInvalido:
         raise NoAutenticado('El paso de verificación venció. Ingrese de nuevo.', codigo='token_mfa_invalido')
-    u = db.get(Usuarios, int(carga['sub']))
-    if u is None or not u.activo or not u.mfa_habilitado or carga.get('pv') != version_password(u):
+    u = db.get(Usuarios, int(carga['sub']), with_for_update=True)
+    if u is None or not u.activo or not u.mfa_habilitado or carga.get('pv') != version_credenciales(u):
         raise NoAutenticado('El paso de verificación venció. Ingrese de nuevo.', codigo='token_mfa_invalido')
     _verificar_no_bloqueado(u)
     if not _totp(u).verify(codigo, valid_window=1):
@@ -160,7 +178,16 @@ def _fijar_password(u: Usuarios, nueva: str) -> None:
 
 
 def cambiar_password(db: Session, u: Usuarios, actual: str, nueva: str, ip: str | None) -> None:
+    """Cierra todas las sesiones, incluida la que hace el cambio: hay que volver
+    a ingresar (con doble factor si aplica). Si devolviera un token nuevo, quien
+    robara un token podría renovarlo indefinidamente sin pasar el doble factor.
+
+    La contraseña actual cuenta para el mismo límite de intentos del ingreso:
+    si no, un token robado permitiría adivinarla sin límite."""
+    db.refresh(u, with_for_update=True)
+    _verificar_no_bloqueado(u)
     if not seg.verificar_password(u.password_hash, actual):
+        _registrar_fallo(db, u, ip, 'password_actual')
         raise Invalido('La contraseña actual no es correcta.', codigo='password_actual_errada')
     _fijar_password(u, nueva)
     u.debe_cambiar_password = False
@@ -172,6 +199,10 @@ def solicitar_recuperacion(db: Session, email: str, ip: str | None) -> None:
     """Responde igual exista o no el correo: no revela quién tiene cuenta."""
     u = db.scalar(select(Usuarios).where(Usuarios.email == email))
     if u is None or not u.activo:
+        # El mismo INSERT y COMMIT que el caso real, para no delatarse por el tiempo
+        auditar(db, operacion='recuperacion', entidad='usuarios',
+                despues={'email': email, 'resultado': 'sin_cuenta_activa'}, ip=ip)
+        db.commit()
         return
     token = seg.crear_token(u.id, 'recuperacion', MINUTOS_TOKEN_RECUPERACION,
                             pwf=seg.huella_password(u.password_hash))

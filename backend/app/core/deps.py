@@ -18,12 +18,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core import seguridad as seg
-from app.core.config import ajustes
 from app.core.errores import NoAutenticado, Prohibido
 from app.db.session import get_db
 from app.models.esquema import Usuarios
-from app.services.auth import version_password
-from app.services.usuarios import permisos_de_rol
+from app.services.auth import version_credenciales
+from app.services.usuarios import exige_mfa, permisos_de_rol
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -34,7 +33,8 @@ def ip_cliente(request: Request) -> str | None:
     nulo: un dato de auditoría raro no puede tumbar el ingreso."""
     host = request.client.host if request.client else None
     try:
-        return str(ipaddress.ip_address(host)) if host else None
+        # Sin el índice de zona de IPv6 ('fe80::1%eth0'): la columna inet no lo acepta
+        return str(ipaddress.ip_address(host.split('%')[0])) if host else None
     except ValueError:
         return None
 
@@ -50,20 +50,21 @@ def usuario_actual(cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
     u = db.get(Usuarios, int(carga['sub']))
     if u is None or not u.activo:
         raise NoAutenticado('La sesión no es válida o ya venció.', codigo='token_invalido')
-    if carga.get('pv') != version_password(u):
+    if carga.get('pv') != version_credenciales(u):
         raise NoAutenticado('La sesión se cerró porque la contraseña cambió.', codigo='sesion_cerrada')
     return u
 
 
-def mfa_pendiente(u: Usuarios) -> bool:
-    return u.rol.codigo in ajustes().roles_con_mfa and not u.mfa_habilitado
+def mfa_pendiente(db: Session, u: Usuarios) -> bool:
+    return not u.mfa_habilitado and exige_mfa(db, u)
 
 
-def usuario_operativo(u: Usuarios = Depends(usuario_actual)) -> Usuarios:
+def usuario_operativo(u: Usuarios = Depends(usuario_actual),
+                      db: Session = Depends(get_db)) -> Usuarios:
     if u.debe_cambiar_password:
         raise Prohibido('Debe cambiar la contraseña temporal antes de continuar.',
                         codigo='cambio_password_requerido')
-    if mfa_pendiente(u):
+    if mfa_pendiente(db, u):
         raise Prohibido('Su perfil exige doble factor. Actívelo antes de continuar.',
                         codigo='mfa_requerido')
     return u

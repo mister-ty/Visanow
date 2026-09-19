@@ -92,6 +92,31 @@ def test_solo_una_administradora_gestiona_administradoras(db, usuario):
         servicio.crear(db, comercial, nombre='Intrusa', email='x@visanow.co', rol='administradora')
 
 
+def test_reiniciar_doble_factor_tambien_reinicia_la_contrasena(cliente, usuario):
+    """Hallazgo de la revisión: al quitar solo el doble factor, quien tuviera la
+    contraseña por phishing podía entrar en ese intervalo y activar su propio teléfono."""
+    admin = entrar(cliente, usuario('administradora'))
+    p = usuario('finanzas')
+    vieja = entrar(cliente, p)
+    r = cliente.post(f'/api/v1/usuarios/{p.u.id}/reiniciar-mfa', headers=admin)
+    assert r.status_code == 200 and r.json()['usuario']['mfa_habilitado'] is False
+    assert cliente.get('/api/v1/auth/yo', headers=vieja).status_code == 401
+    # La contraseña conocida (la que pudo robarse) ya no sirve
+    assert cliente.post('/api/v1/auth/login',
+                        json={'email': p.email, 'password': p.password}).status_code == 401
+
+
+def test_crear_admin_rechaza_un_correo_que_el_login_no_aceptaria(monkeypatch):
+    """Hallazgo de la revisión: crear_admin aceptaba correos que la API rechaza,
+    y quedaba una administradora activa que nunca podía ingresar."""
+    import sys
+    from app import crear_admin
+    monkeypatch.setattr(sys, 'argv', ['crear_admin', '--nombre', 'X', '--email', 'admin@visanow.local'])
+    with pytest.raises(SystemExit) as e:
+        crear_admin.main()
+    assert 'Correo inválido' in str(e.value)
+
+
 def test_matriz_de_roles(cliente, usuario):
     cab = entrar(cliente, usuario('administradora'))
     roles = {r['codigo']: set(r['permisos']) for r in cliente.get('/api/v1/roles', headers=cab).json()}
