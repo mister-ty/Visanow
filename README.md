@@ -15,6 +15,26 @@ pip install -r backend/requirements.txt
 cd backend
 python -m alembic upgrade head
 python -m app.seed
+python -m app.crear_admin --nombre "Nombre" --email correo@dominio.com   # primera administradora
+uvicorn app.main:app --reload                                             # API en :8000, docs en /docs
+```
+
+## Pruebas
+
+```bash
+pip install -r backend/requirements-dev.txt
+cd backend && python -m pytest tests -q
+```
+
+Corren contra PostgreSQL real (la base de `docker compose` debe estar arriba): crean una
+base `visanow_test` desde cero con las mismas migraciones y el mismo seed que producción.
+
+## Modelos
+
+`backend/app/models/esquema.py` es generado. Después de una migración que cambie tablas:
+
+```bash
+cd backend && python -m alembic upgrade head && python generar_modelos.py
 ```
 
 **El puerto de la base en el host es el 5435, no el 5432.** En la máquina de
