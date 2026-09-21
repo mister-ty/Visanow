@@ -2,6 +2,8 @@ services:
   db:
     image: postgres:16-alpine
     container_name: visanow-db
+    # Si Docker Desktop se reinicia, la base vuelve a subir sola
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NOMBRE:-visanow}
       POSTGRES_USER: ${DB_USUARIO:-visanow}
