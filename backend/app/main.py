@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.admin import montar_admin
 from app.api.v1 import auth, usuarios
 from app.core.config import ajustes
 from app.core.errores import ErrorDominio
@@ -44,6 +45,8 @@ def _error_validacion(_: Request, e: RequestValidationError) -> JSONResponse:
 
 for modulo in (auth, usuarios):
     app.include_router(modulo.router, prefix='/api/v1')
+
+montar_admin(app)
 
 
 @app.get('/salud', tags=['sistema'])

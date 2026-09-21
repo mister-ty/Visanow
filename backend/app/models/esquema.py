@@ -160,6 +160,7 @@ class Paises(Base):
     iso2: Mapped[Optional[str]] = mapped_column(CHAR(2))
 
     sedes: Mapped[list['Sedes']] = relationship('Sedes', back_populates='pais')
+    servicios: Mapped[list['Servicios']] = relationship('Servicios', back_populates='pais')
     tipos_visa: Mapped[list['TiposVisa']] = relationship('TiposVisa', back_populates='pais')
     checklists: Mapped[list['Checklists']] = relationship('Checklists', back_populates='pais')
     clientes: Mapped[list['Clientes']] = relationship('Clientes', back_populates='pais')
@@ -228,25 +229,6 @@ class Roles(Base):
     permiso: Mapped[list['Permisos']] = relationship('Permisos', secondary='roles_permisos', back_populates='rol')
     alertas_tipos: Mapped[list['AlertasTipos']] = relationship('AlertasTipos', back_populates='destinatario_rol')
     usuarios: Mapped[list['Usuarios']] = relationship('Usuarios', back_populates='rol')
-
-
-class Servicios(Base):
-    __tablename__ = 'servicios'
-    __table_args__ = (
-        PrimaryKeyConstraint('id', name='servicios_pkey'),
-        UniqueConstraint('codigo', name='servicios_codigo_key')
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    nombre: Mapped[str] = mapped_column(String(100), nullable=False)
-    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
-    codigo: Mapped[Optional[str]] = mapped_column(String(30))
-    descripcion: Mapped[Optional[str]] = mapped_column(Text)
-
-    tarifas: Mapped[list['Tarifas']] = relationship('Tarifas', back_populates='servicio')
-    comisiones_reglas: Mapped[list['ComisionesReglas']] = relationship('ComisionesReglas', back_populates='servicio')
-    oportunidades: Mapped[list['Oportunidades']] = relationship('Oportunidades', back_populates='servicio')
-    negocios: Mapped[list['Negocios']] = relationship('Negocios', back_populates='servicio')
 
 
 class Sincronizaciones(Base):
@@ -370,21 +352,32 @@ class Sedes(Base):
     citas: Mapped[list['Citas']] = relationship('Citas', back_populates='sede')
 
 
-class Tarifas(Base):
-    __tablename__ = 'tarifas'
+class Servicios(Base):
+    __tablename__ = 'servicios'
     __table_args__ = (
-        ForeignKeyConstraint(['servicio_id'], ['servicios.id'], name='tarifas_servicio_id_fkey'),
-        PrimaryKeyConstraint('id', name='tarifas_pkey')
+        CheckConstraint("tipo::text = ANY (ARRAY['honorario'::character varying, 'recaudo_terceros'::character varying]::text[])", name='servicios_tipo_check'),
+        ForeignKeyConstraint(['pais_id'], ['paises.id'], name='servicios_pais_id_fkey'),
+        PrimaryKeyConstraint('id', name='servicios_pkey'),
+        UniqueConstraint('codigo', name='servicios_codigo_key')
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    servicio_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    valor: Mapped[decimal.Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    moneda: Mapped[str] = mapped_column(CHAR(3), nullable=False, server_default=text("'COP'::bpchar"))
-    vigente_desde: Mapped[datetime.date] = mapped_column(Date, nullable=False)
-    vigente_hasta: Mapped[Optional[datetime.date]] = mapped_column(Date)
+    nombre: Mapped[str] = mapped_column(String(100), nullable=False)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'honorario'::character varying"))
+    crea_casos: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
+    codigo: Mapped[Optional[str]] = mapped_column(String(30))
+    descripcion: Mapped[Optional[str]] = mapped_column(Text)
+    pais_id: Mapped[Optional[int]] = mapped_column(SmallInteger)
+    tasa_consular_valor: Mapped[Optional[decimal.Decimal]] = mapped_column(Numeric(14, 2))
+    tasa_consular_moneda: Mapped[Optional[str]] = mapped_column(CHAR(3))
+    tasa_consular_nota: Mapped[Optional[str]] = mapped_column(String(200))
 
-    servicio: Mapped['Servicios'] = relationship('Servicios', back_populates='tarifas')
+    pais: Mapped[Optional['Paises']] = relationship('Paises', back_populates='servicios')
+    comisiones_reglas: Mapped[list['ComisionesReglas']] = relationship('ComisionesReglas', back_populates='servicio')
+    tarifas: Mapped[list['Tarifas']] = relationship('Tarifas', back_populates='servicio')
+    oportunidades: Mapped[list['Oportunidades']] = relationship('Oportunidades', back_populates='servicio')
+    negocios: Mapped[list['Negocios']] = relationship('Negocios', back_populates='servicio')
 
 
 class TiposVisa(Base):
@@ -455,6 +448,7 @@ class Usuarios(Base):
     exportaciones: Mapped[list['Exportaciones']] = relationship('Exportaciones', back_populates='usuario')
     fusiones: Mapped[list['Fusiones']] = relationship('Fusiones', back_populates='usuarios')
     importaciones: Mapped[list['Importaciones']] = relationship('Importaciones', back_populates='usuarios')
+    parametros: Mapped[list['Parametros']] = relationship('Parametros', back_populates='usuarios')
     actividades: Mapped[list['Actividades']] = relationship('Actividades', back_populates='usuario')
     oportunidades: Mapped[list['Oportunidades']] = relationship('Oportunidades', back_populates='asesor')
     negocios: Mapped[list['Negocios']] = relationship('Negocios', back_populates='vendedor')
@@ -709,6 +703,48 @@ class Importaciones(Base):
     importaciones_filas: Mapped[list['ImportacionesFilas']] = relationship('ImportacionesFilas', back_populates='importacion')
 
 
+class Parametros(Base):
+    __tablename__ = 'parametros'
+    __table_args__ = (
+        ForeignKeyConstraint(['actualizado_por'], ['usuarios.id'], name='parametros_actualizado_por_fkey'),
+        PrimaryKeyConstraint('clave', name='parametros_pkey')
+    )
+
+    clave: Mapped[str] = mapped_column(String(60), primary_key=True)
+    valor: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    descripcion: Mapped[str] = mapped_column(Text, nullable=False)
+    actualizado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    actualizado_por: Mapped[Optional[int]] = mapped_column(BigInteger)
+
+    usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='parametros')
+
+
+class Tarifas(Base):
+    __tablename__ = 'tarifas'
+    __table_args__ = (
+        CheckConstraint("modalidad::text = ANY (ARRAY['total'::character varying, 'por_persona'::character varying]::text[])", name='tarifas_modalidad_check'),
+        CheckConstraint('personas >= 1 AND personas <= 20', name='tarifas_personas_check'),
+        CheckConstraint('valor >= 0::numeric', name='ck_tarifas_valor'),
+        CheckConstraint('valor_minimo IS NULL OR valor_minimo >= 0::numeric', name='tarifas_valor_minimo_check'),
+        CheckConstraint('vigente_hasta IS NULL OR vigente_hasta >= vigente_desde', name='ck_tarifas_vigencia'),
+        ForeignKeyConstraint(['servicio_id'], ['servicios.id'], name='tarifas_servicio_id_fkey'),
+        PrimaryKeyConstraint('id', name='tarifas_pkey'),
+        Index('ux_tarifas_servicio_personas_vigencia', 'servicio_id', 'personas', 'vigente_desde', unique=True)
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    servicio_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    valor: Mapped[decimal.Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    moneda: Mapped[str] = mapped_column(CHAR(3), nullable=False, server_default=text("'COP'::bpchar"))
+    vigente_desde: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    personas: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text('1'))
+    modalidad: Mapped[str] = mapped_column(String(12), nullable=False, server_default=text("'total'::character varying"))
+    vigente_hasta: Mapped[Optional[datetime.date]] = mapped_column(Date)
+    valor_minimo: Mapped[Optional[decimal.Decimal]] = mapped_column(Numeric(14, 2))
+
+    servicio: Mapped['Servicios'] = relationship('Servicios', back_populates='tarifas')
+
+
 class Actividades(Base):
     __tablename__ = 'actividades'
     __table_args__ = (
@@ -831,10 +867,12 @@ class Negocios(Base):
         ForeignKeyConstraint(['canal_id'], ['canales.id'], name='negocios_canal_id_fkey'),
         ForeignKeyConstraint(['cliente_id'], ['clientes.id'], name='negocios_cliente_id_fkey'),
         ForeignKeyConstraint(['grupo_id'], ['grupos.id'], name='negocios_grupo_id_fkey'),
+        ForeignKeyConstraint(['negocio_principal_id'], ['negocios.id'], name='negocios_negocio_principal_id_fkey'),
         ForeignKeyConstraint(['oportunidad_id'], ['oportunidades.id'], name='negocios_oportunidad_id_fkey'),
         ForeignKeyConstraint(['servicio_id'], ['servicios.id'], name='negocios_servicio_id_fkey'),
         ForeignKeyConstraint(['vendedor_id'], ['usuarios.id'], name='negocios_vendedor_id_fkey'),
-        PrimaryKeyConstraint('id', name='negocios_pkey')
+        PrimaryKeyConstraint('id', name='negocios_pkey'),
+        Index('ix_negocios_principal', 'negocio_principal_id', postgresql_where='(negocio_principal_id IS NOT NULL)')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -856,10 +894,13 @@ class Negocios(Base):
     origen_hoja: Mapped[Optional[str]] = mapped_column(String(40))
     origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
     migrado_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
+    negocio_principal_id: Mapped[Optional[int]] = mapped_column(BigInteger)
 
     canal: Mapped[Optional['Canales']] = relationship('Canales', back_populates='negocios')
     cliente: Mapped['Clientes'] = relationship('Clientes', back_populates='negocios')
     grupo: Mapped[Optional['Grupos']] = relationship('Grupos', back_populates='negocios')
+    negocio_principal: Mapped[Optional['Negocios']] = relationship('Negocios', remote_side=[id], back_populates='negocio_principal_reverse')
+    negocio_principal_reverse: Mapped[list['Negocios']] = relationship('Negocios', remote_side=[negocio_principal_id], back_populates='negocio_principal')
     oportunidad: Mapped[Optional['Oportunidades']] = relationship('Oportunidades', back_populates='negocios')
     servicio: Mapped['Servicios'] = relationship('Servicios', back_populates='negocios')
     vendedor: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='negocios')
@@ -880,7 +921,8 @@ class Solicitantes(Base):
         ForeignKeyConstraint(['cliente_id'], ['clientes.id'], name='solicitantes_cliente_id_fkey'),
         ForeignKeyConstraint(['fusionado_en_id'], ['solicitantes.id'], name='solicitantes_fusionado_en_id_fkey'),
         ForeignKeyConstraint(['grupo_id'], ['grupos.id'], name='solicitantes_grupo_id_fkey'),
-        PrimaryKeyConstraint('id', name='solicitantes_pkey')
+        PrimaryKeyConstraint('id', name='solicitantes_pkey'),
+        Index('ux_solicitantes_pasaporte', 'pasaporte_indice', postgresql_where='(pasaporte_indice IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -890,7 +932,7 @@ class Solicitantes(Base):
     cliente_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     tipo_documento: Mapped[Optional[str]] = mapped_column(String(20))
     numero_documento: Mapped[Optional[str]] = mapped_column(String(40))
-    pasaporte: Mapped[Optional[str]] = mapped_column(String(80))
+    pasaporte: Mapped[Optional[str]] = mapped_column(Text)
     fecha_nacimiento: Mapped[Optional[datetime.date]] = mapped_column(Date)
     nacionalidad: Mapped[Optional[str]] = mapped_column(String(80))
     telefono: Mapped[Optional[str]] = mapped_column(String(30))
@@ -902,6 +944,7 @@ class Solicitantes(Base):
     origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
     migrado_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
     fusionado_en_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    pasaporte_indice: Mapped[Optional[str]] = mapped_column(CHAR(64))
 
     cliente: Mapped[Optional['Clientes']] = relationship('Clientes', back_populates='solicitantes')
     fusionado_en: Mapped[Optional['Solicitantes']] = relationship('Solicitantes', remote_side=[id], back_populates='fusionado_en_reverse')
@@ -948,8 +991,9 @@ class Casos(Base):
         ForeignKeyConstraint(['tipo_visa_id'], ['tipos_visa.id'], name='casos_tipo_visa_id_fkey'),
         PrimaryKeyConstraint('id', name='casos_pkey'),
         Index('ix_casos_etapa_saas', 'etapa_saas', postgresql_where='(etapa_saas IS NOT NULL)'),
+        Index('ix_casos_id_externo', 'id_externo', postgresql_where='(id_externo IS NOT NULL)'),
         Index('ux_casos_ds160', 'ds160_hash', postgresql_where='(ds160_hash IS NOT NULL)', unique=True),
-        Index('ux_casos_id_externo', 'id_externo', postgresql_where='(id_externo IS NOT NULL)', unique=True)
+        Index('ux_casos_solicitud_solicitante', 'id_externo', 'solicitante_id', postgresql_where='(id_externo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1077,6 +1121,7 @@ class Pagos(Base):
     origen_hoja: Mapped[Optional[str]] = mapped_column(String(40))
     origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
     migrado_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
+    pagador_nombre: Mapped[Optional[str]] = mapped_column(String(160))
 
     banco_cuenta: Mapped[Optional['BancosCuentas']] = relationship('BancosCuentas', back_populates='pagos')
     medio_pago: Mapped[Optional['MediosPago']] = relationship('MediosPago', back_populates='pagos')

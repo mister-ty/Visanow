@@ -155,12 +155,19 @@ def verificar_segundo_factor(db: Session, token_mfa: str, codigo: str, ip: str |
     u = db.get(Usuarios, int(carga['sub']), with_for_update=True)
     if u is None or not u.activo or not u.mfa_habilitado or carga.get('pv') != version_credenciales(u):
         raise NoAutenticado('El paso de verificación venció. Ingrese de nuevo.', codigo='token_mfa_invalido')
+    verificar_codigo(db, u, codigo, ip)
+    return u
+
+
+def verificar_codigo(db: Session, u: Usuarios, codigo: str, ip: str | None) -> None:
+    """Segundo paso del ingreso. Lo usan la API y la administración de catálogos:
+    los fallos cuentan para el mismo bloqueo en los dos lados. Se espera que la
+    fila del usuario ya esté bloqueada (FOR UPDATE) por quien llama."""
     _verificar_no_bloqueado(u)
-    if not _totp(u).verify(codigo, valid_window=1):
+    if not _totp(u).verify(codigo or '', valid_window=1):
         _registrar_fallo(db, u, ip, 'codigo_mfa')
         raise NoAutenticado('Código de verificación incorrecto.', codigo='codigo_invalido')
     _ingreso_exitoso(db, u, ip)
-    return u
 
 
 # ------------------------------------------------------------- contraseñas

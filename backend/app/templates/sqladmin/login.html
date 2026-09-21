@@ -1,0 +1,35 @@
+{% extends "sqladmin/base.html" %}
+{% block body %}
+{# Ingreso a la administración: correo, contraseña y código de doble factor.
+   El mensaje de error viene del servidor (request.state.error_login); los de
+   credenciales son genéricos a propósito: no revelan si el correo tiene cuenta. #}
+{% set mensaje = request.state.error_login or error %}
+<div class="d-flex align-items-center justify-content-center vh-100">
+  <form class="col-lg-4 col-md-6 card card-md" action="{{ url_for('admin:login') }}" method="POST" autocomplete="off">
+    <div class="card-body">
+      <h2 class="card-title text-center mb-1">VisaNow</h2>
+      <p class="text-center text-muted mb-4">Administración de catálogos</p>
+      {% if mensaje %}
+      <div class="alert alert-danger" role="alert">{{ mensaje }}</div>
+      {% endif %}
+      <div class="mb-3">
+        <label class="form-label" for="username">Correo</label>
+        <input id="username" name="username" type="email" class="form-control" required autocomplete="username">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="password">Contraseña</label>
+        <input id="password" name="password" type="password" class="form-control" required autocomplete="current-password">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="codigo">Código de verificación</label>
+        <input id="codigo" name="codigo" type="text" class="form-control" required inputmode="numeric"
+               pattern="[0-9]{6}" maxlength="6" placeholder="6 dígitos de la aplicación autenticadora"
+               autocomplete="one-time-code">
+      </div>
+      <div class="form-footer">
+        <button type="submit" class="btn btn-primary w-100">Ingresar</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

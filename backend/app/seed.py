@@ -1,7 +1,8 @@
 """Siembra los catálogos del sistema.
 
-Los valores no se inventan: salen de los propios archivos de VisaNow, traducidos
-con el diccionario de homologación de la actividad 0.5
+Los valores no se inventan: salen de los archivos de VisaNow y de la lista de
+precios que envió la administradora el 19/09/2026, traducidos con el
+diccionario de homologación de la actividad 0.5
 (05_Migracion/Diccionario_Homologacion.md).
 
 Es idempotente: se puede correr las veces que haga falta.
@@ -133,23 +134,115 @@ ALERTAS = [
 # Catálogos extraídos de los archivos fuente
 # --------------------------------------------------------------------------
 
+# Catálogo de servicios de VisaNow: lista de precios que envió la administradora
+# el 19/09/2026 (hoja PRECIOS de CUENTAS VISANOW en Google Sheets). Cierra D-11.
+#
+# (código, nombre, país ISO2, tipo, crea casos, tasa consular valor, moneda, nota)
+#   tipo 'recaudo_terceros': plata del consulado que VisaNow recauda; no es ingreso.
+#   crea casos = False: el servicio es un complemento de otra venta (preparación,
+#   envío, actualización del DS-160) o no es un trámite de visa (análisis, pasaporte).
+FECHA_LISTA_PRECIOS = '2026-09-19'
 SERVICIOS = [
-    ('usa_premium',            'Asesoría USA Premium'),
-    ('usa_estandar',           'Asesoría USA Estándar'),
-    ('renovacion',             'Renovación'),
-    ('analisis_perfil',        'Análisis de perfil'),
-    ('preparacion_entrevista', 'Preparación para la entrevista'),
-    ('busqueda_cita_serv',     'Adelanto / búsqueda de cita'),
-    ('pago_consular',          'Pago de tasa consular'),
-    ('pasaporte',              'Trámite de pasaporte'),
-    ('envio_documentos',       'Envío y recolección de documentos'),
-    ('representacion',         'Representación'),
-    ('actualizacion_ds160',    'Actualización de DS-160'),
-    ('visa_china',             'Visa China'),
-    ('visa_uk',                'Visa Reino Unido'),
-    ('visa_canada',            'Visa Canadá'),
-    ('visa_australia',         'Visa Australia'),
-    ('visa_schengen',          'Visa Schengen'),
+    ('asesoria_usa',              'Asesoría USA',                     'US', 'honorario', True,  185,    'USD', None),
+    ('asesoria_adelanto',         'Asesoría USA + adelanto (Premium)', 'US', 'honorario', True,  185,    'USD', None),
+    ('adelantos',                 'Adelanto de cita',                 'US', 'honorario', True,  None,   None,  None),
+    ('renovacion',                'Renovación',                       'US', 'honorario', True,  185,    'USD', None),
+    ('renovacion_completa',       'Renovación completa',              'US', 'honorario', True,  185,    'USD', None),
+    ('renovacion_premium',        'Renovación premium',               'US', 'honorario', True,  185,    'USD', None),
+    ('analisis_perfil',           'Análisis de perfil',               None, 'honorario', False, None,   None,  None),
+    ('visa_usa_ninos',            'Visa USA niños',                   'US', 'honorario', True,  185,    'USD', None),
+    ('pasaporte',                 'Trámite de pasaporte',             'CO', 'honorario', False, None,   None,  None),
+    ('act_ds160',                 'Actualización de DS-160',          'US', 'honorario', False, None,   None,  None),
+    ('preparacion_entrevista',    'Preparación para la entrevista',   'US', 'honorario', False, None,   None,  None),
+    ('recoleccion_envio',         'Recolección / envío de documentos', None, 'honorario', False, None,  None,  None),
+    ('visa_clientes_internacional', 'Visa USA clientes internacionales', 'US', 'honorario', True, 185,  'USD', None),
+    ('visa_canada',               'Visa Canadá',                      'CA', 'honorario', True,  185,    'CAD', None),
+    ('visa_uk',                   'Visa Reino Unido',                 'GB', 'honorario', True,  135,    'GBP', None),
+    ('visa_australia',            'Visa Australia',                   'AU', 'honorario', True,  250,    'AUD', None),
+    ('visa_japon',                'Visa Japón',                       'JP', 'honorario', True,  0,      'COP', 'Gratis para colombianos'),
+    ('visa_china_estandar',       'Visa China estándar',              'CN', 'honorario', True,  311000, 'COP', None),
+    ('visa_china_premium',        'Visa China premium',               'CN', 'honorario', True,  311000, 'COP', None),
+    ('visa_china_negocios',       'Visa China negocios',              'CN', 'honorario', True,  None,   None,
+     'Según la lista: 3270000 (una entrada) (2 entry 374.000). POR CONFIRMAR'),
+    ('visa_china_internacional',  'Visa China clientes internacionales', 'CN', 'honorario', True, None, None, None),
+    ('visa_vietnam',              'Visa Vietnam',                     'VN', 'honorario', True,  25,     'USD', None),
+    ('visa_canada_dubai',         'Visa Canadá desde Dubái',          'CA', 'honorario', True,  185,    'CAD', None),
+    ('entrega_documentos_ninos',  'Entrega de documentos niños',      'US', 'honorario', True,  0,      'COP', None),
+    ('visa_premium_ninos',        'Visa premium niños',               'US', 'honorario', True,  185,    'USD', None),
+    ('pago_visa',                 'Pago de tasa consular',            None, 'recaudo_terceros', False, None, None,
+     'Se cobra aparte de la asesoría. Es plata del consulado: no cuenta como venta ni como base de comisión.'),
+]
+
+# Tarifas de la lista del 19/09/2026. (código, personas, valor, modalidad)
+#   modalidad 'total': el valor es por todo el grupo de ese tamaño.
+# Solo se cargan los escalones inequívocos: cuando la columna «V MINIMO / 2 +»
+# es MAYOR que el precio individual es el precio total para 2 personas; cuando
+# es MENOR, la columna significa «valor mínimo» o «precio por persona» y la
+# lista no dice cuál. Esos casos van a VALORES_MINIMOS y quedan por confirmar.
+TARIFAS = [
+    ('asesoria_usa', 1, 600000, 'total'), ('asesoria_usa', 3, 1500000, 'total'),
+    ('asesoria_adelanto', 1, 1200000, 'total'), ('asesoria_adelanto', 2, 2200000, 'total'),
+    ('asesoria_adelanto', 3, 3300000, 'total'), ('asesoria_adelanto', 4, 4400000, 'total'),
+    ('adelantos', 1, 700000, 'total'), ('adelantos', 2, 1200000, 'total'),
+    ('adelantos', 3, 1700000, 'total'), ('adelantos', 4, 2300000, 'total'),
+    ('renovacion', 1, 500000, 'total'), ('renovacion', 2, 800000, 'total'),
+    ('renovacion', 3, 1200000, 'total'), ('renovacion', 4, 2000000, 'total'),
+    ('renovacion_completa', 1, 900000, 'total'), ('renovacion_completa', 2, 1600000, 'total'),
+    ('renovacion_completa', 3, 2000000, 'total'), ('renovacion_completa', 4, 3100000, 'total'),
+    # La lista dice $33.000.000 para 3 personas: error de digitación de $3.300.000. POR CONFIRMAR
+    ('renovacion_premium', 1, 1200000, 'total'), ('renovacion_premium', 2, 2200000, 'total'),
+    ('renovacion_premium', 3, 3300000, 'total'), ('renovacion_premium', 4, 4400000, 'total'),
+    ('analisis_perfil', 1, 80000, 'total'),
+    ('visa_usa_ninos', 1, 500000, 'total'), ('visa_usa_ninos', 2, 800000, 'total'),
+    ('pasaporte', 1, 120000, 'total'), ('pasaporte', 2, 200000, 'total'),
+    ('act_ds160', 1, 250000, 'total'), ('act_ds160', 2, 450000, 'total'),
+    ('preparacion_entrevista', 1, 280000, 'total'),
+    ('recoleccion_envio', 1, 120000, 'total'), ('recoleccion_envio', 2, 180000, 'total'),
+    ('visa_clientes_internacional', 1, 1100000, 'total'), ('visa_clientes_internacional', 2, 2000000, 'total'),
+    ('visa_clientes_internacional', 3, 2900000, 'total'), ('visa_clientes_internacional', 4, 3900000, 'total'),
+    ('visa_canada', 1, 600000, 'total'),
+    ('visa_uk', 1, 600000, 'total'),
+    ('visa_australia', 1, 600000, 'total'),
+    ('visa_japon', 1, 600000, 'total'),
+    # 3 personas: la lista dice «400.00». No se carga hasta confirmar. POR CONFIRMAR
+    ('visa_china_estandar', 1, 460000, 'total'), ('visa_china_estandar', 2, 850000, 'total'),
+    ('visa_china_premium', 1, 800000, 'total'),
+    ('visa_china_negocios', 1, 500000, 'total'), ('visa_china_negocios', 2, 960000, 'total'),
+    ('visa_china_internacional', 1, 600000, 'total'), ('visa_china_internacional', 2, 1150000, 'total'),
+    ('visa_vietnam', 1, 350000, 'total'), ('visa_vietnam', 2, 680000, 'total'),
+    ('visa_canada_dubai', 1, 700000, 'total'), ('visa_canada_dubai', 2, 1300000, 'total'),
+    ('entrega_documentos_ninos', 1, 350000, 'total'),
+    # La lista dice $440.000 para 4 personas: error de digitación de $4.400.000. POR CONFIRMAR
+    ('visa_premium_ninos', 1, 1200000, 'total'), ('visa_premium_ninos', 2, 2200000, 'total'),
+    ('visa_premium_ninos', 3, 3300000, 'total'), ('visa_premium_ninos', 4, 4400000, 'total'),
+]
+
+# Columna «V MINIMO / 2 +» cuando es menor que el precio individual. Se guarda como
+# valor mínimo de negociación del precio individual (no se inventa un precio de
+# grupo). Si resulta ser «precio por persona para 2 o más», se convierte en
+# escalón desde la administración. POR CONFIRMAR con la administradora.
+VALORES_MINIMOS = {
+    'asesoria_usa': 550000, 'preparacion_entrevista': 230000, 'visa_canada': 480000,
+    'visa_uk': 480000, 'visa_australia': 500000, 'visa_japon': 280000,
+    'visa_china_premium': 700000, 'entrega_documentos_ninos': 300000,
+}
+
+# Códigos del catálogo provisional que se sembró antes de tener la lista real.
+# Se desactivan (no se borran: la trazabilidad no se pierde).
+SERVICIOS_PROVISIONALES = ['usa_premium', 'usa_estandar', 'busqueda_cita_serv', 'pago_consular',
+                           'envio_documentos', 'representacion', 'actualizacion_ds160',
+                           'visa_china', 'visa_schengen']
+
+# Parámetros del negocio, editables desde la administración
+PARAMETROS = [
+    ('cartera.plazo_saldo_dias', 30,
+     'Días desde la venta para pagar el saldo. Pasado este plazo el saldo está en mora. '
+     'Respuesta de la administradora del 19/09/2026: el saldo se paga al agendar la cita y, '
+     'si no se ha pagado al mes, está en mora.'),
+    ('cartera.anticipos_porcentaje', [20, 80],
+     'Porcentajes de anticipo con que el cliente puede iniciar el trámite.'),
+    ('login.max_intentos', 5, 'Intentos fallidos antes de bloquear la cuenta (informativo: se '
+                              'configura en el servidor).'),
 ]
 
 CANALES = [
@@ -226,6 +319,7 @@ def paises_desde_datos(cur) -> None:
         'AR': 'Argentina', 'PT': 'Portugal', 'AU': 'Australia', 'IT': 'Italia',
         'DE': 'Alemania', 'BE': 'Bélgica', 'PL': 'Polonia', 'GB': 'Reino Unido',
         'HU': 'Hungría', 'RO': 'Rumania', 'US': 'Estados Unidos', 'CA': 'Canadá',
+        'JP': 'Japón', 'VN': 'Vietnam',
     }
     for iso, nombre in NOMBRE.items():
         cur.execute("""insert into paises (iso2, nombre) values (%s, %s)
@@ -233,51 +327,45 @@ def paises_desde_datos(cur) -> None:
     return len(NOMBRE)
 
 
-def tarifas_desde_excel(cur) -> int:
-    """Lee las hojas PRECIOS y ' PRECIOS' de CUENTAS VISANOW y siembra tarifas."""
-    ruta = RAIZ / os.environ.get('DATOS_FUENTE', '../02_Datos_Fuente') / 'CUENTAS VISANOW.xlsx'
-    if not ruta.exists():
-        print(f'  ! No se encontró {ruta.name}: las tarifas quedan sin sembrar.')
-        return 0
-    import warnings
-    warnings.filterwarnings('ignore')
-    import openpyxl
+def sembrar_catalogo(cur) -> tuple[int, int, int]:
+    """Servicios, tarifas y valores mínimos de la lista del 19/09/2026.
+    Las tarifas anteriores de un mismo servicio se cierran un día antes de la
+    lista nueva: el historial de precios se conserva (RN-07)."""
+    for codigo, nombre, pais, tipo, crea, tasa, moneda, nota in SERVICIOS:
+        cur.execute("""
+            insert into servicios (codigo, nombre, pais_id, tipo, crea_casos,
+                                   tasa_consular_valor, tasa_consular_moneda, tasa_consular_nota, activo)
+            values (%s, %s, (select id from paises where iso2 = %s), %s, %s, %s, %s, %s, true)
+            on conflict (codigo) do update set
+              nombre = excluded.nombre, pais_id = excluded.pais_id, tipo = excluded.tipo,
+              crea_casos = excluded.crea_casos, tasa_consular_valor = excluded.tasa_consular_valor,
+              tasa_consular_moneda = excluded.tasa_consular_moneda,
+              tasa_consular_nota = excluded.tasa_consular_nota, activo = true""",
+                    (codigo, nombre, pais, tipo, crea, tasa, moneda, nota))
+    cur.execute('update servicios set activo = false where codigo = any(%s)', (SERVICIOS_PROVISIONALES,))
+    retirados = cur.rowcount
 
-    MAPA = {
-        'premium': 'usa_premium', 'asesoria premium': 'usa_premium',
-        'usa visa': 'usa_estandar', 'usa estandar': 'usa_estandar',
-        'asesoria estandar': 'usa_estandar', 'servicio estandar': 'usa_estandar',
-        'renovacion': 'renovacion', 'renovacion premium': 'renovacion',
-        'analisis de perfil': 'analisis_perfil', 'analisis': 'analisis_perfil',
-        'preparacion entrevista': 'preparacion_entrevista', 'preparacion entre': 'preparacion_entrevista',
-        'adelanto': 'busqueda_cita_serv', 'pago visa': 'pago_consular',
-        'pasaporte': 'pasaporte', 'envio docu': 'envio_documentos',
-        'visa china': 'visa_china', 'visa uk': 'visa_uk',
-        'visa canada': 'visa_canada', 'visa australia': 'visa_australia',
-    }
-    wb = openpyxl.load_workbook(ruta, data_only=True)
-    vistos, n = set(), 0
-    for hoja in ('PRECIOS', ' PRECIOS'):
-        if hoja not in wb.sheetnames:
-            continue
-        ws = wb[hoja]
-        for fila in ws.iter_rows(min_row=2, values_only=True):
-            if not fila or fila[0] is None:
-                continue
-            codigo = MAPA.get(norm(fila[0]))
-            valor = fila[1] if len(fila) > 1 else None
-            if not codigo or codigo in vistos or not isinstance(valor, (int, float)) or valor <= 0:
-                continue
-            cur.execute("""insert into tarifas (servicio_id, valor, moneda, vigente_desde)
-                           select id, %s, 'COP', date '2026-01-01' from servicios where codigo = %s
-                           and not exists (select 1 from tarifas t
-                                           where t.servicio_id = servicios.id)""",
-                        (round(float(valor), 2), codigo))
-            if cur.rowcount:
-                vistos.add(codigo)
-                n += 1
-    wb.close()
-    return n
+    cur.execute("""update tarifas set vigente_hasta = %s::date - 1
+                   where vigente_hasta is null and vigente_desde < %s::date""",
+                (FECHA_LISTA_PRECIOS, FECHA_LISTA_PRECIOS))
+    for codigo, personas, valor, modalidad in TARIFAS:
+        minimo = VALORES_MINIMOS.get(codigo) if personas == 1 else None
+        cur.execute("""
+            insert into tarifas (servicio_id, personas, valor, modalidad, valor_minimo, moneda, vigente_desde)
+            select id, %s, %s, %s, %s, 'COP', %s::date from servicios where codigo = %s
+            on conflict (servicio_id, personas, vigente_desde) do update set
+              valor = excluded.valor, modalidad = excluded.modalidad,
+              valor_minimo = excluded.valor_minimo""",
+                    (personas, valor, modalidad, minimo, FECHA_LISTA_PRECIOS, codigo))
+    return len(SERVICIOS), len(TARIFAS), retirados
+
+
+def sembrar_parametros(cur) -> int:
+    for clave, valor, descripcion in PARAMETROS:
+        # Solo si no existe: si la administradora ya lo cambió, no se pisa
+        cur.execute("""insert into parametros (clave, valor, descripcion) values (%s, %s::jsonb, %s)
+                       on conflict (clave) do nothing""", (clave, json.dumps(valor), descripcion))
+    return len(PARAMETROS)
 
 
 def main() -> None:
@@ -319,10 +407,11 @@ def main() -> None:
                         "on conflict (codigo) do nothing", (codigo, nombre))
         print(f'  modalidades           {len(MODALIDADES)}')
 
-        for codigo, nombre in SERVICIOS:
-            cur.execute("insert into servicios (codigo,nombre) values (%s,%s) "
-                        "on conflict (codigo) do nothing", (codigo, nombre))
-        print(f'  servicios             {len(SERVICIOS)}')
+        servicios, tarifas, retirados = sembrar_catalogo(cur)
+        print(f'  servicios             {servicios}  (lista de precios del {FECHA_LISTA_PRECIOS}; '
+              f'{retirados} provisionales desactivados)')
+        print(f'  tarifas               {tarifas}')
+        print(f'  parametros            {sembrar_parametros(cur)}')
 
         for codigo, nombre in CANALES:
             cur.execute("insert into canales (codigo,nombre) values (%s,%s) "
@@ -385,7 +474,6 @@ def main() -> None:
             con.rollback()
             print(f'  alertas_tipos         (columnas distintas: {str(e).splitlines()[0][:60]})')
 
-        print(f'  tarifas               {tarifas_desde_excel(cur)}  (desde CUENTAS VISANOW.xlsx)')
         con.commit()
     print('\nSeed completo.')
 
