@@ -1,5 +1,5 @@
-import { Badge, Card, Group, SimpleGrid, Stack, Text, ThemeIcon, Timeline, Title } from '@mantine/core'
-import { IconCheck, IconShieldCheck, IconShieldX } from '@tabler/icons-react'
+import { Anchor, Badge, Card, Group, SimpleGrid, Stack, Text, ThemeIcon, Timeline, Title } from '@mantine/core'
+import { IconBell, IconCheck, IconShieldCheck, IconShieldX } from '@tabler/icons-react'
 import { Link } from 'react-router-dom'
 import { useSesion } from '../auth/sesion'
 import { formatearFechaHora, NOMBRES_ROL } from '../lib/formato'
@@ -17,7 +17,7 @@ export function Inicio() {
     <Stack maw={960}>
       <Title order={2}>Hola, {primerNombre}</Title>
 
-      <SimpleGrid cols={{ base: 1, md: 2 }}>
+      <SimpleGrid cols={{ base: 1, md: 2 }} style={{ alignItems: 'start' }}>
         <Card withBorder padding="lg">
           <Text fw={600} mb="sm">Su cuenta</Text>
           <Stack gap="xs">
@@ -42,7 +42,7 @@ export function Inicio() {
               <Text size="xs" c="dimmed">Disponible</Text>
             </Timeline.Item>
             {proximas.map((s) => (
-              <Timeline.Item key={s.ruta} title={<Text component={Link} to={s.ruta} size="sm">{s.titulo}</Text>}>
+              <Timeline.Item key={s.ruta} title={<Anchor component={Link} to={s.ruta} size="sm">{s.titulo}</Anchor>}>
                 <Text size="xs" c="dimmed">{s.pendiente!.fecha}</Text>
               </Timeline.Item>
             ))}
@@ -52,7 +52,7 @@ export function Inicio() {
 
       <Card withBorder padding="lg">
         <Group gap="sm">
-          <ThemeIcon variant="light" color="gray" radius="xl"><IconCheck size={16} /></ThemeIcon>
+          <ThemeIcon variant="light" color="gray" radius="xl"><IconBell size={16} /></ThemeIcon>
           <Text size="sm" c="dimmed">
             Aquí va a aparecer su bandeja del día: tareas vencidas, citas próximas, clientes que no han enviado
             información y saldos por cobrar. Llega con el centro de alertas, el 14/10.

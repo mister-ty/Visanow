@@ -21,8 +21,8 @@ class Ajustes(BaseSettings):
 
     jwt_algoritmo: str = 'HS256'
     jwt_expira_minutos: int = 60
-    cors_origins: str = 'http://localhost:5173'
-    url_ui: str = 'http://localhost:5173'          # base de los enlaces que se envían por correo
+    cors_origins: str = 'http://localhost:5180'
+    url_ui: str = 'http://localhost:5180'          # base de los enlaces que se envían por correo
     zona_horaria: str = 'America/Bogota'
     moneda_base: str = 'COP'
 

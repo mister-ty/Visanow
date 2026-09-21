@@ -51,7 +51,7 @@ export function Plantilla() {
           <NavLink key={s.ruta} component={Enlace} to={s.ruta} label={s.titulo} onClick={close}
             leftSection={<s.icono size={18} stroke={1.6} />}
             active={s.ruta === '/' ? pathname === '/' : pathname.startsWith(s.ruta)}
-            description={s.pendiente ? `Llega el ${s.pendiente.fecha.split(' ').pop()}` : undefined} />
+            description={s.pendiente ? `Desde el ${s.pendiente.desde}` : undefined} />
         ))}
       </AppShell.Navbar>
 

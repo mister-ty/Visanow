@@ -7,7 +7,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    // 5173 (el de Vite por defecto) lo usa otro proyecto en esta máquina. Con
+    // strictPort, si el puerto está ocupado Vite falla en vez de moverse en
+    // silencio a otro puerto o, peor, dejar que el navegador abra la otra app.
+    port: 5180,
+    strictPort: true,
     proxy: {
       '/api': 'http://127.0.0.1:8000',
       '/admin': 'http://127.0.0.1:8000',

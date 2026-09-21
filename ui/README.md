@@ -4,7 +4,7 @@ Frontend de VisaNow: React + Vite + TypeScript + Mantine + TanStack Query.
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173 — /api y /admin se reenvían a la API local (:8000)
+npm run dev        # http://localhost:5180 — /api y /admin se reenvían a la API local (:8000)
 npm run gen:api    # regenera src/api/esquema.d.ts desde el OpenAPI de la API (debe estar corriendo)
 npm run build      # tsc + vite build → dist/
 ```
