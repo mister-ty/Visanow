@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import requiere
 from app.db.session import get_db
-from app.models.esquema import (EstadosComerciales, EstadosOperativos, Modalidades, Paises, Sedes,
-                                Servicios, TiposVisa, Usuarios)
+from app.models.esquema import (Canales, EstadosComerciales, EstadosOperativos, Modalidades,
+                                Paises, Sedes, Servicios, TiposVisa, Usuarios)
 
 router = APIRouter(tags=['catálogos'])
 
@@ -25,6 +25,7 @@ class Opcion(BaseModel):
 
 class Catalogos(BaseModel):
     paises: list[Opcion]
+    canales: list[Opcion]
     tipos_visa: list[Opcion]
     sedes: list[Opcion]
     modalidades: list[Opcion]
@@ -45,6 +46,10 @@ def catalogos(_: Usuarios = Depends(requiere('catalogos.ver')), db: Session = De
 
     return Catalogos(
         paises=opciones(Paises),
+        # Por dónde llegó el cliente. RF-001 lo pide en la ficha y era el único
+        # campo suyo sin catálogo expuesto: la ficha guardaba el id y la pantalla
+        # no tenía con qué convertirlo en un nombre.
+        canales=opciones(Canales, activos=True),
         tipos_visa=opciones(TiposVisa, activos=True, con_pais=True),
         sedes=opciones(Sedes, con_pais=True),
         modalidades=opciones(Modalidades),

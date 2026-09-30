@@ -165,6 +165,9 @@ export interface paths {
         /**
          * Listar
          * @description Tablero operativo (RF-022): por estado, responsable, país, origen y riesgo.
+         *
+         *     Lo que devuelve depende del alcance del usuario (RNF-03): quien tiene «solo
+         *     casos asignados» ve los suyos aunque no filtre por responsable.
          */
         get: operations["listar_api_v1_casos_get"];
         put?: never;
@@ -969,6 +972,8 @@ export interface components {
         Catalogos: {
             /** Paises */
             paises: components["schemas"]["Opcion"][];
+            /** Canales */
+            canales: components["schemas"]["Opcion"][];
             /** Tipos Visa */
             tipos_visa: components["schemas"]["Opcion"][];
             /** Sedes */

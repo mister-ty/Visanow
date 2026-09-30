@@ -259,3 +259,34 @@ def test_personas_listar_pagina(cliente, comercial, db, usuario):
     total, primera = personas.listar(db, texto_busqueda='Paginado', pagina=1, tamano=5)
     _, segunda = personas.listar(db, texto_busqueda='Paginado', pagina=2, tamano=5)
     assert total == 7 and len(primera) == 5 and len(segunda) == 2
+
+
+def test_el_pais_el_canal_y_el_consentimiento_se_guardan_y_se_leen(cliente, db, usuario):
+    """RF-001 nombra identificación, contacto, ciudad, país, canal y consentimiento.
+    De esos, país, canal y consentimiento no tenían ninguna prueba: el canal es
+    con lo que se sabe qué publicidad trae clientes, y el consentimiento es dato
+    de tratamiento de datos personales."""
+    from sqlalchemy import select
+
+    from app.models.esquema import Canales, Paises
+
+    cab = entrar(cliente, usuario('comercial'))
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'CO'))
+    canal = db.scalar(select(Canales.id).where(Canales.codigo == 'instagram'))
+
+    r = cliente.post('/api/v1/clientes', headers=cab, json={
+        'nombre': 'Camila Ospina Vélez', 'ciudad': 'Medellín',
+        'pais_id': pais, 'canal_id': canal, 'consentimiento': True})
+    assert r.status_code == 201, r.text
+    ficha = r.json()
+    assert ficha['pais_id'] == pais and ficha['canal_id'] == canal
+    assert ficha['consentimiento'] is True and ficha['consentimiento_fecha'] is not None,         'autorizar el tratamiento tiene que dejar la fecha'
+
+    # y se leen de vuelta en la ficha
+    leida = cliente.get(f'/api/v1/clientes/{ficha["id"]}', headers=cab).json()
+    assert (leida['pais_id'], leida['canal_id']) == (pais, canal)
+
+    # el catálogo trae los canales para poder mostrar el nombre y no el número
+    catalogos = cliente.get('/api/v1/catalogos', headers=cab).json()
+    assert canal in [c['id'] for c in catalogos['canales']]
+    assert any(c['codigo'] == 'instagram' for c in catalogos['canales'])

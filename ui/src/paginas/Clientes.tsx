@@ -1,5 +1,6 @@
 import {
-  ActionIcon, Button, Card, Checkbox, Group, Modal, Pagination, Stack, Table, Text, TextInput, Title,
+  ActionIcon, Button, Card, Checkbox, Group, Modal, Pagination, Select, Stack, Table, Text,
+  TextInput, Title,
 } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
 import { useForm } from '@mantine/form'
@@ -8,9 +9,10 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { IconPlus, IconSearch, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, exigir, type Esquemas } from '../api/cliente'
+import { api, exigir } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados } from '../componentes/AvisoDuplicados'
+import { aSelect, useCatalogos } from '../lib/catalogos'
 import { mostrarError } from '../lib/errores'
 
 const TAMANO = 25
@@ -101,14 +103,13 @@ export function Clientes() {
   )
 }
 
-type Nuevo = Esquemas['ClienteCrear']
 
 function FormularioCliente({ abierto, cerrar }: { abierto: boolean; cerrar: () => void }) {
   const clienteQuery = useQueryClient()
   const navegar = useNavigate()
-  const formulario = useForm<Nuevo>({
+  const formulario = useForm({
     initialValues: { nombre: '', tipo_documento: '', numero_documento: '', telefono: '', email: '',
-                     ciudad: '', consentimiento: false },
+                     ciudad: '', consentimiento: false, pais_id: '', canal_id: '' },
     validate: { nombre: (v) => (v.trim().length >= 2 ? null : 'Escriba el nombre completo') },
   })
   const [datos] = useDebouncedValue(formulario.values, 400)
@@ -125,10 +126,17 @@ function FormularioCliente({ abierto, cerrar }: { abierto: boolean; cerrar: () =
     enabled: abierto && datos.nombre.trim().length >= 3,
   })
   const hayFuerte = (posibles.data ?? []).some((c) => c.confianza === 'alta')
+  const catalogos = useCatalogos()
 
   const crear = useMutation({
-    mutationFn: (v: Nuevo) => exigir(api.POST('/api/v1/clientes', {
-      body: Object.fromEntries(Object.entries(v).filter(([, x]) => x !== '')) as Nuevo,
+    mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/clientes', {
+      body: {
+        ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== '')),
+        nombre: v.nombre, consentimiento: v.consentimiento,
+        // Los desplegables devuelven texto; la API espera el id numérico
+        ...(v.pais_id ? { pais_id: Number(v.pais_id) } : {}),
+        ...(v.canal_id ? { canal_id: Number(v.canal_id) } : {}),
+      } as never,
     })),
     onSuccess: (c) => {
       notifications.show({ color: 'teal', message: 'Cliente creado' })
@@ -152,7 +160,14 @@ function FormularioCliente({ abierto, cerrar }: { abierto: boolean; cerrar: () =
             <TextInput label="Teléfono" placeholder="3105177800" {...formulario.getInputProps('telefono')} />
             <TextInput label="Correo" type="email" {...formulario.getInputProps('email')} />
           </Group>
-          <TextInput label="Ciudad" {...formulario.getInputProps('ciudad')} />
+          <Group grow>
+            <TextInput label="Ciudad" {...formulario.getInputProps('ciudad')} />
+            <Select label="País" data={aSelect(catalogos.data?.paises)} searchable clearable
+              {...formulario.getInputProps('pais_id')} />
+          </Group>
+          <Select label="¿Por dónde llegó?" data={aSelect(catalogos.data?.canales)} clearable
+            description="Sirve para saber qué canal trae más clientes"
+            {...formulario.getInputProps('canal_id')} />
           <Checkbox label="Autorizó el tratamiento de sus datos personales"
             {...formulario.getInputProps('consentimiento', { type: 'checkbox' })} />
 

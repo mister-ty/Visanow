@@ -17,7 +17,7 @@ import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados, type Coincidencia } from '../componentes/AvisoDuplicados'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora } from '../lib/formato'
-import { aSelect, porPais, useAsignables, useCatalogos } from '../lib/catalogos'
+import { aSelect, type Opcion, porPais, useAsignables, useCatalogos } from '../lib/catalogos'
 
 type Detalle = Esquemas['ClienteDetalle']
 type Solicitante = Esquemas['SolicitanteSalida']
@@ -34,6 +34,7 @@ export function ClienteFicha() {
   const [agregarA, setAgregarA] = useState<{ grupo_id?: number; cliente_id?: number } | null>(null)
   const [tramitando, setTramitando] = useState<Solicitante | null>(null)
   const [anotando, setAnotando] = useState(false)
+  const catalogosFicha = useCatalogos()
 
   // Una sola consulta trae el cliente, su familia, sus trámites, sus próximas
   // citas y su cronología (RF-005). Antes esto eran tres archivos distintos.
@@ -117,6 +118,8 @@ export function ClienteFicha() {
           <Dato titulo="Teléfono" valor={c.telefono} />
           <Dato titulo="Correo" valor={c.email} />
           <Dato titulo="Ciudad" valor={c.ciudad} />
+          <Dato titulo="País" valor={nombreDe(catalogosFicha.data?.paises, c.pais_id)} />
+          <Dato titulo="Llegó por" valor={nombreDe(catalogosFicha.data?.canales, c.canal_id)} />
           <Dato titulo="Consentimiento" valor={c.consentimiento ? 'Autorizado' : 'Sin autorizar'} />
         </Group>
         {c.observaciones && <Text size="sm" mt="md">{c.observaciones}</Text>}
@@ -204,6 +207,10 @@ export function ClienteFicha() {
   )
 }
 
+/** Un id de catálogo no le dice nada a nadie: se muestra el nombre. */
+const nombreDe = (opciones: Opcion[] | undefined, id: number | null | undefined) =>
+  (id ? opciones?.find((o) => o.id === id)?.nombre : null) ?? null
+
 const Dato = ({ titulo, valor }: { titulo: string; valor: string | null | undefined }) => (
   <div>
     <Text size="xs" c="dimmed">{titulo}</Text>
@@ -279,12 +286,20 @@ function FormularioEditar({ cliente, abierto, cerrar, guardado }: {
       numero_documento: cliente.numero_documento ?? '', telefono: cliente.telefono ?? '',
       email: cliente.email ?? '', ciudad: cliente.ciudad ?? '',
       consentimiento: cliente.consentimiento, observaciones: cliente.observaciones ?? '',
+      pais_id: cliente.pais_id ? String(cliente.pais_id) : '',
+      canal_id: cliente.canal_id ? String(cliente.canal_id) : '',
     },
   })
+  const catalogos = useCatalogos()
   const guardar = useMutation({
     mutationFn: (v: typeof formulario.values) => exigir(api.PATCH('/api/v1/clientes/{cliente_id}', {
       params: { path: { cliente_id: cliente.id } },
-      body: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x === '' ? null : x])) as never,
+      body: {
+        ...Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x === '' ? null : x])),
+        // Los desplegables devuelven texto; la API espera el id numérico
+        pais_id: v.pais_id ? Number(v.pais_id) : null,
+        canal_id: v.canal_id ? Number(v.canal_id) : null,
+      } as never,
     })),
     onSuccess: () => { notifications.show({ color: 'teal', message: 'Cambios guardados' }); guardado(); cerrar() },
     onError: (e) => mostrarError(e, 'No se pudo guardar'),
@@ -302,7 +317,14 @@ function FormularioEditar({ cliente, abierto, cerrar, guardado }: {
             <TextInput label="Teléfono" {...formulario.getInputProps('telefono')} />
             <TextInput label="Correo" type="email" {...formulario.getInputProps('email')} />
           </Group>
-          <TextInput label="Ciudad" {...formulario.getInputProps('ciudad')} />
+          <Group grow>
+            <TextInput label="Ciudad" {...formulario.getInputProps('ciudad')} />
+            <Select label="País" data={aSelect(catalogos.data?.paises)} searchable clearable
+              {...formulario.getInputProps('pais_id')} />
+          </Group>
+          <Select label="¿Por dónde llegó?" data={aSelect(catalogos.data?.canales)} clearable
+            description="Sirve para saber qué canal trae más clientes"
+            {...formulario.getInputProps('canal_id')} />
           <TextInput label="Observaciones" {...formulario.getInputProps('observaciones')} />
           <Checkbox label="Autorizó el tratamiento de sus datos personales"
             {...formulario.getInputProps('consentimiento', { type: 'checkbox' })} />
@@ -395,14 +417,15 @@ function FormularioTramite({ solicitante, cerrar }: { solicitante: Solicitante |
   const catalogos = useCatalogos()
   const asignables = useAsignables()
   const formulario = useForm({
-    initialValues: { pais_id: '', tipo_visa_id: '', sede_id: '', responsable_id: '',
-                     proxima_accion: 'Pedir documentos al cliente' },
+    initialValues: { pais_id: '', tipo_visa_id: '', modalidad_id: '', sede_id: '',
+                     responsable_id: '', proxima_accion: 'Pedir documentos al cliente' },
     validate: { pais_id: (v) => (v ? null : 'Elija el país del trámite') },
   })
   const crear = useMutation({
     mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/casos', {
       body: { solicitante_id: solicitante!.id, pais_id: Number(v.pais_id),
               tipo_visa_id: v.tipo_visa_id ? Number(v.tipo_visa_id) : null,
+              modalidad_id: v.modalidad_id ? Number(v.modalidad_id) : null,
               sede_id: v.sede_id ? Number(v.sede_id) : null,
               responsable_id: v.responsable_id ? Number(v.responsable_id) : null,
               proxima_accion: v.proxima_accion || null },
@@ -425,6 +448,9 @@ function FormularioTramite({ solicitante, cerrar }: { solicitante: Solicitante |
             {...formulario.getInputProps('pais_id')} />
           <Select label="Tipo de visa" data={aSelect(porPais(catalogos.data?.tipos_visa, pais))} clearable
             {...formulario.getInputProps('tipo_visa_id')} />
+          <Select label="Modalidad" data={aSelect(catalogos.data?.modalidades)} clearable
+            description="Decide qué checklist de documentos se aplica"
+            {...formulario.getInputProps('modalidad_id')} />
           <Select label="Sede de la cita" data={aSelect(catalogos.data?.sedes)} searchable clearable
             {...formulario.getInputProps('sede_id')} />
           <Select label="Responsable"
