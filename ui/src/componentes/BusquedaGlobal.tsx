@@ -51,7 +51,9 @@ export function BusquedaGlobal() {
   const planos = grupos.flatMap((g) => g.items)
 
   return (
-    <Combobox store={combobox} withinPortal position="bottom-start" shadow="md"
+    // El desplegable lleva ancho propio: en el teléfono el campo es angosto y
+    // los nombres y los documentos quedaban cortados a la mitad.
+    <Combobox store={combobox} withinPortal position="bottom-start" shadow="md" width={320}
       onOptionSubmit={(valor) => { const r = planos[Number(valor)]; if (r) ir(r) }}>
       <Combobox.Target>
         <TextInput ref={campo} value={texto} w={{ base: 180, sm: 340 }} size="sm"
