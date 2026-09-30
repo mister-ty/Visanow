@@ -523,11 +523,14 @@ class Clientes(Base):
         ForeignKeyConstraint(['fusionado_en_id'], ['clientes.id'], name='clientes_fusionado_en_id_fkey'),
         ForeignKeyConstraint(['pais_id'], ['paises.id'], name='clientes_pais_id_fkey'),
         PrimaryKeyConstraint('id', name='clientes_pkey'),
+        Index('ix_clientes_activos', 'id', postgresql_where='((fusionado_en_id IS NULL) AND (NOT archivado))'),
         Index('ix_clientes_email', 'email'),
         Index('ix_clientes_fusionados', 'fusionado_en_id', postgresql_where='(fusionado_en_id IS NOT NULL)'),
         Index('ix_clientes_migrado', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)'),
         Index('ix_clientes_nombre', 'nombre', postgresql_using='gin'),
+        Index('ix_clientes_nombre_busqueda', 'nombre_busqueda', postgresql_using='gin'),
         Index('ix_clientes_telefono', 'telefono'),
+        Index('ix_clientes_telefono_norm', 'telefono_normalizado', postgresql_where='(telefono_normalizado IS NOT NULL)'),
         Index('ux_clientes_documento', 'numero_documento', postgresql_where='(numero_documento IS NOT NULL)', unique=True)
     )
 
@@ -553,6 +556,8 @@ class Clientes(Base):
     origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
     migrado_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
     fusionado_en_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    nombre_busqueda: Mapped[Optional[str]] = mapped_column(Text, Computed('lower(sin_tildes((nombre)::text))', persisted=True))
+    telefono_normalizado: Mapped[Optional[str]] = mapped_column(String(10), Computed('NULLIF("right"(regexp_replace((COALESCE(telefono, \'\'::character varying))::text, \'[^0-9]\'::text, \'\'::text, \'g\'::text), 10), \'\'::text)', persisted=True))
 
     canal: Mapped[Optional['Canales']] = relationship('Canales', back_populates='clientes')
     usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='clientes')
@@ -797,7 +802,8 @@ class Grupos(Base):
     __tablename__ = 'grupos'
     __table_args__ = (
         ForeignKeyConstraint(['cliente_contacto_id'], ['clientes.id'], name='grupos_cliente_contacto_id_fkey'),
-        PrimaryKeyConstraint('id', name='grupos_pkey')
+        PrimaryKeyConstraint('id', name='grupos_pkey'),
+        Index('ix_grupos_contacto', 'cliente_contacto_id')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -922,6 +928,12 @@ class Solicitantes(Base):
         ForeignKeyConstraint(['fusionado_en_id'], ['solicitantes.id'], name='solicitantes_fusionado_en_id_fkey'),
         ForeignKeyConstraint(['grupo_id'], ['grupos.id'], name='solicitantes_grupo_id_fkey'),
         PrimaryKeyConstraint('id', name='solicitantes_pkey'),
+        Index('ix_solicitantes_cliente', 'cliente_id', postgresql_where='(cliente_id IS NOT NULL)'),
+        Index('ix_solicitantes_documento', 'numero_documento', postgresql_where='(numero_documento IS NOT NULL)'),
+        Index('ix_solicitantes_email', 'email', postgresql_where='(email IS NOT NULL)'),
+        Index('ix_solicitantes_grupo', 'grupo_id', postgresql_where='(grupo_id IS NOT NULL)'),
+        Index('ix_solicitantes_nombre_busqueda', 'nombre_busqueda', postgresql_using='gin'),
+        Index('ix_solicitantes_telefono_norm', 'telefono_normalizado', postgresql_where='(telefono_normalizado IS NOT NULL)'),
         Index('ux_solicitantes_pasaporte', 'pasaporte_indice', postgresql_where='(pasaporte_indice IS NOT NULL)', unique=True)
     )
 
@@ -945,6 +957,8 @@ class Solicitantes(Base):
     migrado_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
     fusionado_en_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     pasaporte_indice: Mapped[Optional[str]] = mapped_column(CHAR(64))
+    nombre_busqueda: Mapped[Optional[str]] = mapped_column(Text, Computed('lower(sin_tildes((nombre)::text))', persisted=True))
+    telefono_normalizado: Mapped[Optional[str]] = mapped_column(String(10), Computed('NULLIF("right"(regexp_replace((COALESCE(telefono, \'\'::character varying))::text, \'[^0-9]\'::text, \'\'::text, \'g\'::text), 10), \'\'::text)', persisted=True))
 
     cliente: Mapped[Optional['Clientes']] = relationship('Clientes', back_populates='solicitantes')
     fusionado_en: Mapped[Optional['Solicitantes']] = relationship('Solicitantes', remote_side=[id], back_populates='fusionado_en_reverse')

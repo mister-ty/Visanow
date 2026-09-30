@@ -19,15 +19,6 @@ export const SECCIONES: Seccion[] = [
   { ruta: '/', titulo: 'Mi trabajo', icono: IconHome },
   {
     ruta: '/clientes', titulo: 'Clientes', icono: IconAddressBook, permiso: 'clientes.ver',
-    pendiente: {
-      actividad: '2.3 y 2.7', fecha: '22/09 y 01/10', desde: '22/09',
-      contenido: [
-        'Ficha única de cliente, con grupos familiares y cada solicitante con su pasaporte',
-        'Aviso de posibles duplicados por documento, pasaporte, teléfono o nombre',
-        'Vista 360°: ventas, trámites, pagos, saldo, tareas y cronología en una sola ficha',
-        'Búsqueda por nombre, teléfono, documento, pasaporte, DS-160 o número de solicitud del SaaS',
-      ],
-    },
   },
   {
     ruta: '/casos', titulo: 'Trámites', icono: IconPlaneDeparture, permiso: 'casos.ver',

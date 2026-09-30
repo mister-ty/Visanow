@@ -15,6 +15,8 @@ import { Plantilla } from './componentes/Plantilla'
 import { RutaProtegida } from './componentes/RutaProtegida'
 import { SECCIONES } from './navegacion'
 import { CambiarContrasena } from './paginas/CambiarContrasena'
+import { ClienteFicha } from './paginas/ClienteFicha'
+import { Clientes } from './paginas/Clientes'
 import { Configuracion } from './paginas/Configuracion'
 import { DobleFactor } from './paginas/DobleFactor'
 import { Inicio } from './paginas/Inicio'
@@ -61,6 +63,8 @@ const enruta = createBrowserRouter([
             element: <Plantilla />,
             children: [
               { path: '/', element: <Inicio /> },
+              { path: '/clientes', element: <Clientes /> },
+              { path: '/clientes/:id', element: <ClienteFicha /> },
               { path: '/usuarios', element: <Usuarios /> },
               { path: '/configuracion', element: <Configuracion /> },
               ...SECCIONES.filter((s) => s.pendiente).map((s) => ({

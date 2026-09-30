@@ -155,6 +155,209 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/clientes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar */
+        get: operations["listar_api_v1_clientes_get"];
+        put?: never;
+        /** Crear */
+        post: operations["crear_api_v1_clientes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clientes/verificar-duplicados": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verificar Duplicados
+         * @description Se consulta antes de guardar: advierte, no bloquea (RF-002).
+         */
+        post: operations["verificar_duplicados_api_v1_clientes_verificar_duplicados_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clientes/{cliente_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detalle */
+        get: operations["detalle_api_v1_clientes__cliente_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Editar */
+        patch: operations["editar_api_v1_clientes__cliente_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/clientes/{cliente_id}/archivar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archivar */
+        post: operations["archivar_api_v1_clientes__cliente_id__archivar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clientes/{cliente_id}/duplicados": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Duplicados De */
+        get: operations["duplicados_de_api_v1_clientes__cliente_id__duplicados_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clientes/{cliente_id}/fusionar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fusionar
+         * @description Une dos fichas. Exige el permiso de eliminar clientes, que hoy solo tiene
+         *     la administradora: RF-002 pide que la fusión sea autorizada.
+         */
+        post: operations["fusionar_api_v1_clientes__cliente_id__fusionar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/grupos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Crear Grupo */
+        post: operations["crear_grupo_api_v1_grupos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/solicitantes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Solicitantes */
+        get: operations["listar_solicitantes_api_v1_solicitantes_get"];
+        put?: never;
+        /** Crear Solicitante */
+        post: operations["crear_solicitante_api_v1_solicitantes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/solicitantes/buscar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Buscar Por Pasaporte
+         * @description Búsqueda exacta por pasaporte sobre la columna cifrada (RF-029).
+         */
+        get: operations["buscar_por_pasaporte_api_v1_solicitantes_buscar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/solicitantes/{solicitante_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Editar Solicitante */
+        patch: operations["editar_solicitante_api_v1_solicitantes__solicitante_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/solicitantes/{solicitante_id}/pasaporte": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ver Pasaporte
+         * @description Devuelve el pasaporte completo y deja constancia de quién lo consultó (RNF-04).
+         */
+        get: operations["ver_pasaporte_api_v1_solicitantes__solicitante_id__pasaporte_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usuarios": {
         parameters: {
             query?: never;
@@ -272,6 +475,126 @@ export interface components {
             /** Nueva */
             nueva: string;
         };
+        /** ClienteCrear */
+        ClienteCrear: {
+            /** Nombre */
+            nombre: string;
+            /** Tipo Documento */
+            tipo_documento?: string | null;
+            /** Numero Documento */
+            numero_documento?: string | null;
+            /** Telefono */
+            telefono?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Ciudad */
+            ciudad?: string | null;
+            /** Pais Id */
+            pais_id?: number | null;
+            /** Canal Id */
+            canal_id?: number | null;
+            /**
+             * Consentimiento
+             * @default false
+             */
+            consentimiento: boolean;
+            /** Observaciones */
+            observaciones?: string | null;
+        };
+        /** ClienteDetalle */
+        ClienteDetalle: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /** Tipo Documento */
+            tipo_documento: string | null;
+            /** Numero Documento */
+            numero_documento: string | null;
+            /** Telefono */
+            telefono: string | null;
+            /** Email */
+            email: string | null;
+            /** Ciudad */
+            ciudad: string | null;
+            /** Consentimiento */
+            consentimiento: boolean;
+            /** Archivado */
+            archivado: boolean;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+            /** Pais Id */
+            pais_id: number | null;
+            /** Canal Id */
+            canal_id: number | null;
+            /** Observaciones */
+            observaciones: string | null;
+            /** Consentimiento Fecha */
+            consentimiento_fecha: string | null;
+            /**
+             * Grupos
+             * @default []
+             */
+            grupos: components["schemas"]["GrupoSalida"][];
+            /**
+             * Solicitantes
+             * @description Propios y de sus grupos
+             * @default []
+             */
+            solicitantes: components["schemas"]["SolicitanteSalida"][];
+        };
+        /** ClienteEditar */
+        ClienteEditar: {
+            /** Nombre */
+            nombre?: string | null;
+            /** Tipo Documento */
+            tipo_documento?: string | null;
+            /** Numero Documento */
+            numero_documento?: string | null;
+            /** Telefono */
+            telefono?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Ciudad */
+            ciudad?: string | null;
+            /** Pais Id */
+            pais_id?: number | null;
+            /** Canal Id */
+            canal_id?: number | null;
+            /** Consentimiento */
+            consentimiento?: boolean | null;
+            /** Observaciones */
+            observaciones?: string | null;
+        };
+        /** ClienteSalida */
+        ClienteSalida: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /** Tipo Documento */
+            tipo_documento: string | null;
+            /** Numero Documento */
+            numero_documento: string | null;
+            /** Telefono */
+            telefono: string | null;
+            /** Email */
+            email: string | null;
+            /** Ciudad */
+            ciudad: string | null;
+            /** Consentimiento */
+            consentimiento: boolean;
+            /** Archivado */
+            archivado: boolean;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+        };
         /** CodigoEntrada */
         CodigoEntrada: {
             /**
@@ -279,6 +602,32 @@ export interface components {
              * @description Código de 6 dígitos de la aplicación autenticadora
              */
             codigo: string;
+        };
+        /** CoincidenciaSalida */
+        CoincidenciaSalida: {
+            /** Cliente Id */
+            cliente_id: number;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Confianza
+             * @enum {string}
+             */
+            confianza: "alta" | "media" | "baja";
+            /** Criterios */
+            criterios: string[];
+            /** Explicacion */
+            explicacion: string;
+            /** Parecido Nombre */
+            parecido_nombre: number;
+            /** Archivado */
+            archivado: boolean;
+            /**
+             * Posible Familiar
+             * @description Comparte datos pero el nombre de pila es distinto
+             * @default false
+             */
+            posible_familiar: boolean;
         };
         /** DesafioMfa */
         DesafioMfa: {
@@ -290,6 +639,56 @@ export interface components {
             requiere_mfa: true;
             /** Token Mfa */
             token_mfa: string;
+        };
+        /** FusionEntrada */
+        FusionEntrada: {
+            /** Absorbido Id */
+            absorbido_id: number;
+            /**
+             * Criterio
+             * @default manual
+             * @enum {string}
+             */
+            criterio: "documento" | "pasaporte" | "telefono" | "email" | "nombre" | "manual";
+        };
+        /** FusionSalida */
+        FusionSalida: {
+            /** Conservado Id */
+            conservado_id: number;
+            /** Absorbido Id */
+            absorbido_id: number;
+            /**
+             * Movidos
+             * @description Cuántos registros cambiaron de ficha, por tabla
+             */
+            movidos: {
+                [key: string]: number;
+            };
+        };
+        /** GrupoCrear */
+        GrupoCrear: {
+            /** Nombre */
+            nombre: string;
+            /** Cliente Contacto Id */
+            cliente_contacto_id: number;
+            /** Observaciones */
+            observaciones?: string | null;
+        };
+        /** GrupoSalida */
+        GrupoSalida: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /** Cliente Contacto Id */
+            cliente_contacto_id: number;
+            /** Observaciones */
+            observaciones: string | null;
+            /**
+             * Solicitantes
+             * @default []
+             */
+            solicitantes: components["schemas"]["SolicitanteSalida"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -318,6 +717,27 @@ export interface components {
              * @description otpauth:// para generar el código QR
              */
             uri: string;
+        };
+        /** PaginaClientes */
+        PaginaClientes: {
+            /** Total */
+            total: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["ClienteSalida"][];
+        };
+        /** PasaporteSalida */
+        PasaporteSalida: {
+            /** Solicitante Id */
+            solicitante_id: number;
+            /**
+             * Pasaporte
+             * @description Valor completo. La consulta queda en la auditoría.
+             */
+            pasaporte: string;
         };
         /** PasswordTemporalSalida */
         PasswordTemporalSalida: {
@@ -361,6 +781,89 @@ export interface components {
              * @description Código de 6 dígitos de la aplicación autenticadora
              */
             codigo: string;
+        };
+        /** SolicitanteCrear */
+        SolicitanteCrear: {
+            /** Grupo Id */
+            grupo_id?: number | null;
+            /** Cliente Id */
+            cliente_id?: number | null;
+            /** Nombre */
+            nombre: string;
+            /** Tipo Documento */
+            tipo_documento?: string | null;
+            /** Numero Documento */
+            numero_documento?: string | null;
+            /** Pasaporte */
+            pasaporte?: string | null;
+            /** Fecha Nacimiento */
+            fecha_nacimiento?: string | null;
+            /** Nacionalidad */
+            nacionalidad?: string | null;
+            /** Telefono */
+            telefono?: string | null;
+            /** Email */
+            email?: string | null;
+            /**
+             * Relacion Con Cliente
+             * @description titular, cónyuge, hijo, otro
+             */
+            relacion_con_cliente?: string | null;
+            /** Observaciones */
+            observaciones?: string | null;
+        };
+        /** SolicitanteEditar */
+        SolicitanteEditar: {
+            /** Nombre */
+            nombre?: string | null;
+            /** Tipo Documento */
+            tipo_documento?: string | null;
+            /** Numero Documento */
+            numero_documento?: string | null;
+            /** Pasaporte */
+            pasaporte?: string | null;
+            /** Fecha Nacimiento */
+            fecha_nacimiento?: string | null;
+            /** Nacionalidad */
+            nacionalidad?: string | null;
+            /** Telefono */
+            telefono?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Relacion Con Cliente */
+            relacion_con_cliente?: string | null;
+            /** Observaciones */
+            observaciones?: string | null;
+        };
+        /** SolicitanteSalida */
+        SolicitanteSalida: {
+            /** Id */
+            id: number;
+            /** Grupo Id */
+            grupo_id: number | null;
+            /** Cliente Id */
+            cliente_id: number | null;
+            /** Nombre */
+            nombre: string;
+            /** Tipo Documento */
+            tipo_documento: string | null;
+            /** Numero Documento */
+            numero_documento: string | null;
+            /**
+             * Pasaporte
+             * @description Enmascarado: solo los últimos caracteres
+             */
+            pasaporte: string | null;
+            /** Fecha Nacimiento */
+            fecha_nacimiento: string | null;
+            /** Nacionalidad */
+            nacionalidad: string | null;
+            /** Telefono */
+            telefono: string | null;
+            /** Email */
+            email: string | null;
+            /** Relacion Con Cliente */
+            relacion_con_cliente: string | null;
         };
         /** TokenSalida */
         TokenSalida: {
@@ -440,6 +943,26 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * VerificarDuplicados
+         * @description Se consulta mientras se escribe la ficha, antes de guardarla.
+         */
+        VerificarDuplicados: {
+            /** Nombre */
+            nombre: string;
+            /** Tipo Documento */
+            tipo_documento?: string | null;
+            /** Numero Documento */
+            numero_documento?: string | null;
+            /** Telefono */
+            telefono?: string | null;
+            /** Email */
+            email?: string | null;
+            /** Pasaporte */
+            pasaporte?: string | null;
+            /** Excluir Id */
+            excluir_id?: number | null;
         };
         /** YoSalida */
         YoSalida: {
@@ -698,6 +1221,467 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_api_v1_clientes_get: {
+        parameters: {
+            query?: {
+                /** @description Nombre, documento, teléfono o correo */
+                texto?: string | null;
+                archivados?: boolean;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaClientes"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_api_v1_clientes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClienteCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClienteDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verificar_duplicados_api_v1_clientes_verificar_duplicados_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerificarDuplicados"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoincidenciaSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detalle_api_v1_clientes__cliente_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClienteDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editar_api_v1_clientes__cliente_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClienteEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClienteDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archivar_api_v1_clientes__cliente_id__archivar_post: {
+        parameters: {
+            query?: {
+                archivado?: boolean;
+            };
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClienteSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicados_de_api_v1_clientes__cliente_id__duplicados_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoincidenciaSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fusionar_api_v1_clientes__cliente_id__fusionar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FusionEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FusionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_grupo_api_v1_grupos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrupoCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrupoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_solicitantes_api_v1_solicitantes_get: {
+        parameters: {
+            query?: {
+                cliente_id?: number | null;
+                grupo_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolicitanteSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_solicitante_api_v1_solicitantes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolicitanteCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolicitanteSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    buscar_por_pasaporte_api_v1_solicitantes_buscar_get: {
+        parameters: {
+            query: {
+                pasaporte: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolicitanteSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editar_solicitante_api_v1_solicitantes__solicitante_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solicitante_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolicitanteEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolicitanteSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ver_pasaporte_api_v1_solicitantes__solicitante_id__pasaporte_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solicitante_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasaporteSalida"];
+                };
             };
             /** @description Validation Error */
             422: {

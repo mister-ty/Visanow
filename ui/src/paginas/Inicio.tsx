@@ -38,7 +38,7 @@ export function Inicio() {
         <Card withBorder padding="lg">
           <Text fw={600} mb="sm">Qué está llegando</Text>
           <Timeline active={0} bulletSize={22} lineWidth={2}>
-            <Timeline.Item bullet={<IconCheck size={12} />} title="Acceso, usuarios y catálogos">
+            <Timeline.Item bullet={<IconCheck size={12} />} title="Acceso, usuarios, catálogos y clientes">
               <Text size="xs" c="dimmed">Disponible</Text>
             </Timeline.Item>
             {proximas.map((s) => (
