@@ -27,11 +27,13 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import seguridad as seg
 from app.migracion import fuentes
 from app.migracion.fuentes import Aporte, Hoja
 from app.migracion.identidad import Persona
 from app.migracion.lectura import BOGOTA, Fila
 from app.migracion.motor import Excepcion, Migracion, Plan
+from app.services.auditoria import auditar
 from app.models.esquema import (Canales, Casos, Citas, Clientes, EstadosOperativos, MigracionCorridas,
                                 MigracionFilas, Negocios, Pagos, Paises, Sedes, Servicios,
                                 Solicitantes, Tarifas)
@@ -65,6 +67,8 @@ class Carga(Migracion):
         super().__init__(db)
         self.incluir_ventas_sin_cobro = incluir_ventas_sin_cobro
         self.por_persona: dict[int, tuple[int, int]] = {}    # id(Persona) -> (cliente_id, solicitante_id)
+        self.pasaporte_de: dict[str, str] = {}
+        self.ds160_de: dict[str, str] = {}
         self.negocio_de_fila: dict[tuple, int] = {}
         self._catalogos_de_carga()
 
@@ -118,6 +122,21 @@ class Carga(Migracion):
     # ------------------------------------------------------------------ escribir
 
     def aplicar(self, *, usuario_id: int | None = None) -> Resultado:
+        # El pasaporte no viene en la misma hoja que el trámite: vive en [DS-160]
+        # y en el export del SaaS, y se enlaza por nombre.
+        # La hoja [DS-160] no describe un trámite —no trae estado ni citas—, así
+        # que sus filas no crean casos: traen el pasaporte y el número de
+        # formulario de una persona que aparece en otra hoja. Se indexan por
+        # nombre y se pegan al trámite que sí existe.
+        for _, _, aporte in self.leido:
+            if not aporte.persona:
+                continue
+            clave = aporte.persona.strip().upper()
+            if aporte.pasaporte:
+                self.pasaporte_de.setdefault(clave, aporte.pasaporte)
+            if aporte.ds160:
+                self.ds160_de.setdefault(clave, aporte.ds160)
+
         plan = self.planear()
         r = Resultado(excepciones=list(plan.excepciones))
         ya = self._ya_aplicadas()
@@ -172,6 +191,14 @@ class Carga(Migracion):
                            'casos': r.casos, 'citas': r.citas, 'negocios': r.negocios,
                            'pagos': r.pagos, 'omitidas': r.omitidas,
                            'excepciones': len(r.excepciones)}
+
+        # RNF-05: cargar miles de registros es el cambio más grande que va a
+        # recibir este sistema y tiene que dejar rastro en la auditoría, que es
+        # la tabla que un trigger hace inalterable. Se registra la corrida, no
+        # cada fila: el detalle fila por fila vive en `migracion_filas`, y 4.000
+        # entradas de auditoría iguales taparían lo que sí hay que poder leer.
+        auditar(self.db, operacion='migracion', entidad='migracion_corridas',
+                usuario_id=usuario_id, entidad_id=corrida.id, despues=corrida.resumen)
         self.db.commit()
         return r
 
@@ -195,6 +222,14 @@ class Carga(Migracion):
         solicitante = Solicitantes(cliente_id=cliente.id, nombre=p.nombre, telefono=p.telefono,
                                    relacion_con_cliente='titular',
                                    origen_archivo=archivo, origen_hoja=hoja, origen_fila=numero)
+        # El pasaporte entra cifrado y con su índice ciego, igual que cuando lo
+        # escribe una persona desde la aplicación (RNF-04, RF-029). Sale de la
+        # hoja DS-160 y del export del SaaS.
+        pasaporte = self.pasaporte_de.get(p.nombre.strip().upper())
+        if pasaporte:
+            limpio = pasaporte.strip().upper()
+            solicitante.pasaporte = seg.cifrar(limpio)
+            solicitante.pasaporte_indice = seg.indice_ciego(limpio)
         self.db.add(solicitante)
         self.db.flush()
         return cliente.id, solicitante.id
@@ -223,10 +258,21 @@ class Carga(Migracion):
         ultima = max((c for _, c in a.citas), default=None) or dt.datetime.now(BOGOTA)
 
         caso = Casos(solicitante_id=solicitante_id, pais_id=pais_id, sede_id=sede_id,
-                     estado_id=estado_id, fuente='manual', resultado=a.resultado,
+                     estado_id=estado_id,
+                     # Lo que viene del export del SaaS trae número de solicitud:
+                     # esa es la llave con la que después sincroniza (RF-021, RF-032).
+                     fuente='saas' if a.id_externo else 'manual', id_externo=a.id_externo,
+                     resultado=a.resultado,
                      resultado_nota=a.resultado_nota or a.nota,
                      ultima_actividad_en=ultima,
                      origen_archivo=fila.archivo, origen_hoja=fila.hoja, origen_fila=fila.numero_fila)
+        ds160 = a.ds160 or self.ds160_de.pop(a.persona.strip().upper(), None)
+        if ds160:
+            # Mismo trato que el pasaporte: cifrado y buscable por índice ciego.
+            # Se saca del índice al usarlo porque el número es de la persona, no
+            # del trámite: si tiene dos trámites, no es el mismo formulario.
+            caso.ds160_numero_cifrado = seg.cifrar(ds160.strip())
+            caso.ds160_hash = seg.indice_ciego(ds160.strip())
         self.db.add(caso)
         self.db.flush()
         r.casos += 1

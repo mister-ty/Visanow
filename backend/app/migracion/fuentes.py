@@ -53,6 +53,7 @@ class Aporte:
     citas: list[tuple[str, dt.datetime]] = field(default_factory=list)
     pasaporte: str | None = None
     ds160: str | None = None
+    id_externo: str | None = None
 
     # dinero
     servicio: str | None = None
@@ -208,6 +209,9 @@ def _saas(fila: Fila) -> Aporte:
     a = Aporte()
     a.persona, a.anotacion, a.acompanantes = _persona_de(fila, 'Solicitante')
     a.pasaporte = fila.texto('Pasaporte')
+    # El número de solicitud es la llave externa con la que el sistema va a
+    # reconocer este trámite cuando llegue la importación del SaaS (RF-032).
+    a.id_externo = fila.texto('N° Solicitud') or fila.texto('N. Solicitud')
     codigo, problema = hom.estado(fila.texto('Etapa actual'))
     a.estado = codigo
     if problema:
