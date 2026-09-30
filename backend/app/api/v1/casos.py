@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.models.esquema import Casos, Usuarios
 from app.schemas import casos as esq
 from app.services import casos as servicio
+from app.services.historial import describir
 from app.services.usuarios import permisos_de_rol
 
 router = APIRouter(tags=['trámites'])
@@ -99,11 +100,16 @@ def registrar_resultado(caso_id: int, datos: esq.ResultadoEntrada, request: Requ
 
 @router.get('/casos/{caso_id}/historial', response_model=list[esq.HistorialSalida])
 def historial(caso_id: int, _: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
-    """Cada cambio del trámite, con quién lo hizo. Solo crece (RF-028)."""
-    return [esq.HistorialSalida(campo=h.campo, valor_anterior=h.valor_anterior, valor_nuevo=h.valor_nuevo,
+    """Cada cambio del trámite, con quién lo hizo. Solo crece (RF-028).
+
+    Los códigos y los ids se traducen aquí, contra los catálogos, para que la
+    pantalla no tenga que adivinar qué es «sede_id: — → 2»."""
+    filas = servicio.historial_de(db, caso_id)
+    return [esq.HistorialSalida(titulo=titulo, campo=h.campo, valor_anterior=h.valor_anterior,
+                                valor_nuevo=h.valor_nuevo,
                                 usuario=h.usuario.nombre if h.usuario else None,
                                 observacion=h.observacion, ocurrido_en=h.ocurrido_en)
-            for h in servicio.historial_de(db, caso_id)]
+            for h, titulo in zip(filas, describir(db, filas))]
 
 
 @router.post('/casos/{caso_id}/citas', response_model=esq.CitaSalida, status_code=status.HTTP_201_CREATED)

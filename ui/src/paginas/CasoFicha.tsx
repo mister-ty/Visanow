@@ -202,7 +202,7 @@ export function CasoFicha() {
             <Group gap="xs" mb="sm"><IconHistory size={18} /><Text fw={600}>Historial</Text></Group>
             <Timeline bulletSize={14} lineWidth={2}>
               {historial.data?.map((h, i) => (
-                <Timeline.Item key={i} title={<Text size="sm">{titulo(h)}</Text>}>
+                <Timeline.Item key={i} title={<Text size="sm">{h.titulo}</Text>}>
                   <Text size="xs" c="dimmed">
                     {formatearFechaHora(h.ocurrido_en)}{h.usuario && ` · ${h.usuario}`}
                   </Text>
@@ -218,15 +218,6 @@ export function CasoFicha() {
       <ModalResultado casoId={casoId} abierto={registrando} cerrar={() => setRegistrando(false)} hecho={refrescar} />
     </Stack>
   )
-}
-
-function titulo(h: Esquemas['HistorialSalida']): string {
-  if (h.campo === 'creado') return 'Trámite creado'
-  if (h.campo === 'estado') return `Estado: ${h.valor_anterior} → ${h.valor_nuevo}`
-  if (h.campo === 'excepcion') return `Excepción: ${h.valor_anterior} → ${h.valor_nuevo}`
-  if (h.campo.startsWith('checklist:')) return `Documento ${h.campo.split(':')[1]}: ${h.valor_nuevo}`
-  if (h.campo.startsWith('cita_')) return `Cita ${h.campo.replace('cita_', '').replace('_', ' ')}`
-  return `${h.campo}: ${h.valor_anterior ?? '—'} → ${h.valor_nuevo ?? '—'}`
 }
 
 function ProximaAccion({ caso, editable, guardar }: {

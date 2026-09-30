@@ -128,3 +128,19 @@ def test_matriz_de_roles(cliente, usuario):
     assert {r for r, p in roles.items() if 'casos.excepcion' in p} == {'administradora'}
     assert 'casos.eliminar' in roles['operaciones'] and 'casos.excepcion' not in roles['operaciones']
     assert roles['administradora'] >= set().union(*roles.values()) - {'x'}
+
+
+def test_operaciones_no_ve_la_contabilidad(cliente, usuario):
+    """Respuesta de la administradora del 29/09: al del control de la operación
+    «no hay que ocultarle nada, solo lo de la contabilidad». Pero sin saber si
+    el cliente pagó el anticipo no puede arrancar el trámite, y para eso está
+    pagos.estado, que no muestra montos."""
+    cab = entrar(cliente, usuario('administradora'))
+    roles = {r['codigo']: set(r['permisos']) for r in cliente.get('/api/v1/roles', headers=cab).json()}
+
+    contabilidad = {'pagos.ver', 'gastos.ver', 'comisiones.ver', 'ajustes.ver'}
+    assert not (roles['operaciones'] & contabilidad), 'operaciones no debe ver la contabilidad'
+    assert 'pagos.estado' in roles['operaciones'], 'sí debe saber si el cliente está al día'
+    assert 'casos.editar' in roles['operaciones'], 'lo demás sigue igual'
+    # Quien cobra sí necesita los montos
+    assert 'pagos.ver' in roles['comercial'] and 'pagos.ver' in roles['finanzas']

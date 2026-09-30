@@ -5,6 +5,7 @@ import { NavLink as Enlace, Outlet, useLocation } from 'react-router-dom'
 import { useSesion } from '../auth/sesion'
 import { NOMBRES_ROL } from '../lib/formato'
 import { SECCIONES } from '../navegacion'
+import { BusquedaGlobal } from './BusquedaGlobal'
 
 export function Plantilla() {
   const [abierto, { toggle, close }] = useDisclosure()
@@ -20,7 +21,8 @@ export function Plantilla() {
         <Group h="100%" px="md" justify="space-between">
           <Group gap="sm">
             <Burger opened={abierto} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Menú" />
-            <Text fw={800} size="lg" c="teal.8">VisaNow</Text>
+            <Text fw={800} size="lg" c="teal.8" visibleFrom="xs">VisaNow</Text>
+            {puede('clientes.ver') && <BusquedaGlobal />}
           </Group>
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>

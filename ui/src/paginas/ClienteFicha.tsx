@@ -1,14 +1,17 @@
 import {
-  ActionIcon, Alert, Badge, Button, Card, Center, Checkbox, Group, Loader, Modal, Select, Stack,
-  Table, Text, TextInput, Title, Tooltip,
+  ActionIcon, Alert, Anchor, Badge, Button, Card, Center, Checkbox, Group, Loader, Modal, Select,
+  SimpleGrid, Stack, Table, Text, Textarea, TextInput, Timeline, Title, Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconArchive, IconEye, IconPencil, IconPlaneDeparture, IconPlus, IconUsersGroup } from '@tabler/icons-react'
+import {
+  IconArchive, IconBrandWhatsapp, IconCalendarEvent, IconEye, IconHistory, IconMail, IconMessage2,
+  IconPencil, IconPhone, IconPlaneDeparture, IconPlus, IconUsersGroup,
+} from '@tabler/icons-react'
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link as Enlace, useNavigate, useParams } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados, type Coincidencia } from '../componentes/AvisoDuplicados'
@@ -30,10 +33,13 @@ export function ClienteFicha() {
   const [nuevoGrupo, setNuevoGrupo] = useState(false)
   const [agregarA, setAgregarA] = useState<{ grupo_id?: number; cliente_id?: number } | null>(null)
   const [tramitando, setTramitando] = useState<Solicitante | null>(null)
+  const [anotando, setAnotando] = useState(false)
 
+  // Una sola consulta trae el cliente, su familia, sus trámites, sus próximas
+  // citas y su cronología (RF-005). Antes esto eran tres archivos distintos.
   const ficha = useQuery({
     queryKey: ['cliente', clienteId],
-    queryFn: () => exigir(api.GET('/api/v1/clientes/{cliente_id}', {
+    queryFn: () => exigir(api.GET('/api/v1/clientes/{cliente_id}/ficha', {
       params: { path: { cliente_id: clienteId } },
     })),
   })
@@ -72,7 +78,8 @@ export function ClienteFicha() {
 
   if (ficha.isPending) return <Center h={200}><Loader color="teal" /></Center>
   if (ficha.isError) return <Alert color="red">No se pudo abrir la ficha. {String(ficha.error)}</Alert>
-  const c = ficha.data
+  const f = ficha.data
+  const c = f.cliente
 
   return (
     <Stack maw={980}>
@@ -87,6 +94,8 @@ export function ClienteFicha() {
         <Group>
           {puede('clientes.editar') && (
             <>
+              <Button variant="light" leftSection={<IconMessage2 size={16} />}
+                onClick={() => setAnotando(true)}>Registrar contacto</Button>
               <Button variant="default" leftSection={<IconPencil size={16} />}
                 onClick={() => setEditando(true)}>Editar</Button>
               <Tooltip label={c.archivado ? 'Vuelve a las listas' : 'Sale de las listas; no se borra nada'}>
@@ -99,6 +108,8 @@ export function ClienteFicha() {
           )}
         </Group>
       </Group>
+
+      <Resumen resumen={f.resumen} />
 
       <Card withBorder padding="lg">
         <Group gap="xl">
@@ -179,6 +190,12 @@ export function ClienteFicha() {
         })()}
       </Card>
 
+      {f.ve_tramites && <TarjetaTramites tramites={f.tramites} citas={f.citas} />}
+
+      <Cronologia sucesos={f.cronologia} />
+
+      <FormularioNota clienteId={clienteId} tramites={f.tramites} abierto={anotando}
+        cerrar={() => setAnotando(false)} guardado={refrescar} />
       <FormularioEditar cliente={c} abierto={editando} cerrar={() => setEditando(false)} guardado={refrescar} />
       <FormularioGrupo clienteId={clienteId} abierto={nuevoGrupo} cerrar={() => setNuevoGrupo(false)} creado={refrescar} />
       <FormularioSolicitante destino={agregarA} cerrar={() => setAgregarA(null)} creado={refrescar} />
@@ -417,6 +434,216 @@ function FormularioTramite({ solicitante, cerrar }: { solicitante: Solicitante |
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
             <Button type="submit" loading={crear.isPending}>Crear trámite</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>)
+}
+
+const COLOR_RIESGO = { alto: 'red', medio: 'yellow', bajo: 'gray', ninguno: 'gray' } as const
+
+/** Lo primero que se necesita saber al abrir la ficha, sin leer nada más. */
+function Resumen({ resumen }: { resumen: Esquemas['ResumenFicha'] }) {
+  const sinContacto = resumen.dias_sin_contacto
+  const nunca = sinContacto === null || sinContacto === undefined
+  return (
+    <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+      <Cifra titulo="Personas" valor={String(resumen.personas)} />
+      <Cifra titulo="Trámites abiertos" valor={`${resumen.tramites_abiertos} de ${resumen.tramites_total}`}
+        color={resumen.tramites_abiertos > 0 ? 'teal' : undefined} />
+      <Cifra titulo="Próxima cita"
+        valor={resumen.proxima_cita ? formatearFechaHora(resumen.proxima_cita) : 'Sin cita'}
+        color={resumen.proxima_cita ? 'teal' : undefined} />
+      <Cifra titulo="Último contacto"
+        valor={nunca ? 'Sin registro' : sinContacto === 0 ? 'Hoy' : `Hace ${sinContacto} día(s)`}
+        color={!nunca && sinContacto > 15 ? 'orange' : undefined} />
+    </SimpleGrid>
+  )
+}
+
+const Cifra = ({ titulo, valor, color }: { titulo: string; valor: string; color?: string }) => (
+  <Card withBorder padding="sm">
+    <Text size="xs" c="dimmed">{titulo}</Text>
+    <Text size="sm" fw={600} c={color}>{valor}</Text>
+  </Card>
+)
+
+/** Los trámites de toda la familia y las citas que vienen, juntos: es la
+ *  pregunta que el cliente hace por teléfono, «¿en qué va lo mío?». */
+function TarjetaTramites({ tramites, citas }: {
+  tramites: Esquemas['CasoSalida'][]; citas: Esquemas['CitaProxima'][]
+}) {
+  const navegar = useNavigate()
+  return (
+    <Card withBorder padding="lg">
+      <Group gap="xs" mb="sm"><IconPlaneDeparture size={18} /><Text fw={600}>Trámites</Text></Group>
+
+      {tramites.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          Ninguna de estas personas tiene trámite abierto. Se abre desde la tabla de personas.
+        </Text>
+      ) : (
+        <Table verticalSpacing={6} highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Persona</Table.Th><Table.Th>Destino</Table.Th><Table.Th>Estado</Table.Th>
+              <Table.Th>Responsable</Table.Th><Table.Th>Próxima acción</Table.Th><Table.Th>Sin mover</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {tramites.map((t) => (
+              <Table.Tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => navegar(`/casos/${t.id}`)}>
+                <Table.Td><Text size="sm">{t.solicitante}</Text></Table.Td>
+                <Table.Td><Text size="sm" c="dimmed">{t.pais ?? '—'}</Text></Table.Td>
+                <Table.Td>
+                  <Group gap={4}>
+                    <Badge variant="light" color={t.es_final ? 'gray' : 'teal'}>{t.estado_nombre}</Badge>
+                    {t.resultado && (
+                      <Badge size="xs" variant="light" color={t.resultado === 'aprobada' ? 'teal' : 'red'}>
+                        {t.resultado}
+                      </Badge>)}
+                  </Group>
+                </Table.Td>
+                <Table.Td>
+                  {t.responsable
+                    ? <Text size="sm">{t.responsable}</Text>
+                    : <Badge size="sm" color="orange" variant="light">sin asignar</Badge>}
+                </Table.Td>
+                <Table.Td><Text size="sm" c="dimmed">{t.proxima_accion ?? '—'}</Text></Table.Td>
+                <Table.Td>
+                  <Text size="sm" c={COLOR_RIESGO[t.riesgo]}>{t.dias_sin_movimiento} día(s)</Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+
+      {citas.length > 0 && (
+        <>
+          <Group gap="xs" mt="lg" mb="xs">
+            <IconCalendarEvent size={16} /><Text fw={600} size="sm">Próximas citas</Text>
+          </Group>
+          <Stack gap={6}>
+            {citas.map((x) => (
+              <Group key={x.id} gap="xs" wrap="nowrap">
+                <Badge variant="light" color="teal">{formatearFechaHora(x.inicia_en)}</Badge>
+                <Text size="sm">{x.solicitante}</Text>
+                <Text size="sm" c="dimmed">{x.tipo}{x.sede ? ` · ${x.sede}` : ''}</Text>
+              </Group>
+            ))}
+          </Stack>
+        </>
+      )}
+    </Card>
+  )
+}
+
+const ICONO_SUCESO: Record<string, typeof IconMessage2> = {
+  llamada: IconPhone, whatsapp: IconBrandWhatsapp, correo: IconMail,
+  reunion: IconUsersGroup, nota: IconMessage2, sistema: IconHistory,
+}
+
+/** Lo que el sistema registró y lo que la gente anotó, en una sola línea de
+ *  tiempo: la historia del cliente, que hoy vive en la memoria de quien
+ *  atendió la llamada. */
+function Cronologia({ sucesos }: { sucesos: Esquemas['SucesoSalida'][] }) {
+  const [todos, setTodos] = useState(false)
+  const visibles = todos ? sucesos : sucesos.slice(0, 8)
+  return (
+    <Card withBorder padding="lg">
+      <Group gap="xs" mb="md"><IconHistory size={18} /><Text fw={600}>Cronología</Text></Group>
+      {sucesos.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          Todavía no hay nada registrado. Cada llamada, mensaje o cambio de estado queda aquí.
+        </Text>
+      ) : (
+        <>
+          <Timeline active={-1} bulletSize={22} lineWidth={2} color="teal">
+            {visibles.map((s, i) => {
+              const Icono = ICONO_SUCESO[s.tipo] ?? IconMessage2
+              return (
+                <Timeline.Item key={`${s.cuando}-${i}`} bullet={<Icono size={12} />}
+                  title={<Text size="sm" fw={600}>{s.titulo}</Text>}>
+                  {s.detalle && <Text size="sm" c="dimmed">{s.detalle}</Text>}
+                  <Group gap={4} mt={2}>
+                    <Text size="xs" c="dimmed">
+                      {formatearFechaHora(s.cuando)}{s.usuario ? ` · ${s.usuario}` : ''}
+                    </Text>
+                    {s.caso_id && (
+                      <Anchor size="xs" component={Enlace} to={`/casos/${s.caso_id}`}>· ver el trámite</Anchor>
+                    )}
+                  </Group>
+                </Timeline.Item>
+              )
+            })}
+          </Timeline>
+          {sucesos.length > 8 && (
+            <Button variant="subtle" size="compact-sm" mt="sm" onClick={() => setTodos(!todos)}>
+              {todos ? 'Ver menos' : `Ver los ${sucesos.length} sucesos`}
+            </Button>
+          )}
+        </>
+      )}
+    </Card>
+  )
+}
+
+const TIPOS_CONTACTO = [
+  { value: 'llamada', label: 'Llamada' }, { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'correo', label: 'Correo' }, { value: 'reunion', label: 'Reunión' },
+  { value: 'nota', label: 'Nota interna' },
+]
+
+/** RF-012: la llamada que hoy se anota en un cuaderno, o no se anota. Puede ir
+ *  contra el cliente o contra uno de sus trámites. */
+function FormularioNota({ clienteId, tramites, abierto, cerrar, guardado }: {
+  clienteId: number; tramites: Esquemas['CasoSalida'][]
+  abierto: boolean; cerrar: () => void; guardado: () => void
+}) {
+  const formulario = useForm({
+    initialValues: { tipo: 'llamada', asunto: '', cuerpo: '', caso_id: '' },
+    validate: { asunto: (v, t) => (v.trim() || t.cuerpo.trim() ? null : 'Escriba al menos el asunto') },
+  })
+  const guardar = useMutation({
+    mutationFn: (v: typeof formulario.values) => {
+      const nota = { tipo: v.tipo as 'llamada', asunto: v.asunto.trim() || null, cuerpo: v.cuerpo.trim() || null }
+      return v.caso_id
+        ? exigir(api.POST('/api/v1/casos/{caso_id}/notas', {
+          params: { path: { caso_id: Number(v.caso_id) } }, body: nota,
+        }))
+        : exigir(api.POST('/api/v1/clientes/{cliente_id}/notas', {
+          params: { path: { cliente_id: clienteId } }, body: nota,
+        }))
+    },
+    onSuccess: () => {
+      notifications.show({ color: 'teal', message: 'Contacto registrado' })
+      formulario.reset()
+      cerrar()
+      guardado()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo registrar'),
+  })
+
+  return (
+    <Modal opened={abierto} onClose={cerrar} title="Registrar un contacto">
+      <form onSubmit={formulario.onSubmit((v) => guardar.mutate(v))}>
+        <Stack>
+          <Select label="Tipo" data={TIPOS_CONTACTO} allowDeselect={false} data-autofocus
+            {...formulario.getInputProps('tipo')} />
+          {tramites.length > 0 && (
+            <Select label="¿Es sobre un trámite?" placeholder="No, es del cliente en general" clearable
+              data={tramites.map((t) => ({ value: String(t.id), label: `${t.solicitante} — ${t.estado_nombre}` }))}
+              {...formulario.getInputProps('caso_id')} />
+          )}
+          <TextInput label="Asunto" placeholder="Llamada de seguimiento"
+            {...formulario.getInputProps('asunto')} />
+          <Textarea label="Qué se habló" autosize minRows={3} maxRows={8}
+            placeholder="Lo que quede escrito aquí es lo que va a leer quien atienda la próxima llamada."
+            {...formulario.getInputProps('cuerpo')} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={cerrar}>Cancelar</Button>
+            <Button type="submit" loading={guardar.isPending}>Registrar</Button>
           </Group>
         </Stack>
       </form>

@@ -7,7 +7,7 @@ from typing import Any, Optional
 import datetime
 import decimal
 
-from sqlalchemy import BigInteger, Boolean, CHAR, CheckConstraint, Column, Computed, Date, DateTime, ForeignKeyConstraint, Index, Integer, LargeBinary, Numeric, PrimaryKeyConstraint, SmallInteger, String, Table, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CHAR, CheckConstraint, Column, Computed, Date, DateTime, ForeignKeyConstraint, Index, Integer, Numeric, PrimaryKeyConstraint, SmallInteger, String, Table, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import CITEXT, INET, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -1037,7 +1037,7 @@ class Casos(Base):
     migrado_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
     ds160_enviado_en: Mapped[Optional[datetime.date]] = mapped_column(Date)
     ds160_numero_cifrado: Mapped[Optional[str]] = mapped_column(Text)
-    ds160_hash: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
+    ds160_hash: Mapped[Optional[str]] = mapped_column(CHAR(64), comment='Índice ciego (HMAC-SHA256 en hexadecimal) del número de DS-160, para buscarlo sin descifrar ds160_numero_cifrado')
     busqueda_citas: Mapped[Optional[str]] = mapped_column(String(20))
     etapa_saas: Mapped[Optional[str]] = mapped_column(String(80))
     proxima_accion: Mapped[Optional[str]] = mapped_column(String(200))

@@ -262,6 +262,9 @@ export interface paths {
         /**
          * Historial
          * @description Cada cambio del trámite, con quién lo hizo. Solo crece (RF-028).
+         *
+         *     Los códigos y los ids se traducen aquí, contra los catálogos, para que la
+         *     pantalla no tenga que adivinar qué es «sede_id: — → 2».
          */
         get: operations["historial_api_v1_casos__caso_id__historial_get"];
         put?: never;
@@ -540,6 +543,84 @@ export interface paths {
         get: operations["ver_pasaporte_api_v1_solicitantes__solicitante_id__pasaporte_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/buscar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Buscar
+         * @description Una sola caja de búsqueda para todo el sistema (RF-029).
+         */
+        get: operations["buscar_api_v1_buscar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clientes/{cliente_id}/ficha": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ficha 360
+         * @description RF-005: el cliente, quiénes viajan con él, sus trámites, sus próximas
+         *     citas y la cronología, en una sola pantalla.
+         */
+        get: operations["ficha_360_api_v1_clientes__cliente_id__ficha_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/clientes/{cliente_id}/notas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anotar Cliente
+         * @description Deja constancia de una llamada, un WhatsApp o una nota (RF-012).
+         */
+        post: operations["anotar_cliente_api_v1_clientes__cliente_id__notas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}/notas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Anotar Caso */
+        post: operations["anotar_caso_api_v1_casos__caso_id__notas_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -934,6 +1015,26 @@ export interface components {
             /** Observaciones */
             observaciones?: string | null;
         };
+        /** CitaProxima */
+        CitaProxima: {
+            /** Id */
+            id: number;
+            /** Caso Id */
+            caso_id: number;
+            /** Solicitante */
+            solicitante: string;
+            /** Tipo */
+            tipo: string;
+            /**
+             * Inicia En
+             * Format: date-time
+             */
+            inicia_en: string;
+            /** Estado */
+            estado: string;
+            /** Sede */
+            sede: string | null;
+        };
         /** CitaSalida */
         CitaSalida: {
             /** Id */
@@ -1132,6 +1233,34 @@ export interface components {
             /** Nombre */
             nombre: string;
         };
+        /**
+         * Ficha360
+         * @description Todo lo que hoy está repartido entre tres archivos, en una sola respuesta.
+         */
+        Ficha360: {
+            cliente: components["schemas"]["ClienteDetalle"];
+            resumen: components["schemas"]["ResumenFicha"];
+            /**
+             * Tramites
+             * @default []
+             */
+            tramites: components["schemas"]["CasoSalida"][];
+            /**
+             * Citas
+             * @default []
+             */
+            citas: components["schemas"]["CitaProxima"][];
+            /**
+             * Cronologia
+             * @default []
+             */
+            cronologia: components["schemas"]["SucesoSalida"][];
+            /**
+             * Ve Tramites
+             * @description False si el rol no tiene permiso de ver trámites
+             */
+            ve_tramites: boolean;
+        };
         /** FusionEntrada */
         FusionEntrada: {
             /** Absorbido Id */
@@ -1189,6 +1318,11 @@ export interface components {
         };
         /** HistorialSalida */
         HistorialSalida: {
+            /**
+             * Titulo
+             * @description Lo que pasó, en español y con los catálogos resueltos
+             */
+            titulo: string;
             /** Campo */
             campo: string;
             /** Valor Anterior */
@@ -1247,6 +1381,35 @@ export interface components {
              * @description otpauth:// para generar el código QR
              */
             uri: string;
+        };
+        /** NotaCrear */
+        NotaCrear: {
+            /**
+             * Tipo
+             * @default nota
+             * @enum {string}
+             */
+            tipo: "nota" | "llamada" | "whatsapp" | "correo" | "reunion";
+            /** Asunto */
+            asunto?: string | null;
+            /** Cuerpo */
+            cuerpo?: string | null;
+        };
+        /** NotaSalida */
+        NotaSalida: {
+            /** Id */
+            id: number;
+            /** Tipo */
+            tipo: string;
+            /** Asunto */
+            asunto: string | null;
+            /** Cuerpo */
+            cuerpo: string | null;
+            /**
+             * Ocurrido En
+             * Format: date-time
+             */
+            ocurrido_en: string;
         };
         /** Opcion */
         Opcion: {
@@ -1315,6 +1478,24 @@ export interface components {
             /** Nueva */
             nueva: string;
         };
+        /** ResultadoBusqueda */
+        ResultadoBusqueda: {
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "cliente" | "solicitante" | "tramite";
+            /** Id */
+            id: number;
+            /** Titulo */
+            titulo: string;
+            /** Detalle */
+            detalle: string;
+            /** Ruta */
+            ruta: string;
+            /** Coincidio Por */
+            coincidio_por: string;
+        };
         /** ResultadoEntrada */
         ResultadoEntrada: {
             /**
@@ -1335,6 +1516,21 @@ export interface components {
             nombre: string;
             /** Total */
             total: number;
+        };
+        /** ResumenFicha */
+        ResumenFicha: {
+            /** Personas */
+            personas: number;
+            /** Tramites Abiertos */
+            tramites_abiertos: number;
+            /** Tramites Total */
+            tramites_total: number;
+            /** Proxima Cita */
+            proxima_cita: string | null;
+            /** Ultimo Contacto En */
+            ultimo_contacto_en: string | null;
+            /** Dias Sin Contacto */
+            dias_sin_contacto: number | null;
         };
         /** RolSalida */
         RolSalida: {
@@ -1437,6 +1633,27 @@ export interface components {
             email: string | null;
             /** Relacion Con Cliente */
             relacion_con_cliente: string | null;
+        };
+        /** SucesoSalida */
+        SucesoSalida: {
+            /**
+             * Cuando
+             * Format: date-time
+             */
+            cuando: string;
+            /**
+             * Tipo
+             * @description 'sistema' para lo que registró el sistema; si no, el tipo de la nota
+             */
+            tipo: string;
+            /** Titulo */
+            titulo: string;
+            /** Detalle */
+            detalle: string | null;
+            /** Usuario */
+            usuario: string | null;
+            /** Caso Id */
+            caso_id: number | null;
         };
         /** TokenSalida */
         TokenSalida: {
@@ -2647,6 +2864,139 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PasaporteSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    buscar_api_v1_buscar_get: {
+        parameters: {
+            query: {
+                /** @description Nombre, teléfono, documento, correo, pasaporte, DS-160 o n.º de solicitud del SaaS */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResultadoBusqueda"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ficha_360_api_v1_clientes__cliente_id__ficha_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ficha360"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anotar_cliente_api_v1_clientes__cliente_id__notas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotaCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anotar_caso_api_v1_casos__caso_id__notas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotaCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotaSalida"];
                 };
             };
             /** @description Validation Error */

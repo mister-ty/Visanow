@@ -143,6 +143,7 @@ class MarcarItem(BaseModel):
 
 
 class HistorialSalida(BaseModel):
+    titulo: str = Field(description='Lo que pasó, en español y con los catálogos resueltos')
     campo: str
     valor_anterior: str | None
     valor_nuevo: str | None

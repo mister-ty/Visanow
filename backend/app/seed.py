@@ -62,25 +62,37 @@ ACCIONES = ['ver', 'crear', 'editar', 'eliminar', 'exportar']
 # estados no puede ser parte de «todo sobre casos»: operaciones mueve los
 # trámites todos los días, pero brincarse el checklist obligatorio lo autoriza
 # la administradora (RF-023, RN-05).
-PERMISOS_EXTRA = [('casos.excepcion', 'Saltarse el orden de los estados de un trámite', 'casos')]
+PERMISOS_EXTRA = [
+    ('casos.excepcion', 'Saltarse el orden de los estados de un trámite', 'casos'),
+    # Respuesta de la administradora del 29/09: al del control de la operación
+    # no hay que ocultarle nada «salvo lo de la contabilidad». Pero sin saber si
+    # el cliente pagó el anticipo no puede arrancar el trámite: este permiso
+    # muestra si está al día, sin mostrar montos.
+    ('pagos.estado', 'Ver si un cliente está al día, sin ver los montos', 'pagos'),
+]
 
 # Qué puede hacer cada rol, por módulo. 'todo' = las cinco acciones.
 MATRIZ = {
-    'administradora': {m: 'todo' for m in MODULOS} | {'extra': ['casos.excepcion']},
+    'administradora': {m: 'todo' for m in MODULOS} | {'extra': ['casos.excepcion', 'pagos.estado']},
     'comercial': {
         'clientes': ['ver', 'crear', 'editar'], 'solicitantes': ['ver', 'crear', 'editar'],
         'oportunidades': 'todo', 'negocios': ['ver', 'crear', 'editar'],
         'casos': ['ver'], 'pagos': ['ver'], 'alertas': ['ver', 'editar'],
         'tableros': ['ver'], 'catalogos': ['ver'],
+        'extra': ['pagos.estado'],          # comercial cobra: ve saldo y montos
     },
+    # Operaciones no ve la contabilidad (respuesta del 29/09): ni montos de
+    # pagos, ni gastos, ni comisiones. Sí necesita saber si el cliente está al
+    # día para poder arrancar el trámite, y eso es pagos.estado.
     'operaciones': {
         'clientes': ['ver', 'crear', 'editar'], 'solicitantes': ['ver', 'crear', 'editar'],
         'casos': 'todo', 'oportunidades': ['ver'], 'negocios': ['ver'],
-        'pagos': ['ver'],                      # ver sí, editar no
         'importacion': ['ver', 'crear'], 'alertas': ['ver', 'editar'],
         'tableros': ['ver'], 'catalogos': ['ver'],
+        'extra': ['pagos.estado'],
     },
     'finanzas': {
+        'extra': ['pagos.estado'],
         'clientes': ['ver'], 'negocios': ['ver', 'editar'], 'casos': ['ver'],
         'pagos': 'todo', 'ajustes': 'todo', 'gastos': 'todo',
         'comisiones': ['ver', 'crear', 'editar', 'exportar'],
