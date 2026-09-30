@@ -22,16 +22,6 @@ export const SECCIONES: Seccion[] = [
   },
   {
     ruta: '/casos', titulo: 'Trámites', icono: IconPlaneDeparture, permiso: 'casos.ver',
-    pendiente: {
-      actividad: '2.5 a 2.7', fecha: '28/09 al 01/10', desde: '28/09',
-      contenido: [
-        'Un trámite por solicitante, agrupados bajo la venta del grupo',
-        'Tablero por estado: esperando información, formulario, pago consular, cita, preparación, resultado, entrega',
-        'Cambios de estado controlados, con checklist por país y tipo de visa',
-        'Historial completo de cada cambio: quién, cuándo, valor anterior y nuevo',
-        'Marca de origen: SaaS, manual o híbrido',
-      ],
-    },
   },
   {
     ruta: '/calendario', titulo: 'Calendario', icono: IconCalendarEvent, permiso: 'casos.ver',

@@ -1006,18 +1006,22 @@ class Casos(Base):
         PrimaryKeyConstraint('id', name='casos_pkey'),
         Index('ix_casos_etapa_saas', 'etapa_saas', postgresql_where='(etapa_saas IS NOT NULL)'),
         Index('ix_casos_id_externo', 'id_externo', postgresql_where='(id_externo IS NOT NULL)'),
+        Index('ix_casos_sin_asignar', 'creado_en', postgresql_where='(responsable_id IS NULL)'),
+        Index('ix_casos_sin_venta', 'creado_en', postgresql_where='(negocio_id IS NULL)'),
+        Index('ix_casos_solicitante', 'solicitante_id'),
+        Index('ix_casos_tablero', 'estado_id', 'responsable_id', 'ultima_actividad_en'),
         Index('ux_casos_ds160', 'ds160_hash', postgresql_where='(ds160_hash IS NOT NULL)', unique=True),
         Index('ux_casos_solicitud_solicitante', 'id_externo', 'solicitante_id', postgresql_where='(id_externo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    negocio_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     solicitante_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     pais_id: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     fuente: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'manual'::character varying"))
     estado_id: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     ultima_actividad_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     creado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    negocio_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     tipo_visa_id: Mapped[Optional[int]] = mapped_column(Integer)
     modalidad_id: Mapped[Optional[int]] = mapped_column(SmallInteger)
     sede_id: Mapped[Optional[int]] = mapped_column(Integer)
@@ -1036,10 +1040,12 @@ class Casos(Base):
     ds160_hash: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     busqueda_citas: Mapped[Optional[str]] = mapped_column(String(20))
     etapa_saas: Mapped[Optional[str]] = mapped_column(String(80))
+    proxima_accion: Mapped[Optional[str]] = mapped_column(String(200))
+    proxima_accion_fecha: Mapped[Optional[datetime.date]] = mapped_column(Date)
 
     estado: Mapped['EstadosOperativos'] = relationship('EstadosOperativos', back_populates='casos')
     modalidad: Mapped[Optional['Modalidades']] = relationship('Modalidades', back_populates='casos')
-    negocio: Mapped['Negocios'] = relationship('Negocios', back_populates='casos')
+    negocio: Mapped[Optional['Negocios']] = relationship('Negocios', back_populates='casos')
     pais: Mapped['Paises'] = relationship('Paises', back_populates='casos')
     responsable: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='casos')
     sede: Mapped[Optional['Sedes']] = relationship('Sedes', back_populates='casos')
@@ -1172,7 +1178,8 @@ class CasosHistorial(Base):
     __table_args__ = (
         ForeignKeyConstraint(['caso_id'], ['casos.id'], name='casos_historial_caso_id_fkey'),
         ForeignKeyConstraint(['usuario_id'], ['usuarios.id'], name='casos_historial_usuario_id_fkey'),
-        PrimaryKeyConstraint('id', name='casos_historial_pkey')
+        PrimaryKeyConstraint('id', name='casos_historial_pkey'),
+        Index('ix_historial_caso', 'caso_id', 'ocurrido_en')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1195,7 +1202,9 @@ class Citas(Base):
         CheckConstraint("tipo::text = ANY (ARRAY['cas'::character varying, 'biometria'::character varying, 'entrevista'::character varying, 'radicacion'::character varying, 'preparacion'::character varying, 'entrega'::character varying, 'otra'::character varying]::text[])", name='citas_tipo_check'),
         ForeignKeyConstraint(['caso_id'], ['casos.id'], name='citas_caso_id_fkey'),
         ForeignKeyConstraint(['sede_id'], ['sedes.id'], name='citas_sede_id_fkey'),
-        PrimaryKeyConstraint('id', name='citas_pkey')
+        PrimaryKeyConstraint('id', name='citas_pkey'),
+        Index('ix_citas_caso', 'caso_id', 'inicia_en'),
+        Index('ix_citas_proximas', 'inicia_en', postgresql_where="((estado)::text = ANY ((ARRAY['pendiente'::character varying, 'programada'::character varying, 'confirmada'::character varying])::text[]))")
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

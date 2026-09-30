@@ -62,6 +62,13 @@ def reiniciar_mfa(usuario_id: int, request: Request,
                                       password_temporal=temporal)
 
 
+@router.get('/usuarios/asignables', response_model=list[esq.UsuarioAsignable])
+def asignables(_: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
+    """Para el desplegable de responsable. No expone la gestión de usuarios."""
+    return [esq.UsuarioAsignable(id=u.id, nombre=u.nombre, rol=u.rol.codigo)
+            for u in servicio.listar(db) if u.activo]
+
+
 @router.get('/roles', response_model=list[esq.RolSalida])
 def roles(_: Usuarios = Depends(requiere('usuarios.ver')), db: Session = Depends(get_db)):
     return [esq.RolSalida(codigo=r.codigo, nombre=r.nombre, permisos=sorted(p))

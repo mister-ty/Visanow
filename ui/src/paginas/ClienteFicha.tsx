@@ -6,14 +6,15 @@ import { useForm } from '@mantine/form'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconArchive, IconEye, IconPencil, IconPlus, IconUsersGroup } from '@tabler/icons-react'
+import { IconArchive, IconEye, IconPencil, IconPlaneDeparture, IconPlus, IconUsersGroup } from '@tabler/icons-react'
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados, type Coincidencia } from '../componentes/AvisoDuplicados'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora } from '../lib/formato'
+import { aSelect, porPais, useAsignables, useCatalogos } from '../lib/catalogos'
 
 type Detalle = Esquemas['ClienteDetalle']
 type Solicitante = Esquemas['SolicitanteSalida']
@@ -28,6 +29,7 @@ export function ClienteFicha() {
   const [editando, setEditando] = useState(false)
   const [nuevoGrupo, setNuevoGrupo] = useState(false)
   const [agregarA, setAgregarA] = useState<{ grupo_id?: number; cliente_id?: number } | null>(null)
+  const [tramitando, setTramitando] = useState<Solicitante | null>(null)
 
   const ficha = useQuery({
     queryKey: ['cliente', clienteId],
@@ -160,7 +162,8 @@ export function ClienteFicha() {
                 )}
               </Group>
             </Group>
-            <TablaSolicitantes solicitantes={g.solicitantes} />
+            <TablaSolicitantes solicitantes={g.solicitantes} tramitar={setTramitando}
+              puedeTramitar={puede('casos.crear')} />
           </Card>
         ))}
 
@@ -169,7 +172,8 @@ export function ClienteFicha() {
           return sueltos.length > 0 && (
             <Card withBorder padding="sm" mt="sm">
               <Text size="sm" fw={600} mb="xs">Sin grupo</Text>
-              <TablaSolicitantes solicitantes={sueltos} />
+              <TablaSolicitantes solicitantes={sueltos} tramitar={setTramitando}
+                puedeTramitar={puede('casos.crear')} />
             </Card>
           )
         })()}
@@ -178,6 +182,7 @@ export function ClienteFicha() {
       <FormularioEditar cliente={c} abierto={editando} cerrar={() => setEditando(false)} guardado={refrescar} />
       <FormularioGrupo clienteId={clienteId} abierto={nuevoGrupo} cerrar={() => setNuevoGrupo(false)} creado={refrescar} />
       <FormularioSolicitante destino={agregarA} cerrar={() => setAgregarA(null)} creado={refrescar} />
+      <FormularioTramite solicitante={tramitando} cerrar={() => setTramitando(null)} />
     </Stack>
   )
 }
@@ -189,7 +194,9 @@ const Dato = ({ titulo, valor }: { titulo: string; valor: string | null | undefi
   </div>
 )
 
-function TablaSolicitantes({ solicitantes }: { solicitantes: Solicitante[] }) {
+function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar }: {
+  solicitantes: Solicitante[]; tramitar: (s: Solicitante) => void; puedeTramitar: boolean
+}) {
   const ver = useMutation({
     mutationFn: (id: number) => exigir(api.GET('/api/v1/solicitantes/{solicitante_id}/pasaporte', {
       params: { path: { solicitante_id: id } },
@@ -212,7 +219,7 @@ function TablaSolicitantes({ solicitantes }: { solicitantes: Solicitante[] }) {
       <Table.Thead>
         <Table.Tr>
           <Table.Th>Persona</Table.Th><Table.Th>Relación</Table.Th>
-          <Table.Th>Documento</Table.Th><Table.Th>Pasaporte</Table.Th>
+          <Table.Th>Documento</Table.Th><Table.Th>Pasaporte</Table.Th><Table.Th w={130} />
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
@@ -233,6 +240,11 @@ function TablaSolicitantes({ solicitantes }: { solicitantes: Solicitante[] }) {
                   </Tooltip>
                 </Group>
               ) : <Text size="sm" c="dimmed">—</Text>}
+            </Table.Td>
+            <Table.Td>
+              {puedeTramitar && (
+                <Button size="compact-xs" variant="light" leftSection={<IconPlaneDeparture size={12} />}
+                  onClick={() => tramitar(s)}>Nuevo trámite</Button>)}
             </Table.Td>
           </Table.Tr>
         ))}
@@ -357,3 +369,56 @@ function FormularioSolicitante({ destino, cerrar, creado }: {
 }
 
 export { ClienteFicha as default }
+
+
+/** Un trámite se abre sobre una persona, no sobre el cliente: la familia compra
+ *  junta pero cada quien tiene su pasaporte y su propio resultado. */
+function FormularioTramite({ solicitante, cerrar }: { solicitante: Solicitante | null; cerrar: () => void }) {
+  const navegar = useNavigate()
+  const catalogos = useCatalogos()
+  const asignables = useAsignables()
+  const formulario = useForm({
+    initialValues: { pais_id: '', tipo_visa_id: '', sede_id: '', responsable_id: '',
+                     proxima_accion: 'Pedir documentos al cliente' },
+    validate: { pais_id: (v) => (v ? null : 'Elija el país del trámite') },
+  })
+  const crear = useMutation({
+    mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/casos', {
+      body: { solicitante_id: solicitante!.id, pais_id: Number(v.pais_id),
+              tipo_visa_id: v.tipo_visa_id ? Number(v.tipo_visa_id) : null,
+              sede_id: v.sede_id ? Number(v.sede_id) : null,
+              responsable_id: v.responsable_id ? Number(v.responsable_id) : null,
+              proxima_accion: v.proxima_accion || null },
+    })),
+    onSuccess: (caso) => {
+      notifications.show({ color: 'teal', message: 'Trámite creado' })
+      formulario.reset()
+      cerrar()
+      navegar('/casos/' + caso.id)
+    },
+    onError: (e) => mostrarError(e, 'No se pudo crear el trámite'),
+  })
+  const pais = formulario.values.pais_id ? Number(formulario.values.pais_id) : undefined
+  return (
+    <Modal opened={solicitante !== null} onClose={cerrar}
+      title={'Nuevo trámite de ' + (solicitante?.nombre ?? '')}>
+      <form onSubmit={formulario.onSubmit((v) => crear.mutate(v))}>
+        <Stack>
+          <Select label="País" data={aSelect(catalogos.data?.paises)} searchable data-autofocus
+            {...formulario.getInputProps('pais_id')} />
+          <Select label="Tipo de visa" data={aSelect(porPais(catalogos.data?.tipos_visa, pais))} clearable
+            {...formulario.getInputProps('tipo_visa_id')} />
+          <Select label="Sede de la cita" data={aSelect(catalogos.data?.sedes)} searchable clearable
+            {...formulario.getInputProps('sede_id')} />
+          <Select label="Responsable"
+            data={(asignables.data ?? []).map((u) => ({ value: String(u.id), label: u.nombre }))}
+            clearable {...formulario.getInputProps('responsable_id')} />
+          <TextInput label="Próxima acción" {...formulario.getInputProps('proxima_accion')} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={cerrar}>Cancelar</Button>
+            <Button type="submit" loading={crear.isPending}>Crear trámite</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>)
+}

@@ -39,6 +39,12 @@ class PasswordTemporalSalida(BaseModel):
     password_temporal: str = Field(description='Se muestra una sola vez. Entregarla por un canal seguro.')
 
 
+class UsuarioAsignable(BaseModel):
+    id: int
+    nombre: str
+    rol: str
+
+
 class RolSalida(BaseModel):
     codigo: str
     nombre: str

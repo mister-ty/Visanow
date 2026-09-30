@@ -155,6 +155,194 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/casos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar
+         * @description Tablero operativo (RF-022): por estado, responsable, país, origen y riesgo.
+         */
+        get: operations["listar_api_v1_casos_get"];
+        put?: never;
+        /** Crear */
+        post: operations["crear_api_v1_casos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/casos/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resumen */
+        get: operations["resumen_api_v1_casos_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detalle */
+        get: operations["detalle_api_v1_casos__caso_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Editar */
+        patch: operations["editar_api_v1_casos__caso_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}/estado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cambiar Estado
+         * @description Avanza el trámite respetando el orden de los estados (RF-023).
+         */
+        post: operations["cambiar_estado_api_v1_casos__caso_id__estado_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}/resultado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Registrar Resultado
+         * @description RF-027. El resultado se registra aunque el trámite siga abierto: una visa
+         *     negada puede tener pendiente la entrega del pasaporte (RN-06).
+         */
+        post: operations["registrar_resultado_api_v1_casos__caso_id__resultado_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}/historial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Historial
+         * @description Cada cambio del trámite, con quién lo hizo. Solo crece (RF-028).
+         */
+        get: operations["historial_api_v1_casos__caso_id__historial_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}/citas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Agendar Cita
+         * @description RF-024. La hora se guarda con zona horaria y se muestra en la del usuario (RN-10).
+         */
+        post: operations["agendar_cita_api_v1_casos__caso_id__citas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/citas/{cita_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Actualizar Cita */
+        patch: operations["actualizar_cita_api_v1_citas__cita_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}/checklist/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Marcar Checklist */
+        post: operations["marcar_checklist_api_v1_casos__caso_id__checklist__item_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/catalogos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Catalogos */
+        get: operations["catalogos_api_v1_catalogos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/clientes": {
         parameters: {
             query?: never;
@@ -430,6 +618,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/usuarios/asignables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Asignables
+         * @description Para el desplegable de responsable. No expone la gestión de usuarios.
+         */
+        get: operations["asignables_api_v1_usuarios_asignables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/roles": {
         parameters: {
             query?: never;
@@ -468,12 +676,289 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** CambioEstado */
+        CambioEstado: {
+            /** Codigo Destino */
+            codigo_destino: string;
+            /** Motivo */
+            motivo?: string | null;
+            /** @description Datos que faltan para poder avanzar */
+            cambios?: components["schemas"]["CasoEditar"] | null;
+            /** Resultado */
+            resultado?: ("aprobada" | "negada" | "proceso_administrativo" | "cancelado" | "no_continuo") | null;
+            /** Resultado Fecha */
+            resultado_fecha?: string | null;
+            /**
+             * Forzar
+             * @description Saltarse el orden de los estados. Exige motivo y permiso de administradora; queda como excepción.
+             * @default false
+             */
+            forzar: boolean;
+        };
         /** CambioPasswordEntrada */
         CambioPasswordEntrada: {
             /** Actual */
             actual: string;
             /** Nueva */
             nueva: string;
+        };
+        /** CasoCrear */
+        CasoCrear: {
+            /** Solicitante Id */
+            solicitante_id: number;
+            /** Pais Id */
+            pais_id: number;
+            /** Tipo Visa Id */
+            tipo_visa_id?: number | null;
+            /** Modalidad Id */
+            modalidad_id?: number | null;
+            /** Sede Id */
+            sede_id?: number | null;
+            /** Responsable Id */
+            responsable_id?: number | null;
+            /**
+             * Negocio Id
+             * @description La venta, si ya está registrada
+             */
+            negocio_id?: number | null;
+            /**
+             * Id Externo
+             * @description N.º de solicitud del SaaS
+             */
+            id_externo?: string | null;
+            /** Fuente */
+            fuente?: ("saas" | "manual" | "hibrido") | null;
+            /** Proxima Accion */
+            proxima_accion?: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha?: string | null;
+        };
+        /** CasoDetalle */
+        CasoDetalle: {
+            /** Id */
+            id: number;
+            /** Solicitante Id */
+            solicitante_id: number;
+            /** Solicitante */
+            solicitante: string;
+            /** Estado */
+            estado: string;
+            /** Estado Nombre */
+            estado_nombre: string;
+            /** Es Final */
+            es_final: boolean;
+            /** Responsable */
+            responsable: string | null;
+            /** Responsable Id */
+            responsable_id: number | null;
+            /** Pais */
+            pais: string | null;
+            /**
+             * Fuente
+             * @enum {string}
+             */
+            fuente: "saas" | "manual" | "hibrido";
+            /** Id Externo */
+            id_externo: string | null;
+            /** Resultado */
+            resultado: ("aprobada" | "negada" | "proceso_administrativo" | "cancelado" | "no_continuo") | null;
+            /** Proxima Accion */
+            proxima_accion: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha: string | null;
+            /** Dias Sin Movimiento */
+            dias_sin_movimiento: number;
+            /**
+             * Riesgo
+             * @enum {string}
+             */
+            riesgo: "ninguno" | "bajo" | "medio" | "alto";
+            /** Sin Venta */
+            sin_venta: boolean;
+            /**
+             * Ultima Actividad En
+             * Format: date-time
+             */
+            ultima_actividad_en: string;
+            /** Pais Id */
+            pais_id: number | null;
+            /** Tipo Visa Id */
+            tipo_visa_id: number | null;
+            /** Modalidad Id */
+            modalidad_id: number | null;
+            /** Sede Id */
+            sede_id: number | null;
+            /** Negocio Id */
+            negocio_id: number | null;
+            /** Etapa Saas */
+            etapa_saas: string | null;
+            /** Resultado Fecha */
+            resultado_fecha: string | null;
+            /** Resultado Nota */
+            resultado_nota: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+            /**
+             * Citas
+             * @default []
+             */
+            citas: components["schemas"]["CitaSalida"][];
+            /**
+             * Checklist
+             * @default []
+             */
+            checklist: components["schemas"]["ItemChecklist"][];
+            /**
+             * Estados Posibles
+             * @default []
+             */
+            estados_posibles: components["schemas"]["EstadoPosible"][];
+        };
+        /** CasoEditar */
+        CasoEditar: {
+            /** Pais Id */
+            pais_id?: number | null;
+            /** Tipo Visa Id */
+            tipo_visa_id?: number | null;
+            /** Modalidad Id */
+            modalidad_id?: number | null;
+            /** Sede Id */
+            sede_id?: number | null;
+            /** Responsable Id */
+            responsable_id?: number | null;
+            /** Negocio Id */
+            negocio_id?: number | null;
+            /** Proxima Accion */
+            proxima_accion?: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha?: string | null;
+        };
+        /** CasoSalida */
+        CasoSalida: {
+            /** Id */
+            id: number;
+            /** Solicitante Id */
+            solicitante_id: number;
+            /** Solicitante */
+            solicitante: string;
+            /** Estado */
+            estado: string;
+            /** Estado Nombre */
+            estado_nombre: string;
+            /** Es Final */
+            es_final: boolean;
+            /** Responsable */
+            responsable: string | null;
+            /** Responsable Id */
+            responsable_id: number | null;
+            /** Pais */
+            pais: string | null;
+            /**
+             * Fuente
+             * @enum {string}
+             */
+            fuente: "saas" | "manual" | "hibrido";
+            /** Id Externo */
+            id_externo: string | null;
+            /** Resultado */
+            resultado: ("aprobada" | "negada" | "proceso_administrativo" | "cancelado" | "no_continuo") | null;
+            /** Proxima Accion */
+            proxima_accion: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha: string | null;
+            /** Dias Sin Movimiento */
+            dias_sin_movimiento: number;
+            /**
+             * Riesgo
+             * @enum {string}
+             */
+            riesgo: "ninguno" | "bajo" | "medio" | "alto";
+            /** Sin Venta */
+            sin_venta: boolean;
+            /**
+             * Ultima Actividad En
+             * Format: date-time
+             */
+            ultima_actividad_en: string;
+        };
+        /** Catalogos */
+        Catalogos: {
+            /** Paises */
+            paises: components["schemas"]["Opcion"][];
+            /** Tipos Visa */
+            tipos_visa: components["schemas"]["Opcion"][];
+            /** Sedes */
+            sedes: components["schemas"]["Opcion"][];
+            /** Modalidades */
+            modalidades: components["schemas"]["Opcion"][];
+            /** Servicios */
+            servicios: components["schemas"]["Opcion"][];
+            /** Estados Operativos */
+            estados_operativos: components["schemas"]["Opcion"][];
+            /** Estados Comerciales */
+            estados_comerciales: components["schemas"]["Opcion"][];
+        };
+        /** CitaCrear */
+        CitaCrear: {
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "cas" | "biometria" | "entrevista" | "radicacion" | "preparacion" | "entrega" | "otra";
+            /**
+             * Inicia En
+             * Format: date-time
+             */
+            inicia_en: string;
+            /** Sede Id */
+            sede_id?: number | null;
+            /**
+             * Zona Horaria
+             * @default America/Bogota
+             */
+            zona_horaria: string;
+            /** Observaciones */
+            observaciones?: string | null;
+        };
+        /** CitaEditar */
+        CitaEditar: {
+            /** Estado */
+            estado?: ("pendiente" | "programada" | "confirmada" | "reprogramada" | "realizada" | "cancelada") | null;
+            /** Inicia En */
+            inicia_en?: string | null;
+            /** Sede Id */
+            sede_id?: number | null;
+            /** Observaciones */
+            observaciones?: string | null;
+        };
+        /** CitaSalida */
+        CitaSalida: {
+            /** Id */
+            id: number;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "cas" | "biometria" | "entrevista" | "radicacion" | "preparacion" | "entrega" | "otra";
+            /** Sede Id */
+            sede_id: number | null;
+            /**
+             * Inicia En
+             * Format: date-time
+             */
+            inicia_en: string;
+            /** Zona Horaria */
+            zona_horaria: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "pendiente" | "programada" | "confirmada" | "reprogramada" | "realizada" | "cancelada";
+            /** Observaciones */
+            observaciones: string | null;
         };
         /** ClienteCrear */
         ClienteCrear: {
@@ -640,6 +1125,13 @@ export interface components {
             /** Token Mfa */
             token_mfa: string;
         };
+        /** EstadoPosible */
+        EstadoPosible: {
+            /** Codigo */
+            codigo: string;
+            /** Nombre */
+            nombre: string;
+        };
         /** FusionEntrada */
         FusionEntrada: {
             /** Absorbido Id */
@@ -695,6 +1187,37 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HistorialSalida */
+        HistorialSalida: {
+            /** Campo */
+            campo: string;
+            /** Valor Anterior */
+            valor_anterior: string | null;
+            /** Valor Nuevo */
+            valor_nuevo: string | null;
+            /** Usuario */
+            usuario: string | null;
+            /** Observacion */
+            observacion: string | null;
+            /**
+             * Ocurrido En
+             * Format: date-time
+             */
+            ocurrido_en: string;
+        };
+        /** ItemChecklist */
+        ItemChecklist: {
+            /** Item Id */
+            item_id: number;
+            /** Codigo */
+            codigo: string;
+            /** Nombre */
+            nombre: string;
+            /** Obligatorio */
+            obligatorio: boolean;
+            /** Cumplido */
+            cumplido: boolean;
+        };
         /** LoginEntrada */
         LoginEntrada: {
             /**
@@ -704,6 +1227,13 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** MarcarItem */
+        MarcarItem: {
+            /** Cumplido */
+            cumplido: boolean;
+            /** Observacion */
+            observacion?: string | null;
         };
         /** MfaInicioSalida */
         MfaInicioSalida: {
@@ -717,6 +1247,28 @@ export interface components {
              * @description otpauth:// para generar el código QR
              */
             uri: string;
+        };
+        /** Opcion */
+        Opcion: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /** Codigo */
+            codigo?: string | null;
+            /** Pais Id */
+            pais_id?: number | null;
+        };
+        /** PaginaCasos */
+        PaginaCasos: {
+            /** Total */
+            total: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["CasoSalida"][];
         };
         /** PaginaClientes */
         PaginaClientes: {
@@ -762,6 +1314,27 @@ export interface components {
             token: string;
             /** Nueva */
             nueva: string;
+        };
+        /** ResultadoEntrada */
+        ResultadoEntrada: {
+            /**
+             * Resultado
+             * @enum {string}
+             */
+            resultado: "aprobada" | "negada" | "proceso_administrativo" | "cancelado" | "no_continuo";
+            /** Fecha */
+            fecha?: string | null;
+            /** Nota */
+            nota?: string | null;
+        };
+        /** ResumenEstado */
+        ResumenEstado: {
+            /** Codigo */
+            codigo: string;
+            /** Nombre */
+            nombre: string;
+            /** Total */
+            total: number;
         };
         /** RolSalida */
         RolSalida: {
@@ -877,6 +1450,15 @@ export interface components {
             token_type: "bearer";
             /** Expira En Segundos */
             expira_en_segundos: number;
+        };
+        /** UsuarioAsignable */
+        UsuarioAsignable: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /** Rol */
+            rol: string;
         };
         /** UsuarioCrear */
         UsuarioCrear: {
@@ -1229,6 +1811,390 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_api_v1_casos_get: {
+        parameters: {
+            query?: {
+                estado?: string | null;
+                responsable_id?: number | null;
+                pais_id?: number | null;
+                fuente?: ("saas" | "manual" | "hibrido") | null;
+                sin_asignar?: boolean;
+                sin_venta?: boolean;
+                incluir_finalizados?: boolean;
+                texto?: string | null;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaCasos"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_api_v1_casos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CasoCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasoDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_api_v1_casos_resumen_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumenEstado"][];
+                };
+            };
+        };
+    };
+    detalle_api_v1_casos__caso_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasoDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editar_api_v1_casos__caso_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CasoEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasoDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cambiar_estado_api_v1_casos__caso_id__estado_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CambioEstado"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasoDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    registrar_resultado_api_v1_casos__caso_id__resultado_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResultadoEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasoDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    historial_api_v1_casos__caso_id__historial_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistorialSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agendar_cita_api_v1_casos__caso_id__citas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CitaCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    actualizar_cita_api_v1_citas__cita_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cita_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CitaEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    marcar_checklist_api_v1_casos__caso_id__checklist__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarcarItem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    catalogos_api_v1_catalogos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Catalogos"];
                 };
             };
         };
@@ -1840,6 +2806,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asignables_api_v1_usuarios_asignables_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsuarioAsignable"][];
                 };
             };
         };

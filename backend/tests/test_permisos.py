@@ -122,5 +122,9 @@ def test_matriz_de_roles(cliente, usuario):
     roles = {r['codigo']: set(r['permisos']) for r in cliente.get('/api/v1/roles', headers=cab).json()}
     assert set(roles) == {'administradora', 'comercial', 'operaciones', 'finanzas',
                           'apoyo_externo', 'solo_lectura'}
-    assert len(roles['administradora']) == 75
     assert all(p.endswith('.ver') for p in roles['solo_lectura'])
+    # Saltarse el orden de los estados de un trámite lo autoriza solo la
+    # administradora, aunque operaciones tenga todo lo demás sobre casos
+    assert {r for r, p in roles.items() if 'casos.excepcion' in p} == {'administradora'}
+    assert 'casos.eliminar' in roles['operaciones'] and 'casos.excepcion' not in roles['operaciones']
+    assert roles['administradora'] >= set().union(*roles.values()) - {'x'}

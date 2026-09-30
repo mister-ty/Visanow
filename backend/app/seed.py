@@ -58,9 +58,15 @@ MODULOS = ['clientes', 'solicitantes', 'oportunidades', 'negocios', 'casos',
            'usuarios', 'alertas', 'tableros', 'importacion', 'auditoria']
 ACCIONES = ['ver', 'crear', 'editar', 'eliminar', 'exportar']
 
+# Permisos que no encajan en el patrón módulo.acción. Saltarse el orden de los
+# estados no puede ser parte de «todo sobre casos»: operaciones mueve los
+# trámites todos los días, pero brincarse el checklist obligatorio lo autoriza
+# la administradora (RF-023, RN-05).
+PERMISOS_EXTRA = [('casos.excepcion', 'Saltarse el orden de los estados de un trámite', 'casos')]
+
 # Qué puede hacer cada rol, por módulo. 'todo' = las cinco acciones.
 MATRIZ = {
-    'administradora': {m: 'todo' for m in MODULOS},
+    'administradora': {m: 'todo' for m in MODULOS} | {'extra': ['casos.excepcion']},
     'comercial': {
         'clientes': ['ver', 'crear', 'editar'], 'solicitantes': ['ver', 'crear', 'editar'],
         'oportunidades': 'todo', 'negocios': ['ver', 'crear', 'editar'],
@@ -327,6 +333,106 @@ def paises_desde_datos(cur) -> None:
     return len(NOMBRE)
 
 
+# Sedes donde se atienden las citas. Salen de la columna «País de la Cita» de los
+# archivos: Colombia (253), Dubái (8), China (5), España (5), y unas pocas más.
+# La administradora las ajusta desde /admin.
+SEDES = [
+    ('CO', 'Embajada de EE. UU. en Bogotá', 'Bogotá'),
+    ('CO', 'CAS Bogotá (huellas y foto)', 'Bogotá'),
+    ('AE', 'Consulado de EE. UU. en Dubái', 'Dubái'),
+    ('AE', 'Embajada de EE. UU. en Abu Dabi', 'Abu Dabi'),
+    ('ES', 'Embajada de EE. UU. en Madrid', 'Madrid'),
+    ('MX', 'Embajada de EE. UU. en Ciudad de México', 'Ciudad de México'),
+    ('PA', 'Embajada de EE. UU. en Panamá', 'Panamá'),
+    ('AR', 'Embajada de EE. UU. en Buenos Aires', 'Buenos Aires'),
+    ('PT', 'Embajada de EE. UU. en Lisboa', 'Lisboa'),
+    ('FR', 'Embajada de EE. UU. en París', 'París'),
+    ('CN', 'Embajada de China en Bogotá', 'Bogotá'),
+    ('AU', 'Centro de solicitudes de Australia', 'Bogotá'),
+]
+
+# Tipos de visa por país. Son los que aparecen en las ventas; se amplían desde /admin.
+TIPOS_VISA = [
+    ('US', 'B1B2', 'Turismo y negocios (B1/B2)'),
+    ('US', 'F1', 'Estudiante (F1)'),
+    ('US', 'J1', 'Intercambio (J1)'),
+    ('CA', 'TRV', 'Visitante (TRV)'),
+    ('GB', 'VISITANTE', 'Visitante estándar'),
+    ('CN', 'L', 'Turismo (L)'),
+    ('CN', 'M', 'Negocios (M)'),
+    ('AU', 'V600', 'Visitante (subclase 600)'),
+    ('JP', 'CORTA', 'Corta estadía'),
+    ('VN', 'EVISA', 'Turismo (e-visa)'),
+    ('ES', 'SCHENGEN', 'Schengen turismo (C)'),
+]
+
+# Checklists de documentos (RF-025). El checklist se exige antes de dejar avanzar
+# el caso a «esperando resultado»: es lo que evita que alguien llegue a la
+# entrevista sin un soporte.
+CHECKLISTS = [
+    ('usa_primera_vez', 'Visa USA por primera vez', 'US', 'B1B2', [
+        ('pasaporte', 'Pasaporte vigente (mínimo 6 meses)', True),
+        ('foto', 'Foto reciente con las medidas del consulado', True),
+        ('ds160', 'DS-160 diligenciado y enviado', True),
+        ('tasa', 'Tasa consular pagada', True),
+        ('cita_cas', 'Cita del CAS agendada', True),
+        ('cita_consular', 'Cita consular agendada', True),
+        ('soportes_economicos', 'Soportes económicos (extractos de 3 meses)', True),
+        ('carta_laboral', 'Carta laboral o certificado de ingresos', True),
+        ('vinculos', 'Soportes de vínculos con el país (propiedades, familia)', False),
+    ]),
+    ('usa_renovacion', 'Renovación de visa USA', 'US', None, [
+        ('pasaporte', 'Pasaporte vigente', True),
+        ('visa_anterior', 'Visa anterior o pasaporte con la visa', True),
+        ('foto', 'Foto reciente', True),
+        ('ds160', 'DS-160 diligenciado y enviado', True),
+        ('tasa', 'Tasa consular pagada', True),
+        ('entrega', 'Formato de entrega de documentos', True),
+    ]),
+    ('general', 'Documentos básicos', None, None, [
+        ('pasaporte', 'Pasaporte vigente', True),
+        ('foto', 'Foto reciente', True),
+        ('formulario', 'Formulario del consulado diligenciado', True),
+        ('tasa', 'Tasa consular pagada', True),
+    ]),
+]
+
+
+def sembrar_sedes_y_visas(cur) -> tuple[int, int]:
+    for iso, nombre, ciudad in SEDES:
+        cur.execute("""insert into sedes (pais_id, nombre, ciudad)
+                       select id, %s, %s from paises where iso2 = %s
+                       and not exists (select 1 from sedes s where s.nombre = %s)""",
+                    (nombre, ciudad, iso, nombre))
+    for iso, codigo, nombre in TIPOS_VISA:
+        cur.execute("""insert into tipos_visa (pais_id, codigo, nombre, activo)
+                       select id, %s, %s, true from paises where iso2 = %s
+                       and not exists (select 1 from tipos_visa t where t.codigo = %s and t.pais_id =
+                                       (select id from paises where iso2 = %s))""",
+                    (codigo, nombre, iso, codigo, iso))
+    return len(SEDES), len(TIPOS_VISA)
+
+
+def sembrar_checklists(cur) -> int:
+    items = 0
+    for codigo, nombre, pais, tipo_visa, lista in CHECKLISTS:
+        cur.execute("""insert into checklists (codigo, nombre, pais_id, tipo_visa_id, activo)
+                       values (%s, %s, (select id from paises where iso2 = %s),
+                               (select t.id from tipos_visa t join paises p on p.id = t.pais_id
+                                where t.codigo = %s and p.iso2 = %s), true)
+                       on conflict (codigo) do update set nombre = excluded.nombre""",
+                    (codigo, nombre, pais, tipo_visa, pais))
+        for orden, (item, texto, obligatorio) in enumerate(lista, 1):
+            cur.execute("""insert into checklist_items (checklist_id, codigo, nombre, obligatorio, orden)
+                           select id, %s, %s, %s, %s from checklists where codigo = %s
+                           on conflict (checklist_id, codigo) do update set
+                             nombre = excluded.nombre, obligatorio = excluded.obligatorio,
+                             orden = excluded.orden""",
+                        (item, texto, obligatorio, orden, codigo))
+            items += 1
+    return items
+
+
 def sembrar_catalogo(cur) -> tuple[int, int, int]:
     """Servicios, tarifas y valores mínimos de la lista del 19/09/2026.
     Las tarifas anteriores de un mismo servicio se cierran un día antes de la
@@ -386,6 +492,10 @@ def main() -> None:
                                values (%s,%s,%s) on conflict (codigo) do nothing""",
                             (f'{modulo}.{accion}', f'{accion.capitalize()} {modulo}', modulo))
                 n += 1
+        for codigo, nombre, modulo in PERMISOS_EXTRA:
+            cur.execute("""insert into permisos (codigo, nombre, modulo) values (%s,%s,%s)
+                           on conflict (codigo) do nothing""", (codigo, nombre, modulo))
+            n += 1
         print(f'  permisos              {n}')
 
         cur.execute('delete from roles_permisos')
@@ -393,10 +503,11 @@ def main() -> None:
         for rol, modulos in MATRIZ.items():
             for modulo, acciones in modulos.items():
                 for accion in (ACCIONES if acciones == 'todo' else acciones):
+                    codigo = accion if modulo == 'extra' else f'{modulo}.{accion}'
                     cur.execute("""insert into roles_permisos (rol_id, permiso_id)
                                    select r.id, p.id from roles r, permisos p
                                    where r.codigo=%s and p.codigo=%s
-                                   on conflict do nothing""", (rol, f'{modulo}.{accion}'))
+                                   on conflict do nothing""", (rol, codigo))
                     n += cur.rowcount
         print(f'  roles_permisos        {n}')
 
@@ -412,6 +523,10 @@ def main() -> None:
               f'{retirados} provisionales desactivados)')
         print(f'  tarifas               {tarifas}')
         print(f'  parametros            {sembrar_parametros(cur)}')
+        sedes, visas = sembrar_sedes_y_visas(cur)
+        print(f'  sedes                 {sedes}')
+        print(f'  tipos_visa            {visas}')
+        print(f'  checklist_items       {sembrar_checklists(cur)}')
 
         for codigo, nombre in CANALES:
             cur.execute("insert into canales (codigo,nombre) values (%s,%s) "
