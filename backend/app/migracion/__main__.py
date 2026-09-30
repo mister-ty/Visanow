@@ -1,6 +1,8 @@
 """La migración desde la línea de comandos.
 
     python -m app.migracion previsualizar    # lee todo, arma el plan, no escribe nada
+    python -m app.migracion aplicar          # escribe, en una sola transacción
+    python -m app.migracion limpiar          # borra SOLO lo migrado, para volver a empezar
     python -m app.migracion hojas            # qué hoja se migra y cuál no, y por qué
 
 La previsualización es la actividad 6.1: se corre, se revisa el Excel que sale y
@@ -59,7 +61,73 @@ def _hojas() -> int:
     return 0
 
 
-COMANDOS = {'previsualizar': _previsualizar, 'hojas': _hojas}
+def _aplicar() -> int:
+    from app.db.session import SesionLocal
+    from app.migracion.carga import aplicar
+
+    incluir = '--incluir-ventas-sin-cobro' in sys.argv
+    with SesionLocal() as db:
+        r = aplicar(db, incluir_ventas_sin_cobro=incluir)
+    print()
+    print(f'Carga #{r.corrida_id}' + (' (incluyendo ventas sin cobro)' if incluir else ''))
+    for etiqueta in ('clientes', 'solicitantes', 'casos', 'citas', 'negocios', 'pagos'):
+        print(f'  {etiqueta:.<30} {getattr(r, etiqueta):>8,}')
+    print(f'  {"filas ya cargadas, omitidas":.<30} {r.omitidas:>8,}')
+    print(f'  {"excepciones":.<30} {len(r.excepciones):>8,}')
+    return 0
+
+
+def _limpiar() -> int:
+    """Borra lo migrado y nada más.
+
+    Solo toca registros con `origen_archivo`, que es lo que la migración creó:
+    lo que el equipo haya cargado a mano desde la aplicación no tiene ese campo
+    y no se toca. Sirve para repetir la carga mientras se depura con VisaNow.
+    """
+    from sqlalchemy import text
+
+    from app.db.session import SesionLocal
+
+    # En orden inverso a las dependencias
+    TABLAS = ('pagos', 'citas', 'casos', 'negocios', 'solicitantes', 'clientes')
+    with SesionLocal() as db:
+        db.execute(text('delete from migracion_filas'))
+        db.execute(text('delete from migracion_corridas'))
+        borrados = {}
+        for tabla in TABLAS:
+            r = db.execute(text(f'delete from {tabla} where origen_archivo is not null'))
+            borrados[tabla] = r.rowcount
+        db.commit()
+    print()
+    print('Borrado lo migrado (lo cargado a mano desde la aplicacion no se toca):')
+    for tabla, n in borrados.items():
+        print(f'  {tabla:.<30} {n:>8,}')
+    return 0
+
+
+def _verificar() -> int:
+    """Corre las comprobaciones contra la base que esté configurada.
+
+    Devuelve 1 si alguna falla, para poder encadenarlo:
+        python -m app.migracion aplicar && python -m app.migracion verificar
+    """
+    from app.db.session import SesionLocal
+    from app.migracion import verificacion
+
+    with SesionLocal() as db:
+        resultados = verificacion.correr(db)
+    fallaron = [c for c in resultados if not c.paso]
+    print()
+    for c in resultados:
+        print(f'  [{"ok " if c.paso else "MAL"}] {c.que}')
+        print(f'         {c.detalle}')
+    print()
+    print(f'  {len(resultados) - len(fallaron)} de {len(resultados)} comprobaciones pasaron')
+    return 1 if fallaron else 0
+
+
+COMANDOS = {'previsualizar': _previsualizar, 'aplicar': _aplicar, 'limpiar': _limpiar,
+            'verificar': _verificar, 'hojas': _hojas}
 
 if __name__ == '__main__':
     comando = sys.argv[1] if len(sys.argv) > 1 else ''

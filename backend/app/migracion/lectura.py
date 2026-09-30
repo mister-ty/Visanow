@@ -187,6 +187,26 @@ class Fila:
         return hashlib.sha256(crudo.encode('utf-8')).hexdigest()
 
 
+# Un libro se abre una sola vez aunque se lean seis de sus hojas. Sin esto,
+# CUENTAS VISANOW se cargaba entero seis veces y el proceso se quedaba sin
+# memoria a mitad de la segunda corrida.
+_LIBROS: dict[pathlib.Path, Any] = {}
+
+
+def abrir(ruta: pathlib.Path):
+    libro = _LIBROS.get(ruta)
+    if libro is None:
+        libro = _LIBROS[ruta] = openpyxl.load_workbook(ruta, data_only=True, read_only=False)
+    return libro
+
+
+def cerrar_libros() -> None:
+    """Suelta los libros abiertos. Se llama al terminar una corrida."""
+    for libro in _LIBROS.values():
+        libro.close()
+    _LIBROS.clear()
+
+
 def leer_hoja(ruta: pathlib.Path, hoja: str, *, fila_encabezado: int = 1,
               hasta_vacias: int = 40) -> Iterator[Fila]:
     """Recorre una hoja devolviendo filas con dato.
@@ -195,7 +215,7 @@ def leer_hoja(ruta: pathlib.Path, hoja: str, *, fila_encabezado: int = 1,
     dato real: `max_row` dice 1004 donde hay 262 ventas. Se corta después de
     `hasta_vacias` filas seguidas sin nada.
     """
-    wb = openpyxl.load_workbook(ruta, data_only=True, read_only=False)
+    wb = abrir(ruta)
     if hoja not in wb.sheetnames:
         raise KeyError(f'la hoja «{hoja}» no está en {ruta.name}. Hay: {wb.sheetnames}')
     h = wb[hoja]
@@ -219,4 +239,3 @@ def leer_hoja(ruta: pathlib.Path, hoja: str, *, fila_encabezado: int = 1,
             continue
         vacias = 0
         yield fila
-    wb.close()

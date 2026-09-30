@@ -220,3 +220,13 @@ def test_las_variantes_del_mismo_servicio_llegan_al_mismo_codigo():
 def test_los_catorce_apodos_de_la_vendedora_son_la_misma_persona():
     for bruto in ('Angie', 'ANGY', 'Angie lorena', 'Amgisita', 'Angisita la más linda'):
         assert hom.vendedor(bruto)[0] == 'angie'
+
+
+# La carga completa NO se prueba aquí. `aplicar()` hace commits de verdad y esta
+# suite corre cada prueba dentro de un savepoint que se deshace al terminar: las
+# dos cosas se pelean y la conexión se cae. Además, lo que hay que comprobar de
+# la carga —que el saldo lo calcule la vista, que las citas queden en hora de
+# Colombia, que correrla dos veces no duplique— hay que poder correrlo el día de
+# la migración contra la base real, no solo contra una de pruebas.
+#
+# Por eso vive en la propia herramienta:  python -m app.migracion verificar

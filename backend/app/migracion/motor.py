@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.migracion import fuentes
+from app.migracion import fuentes, lectura
 from app.migracion.fuentes import Aporte, Hoja
 from app.migracion.identidad import Persona, Resolvedor
 from app.migracion.lectura import Fila
@@ -108,6 +108,8 @@ class Migracion:
                                             correo=aporte.correo, origen=fila.origen)
                 for otro in aporte.acompanantes:
                     self.resolvedor.agregar(otro, telefono=aporte.telefono, origen=fila.origen)
+        # Ya está todo en memoria como Aporte: los libros no se necesitan más.
+        lectura.cerrar_libros()
 
     # ------------------------------------------------------------ segunda pasada
 
@@ -181,6 +183,14 @@ class Migracion:
                 plan.anotar(Excepcion(*fila.origen, f'Cita de {tipo} sin hora',
                                       'Entra como «pendiente» a las 00:00 para que se vea que '
                                       'falta la hora, en vez de inventar una.'))
+            elif cuando.hour < 6:
+                # Un consulado no cita a la 1:45 de la mañana. La hora se carga
+                # tal como está —no se corrige sola— pero queda señalada.
+                plan.anotar(Excepcion(
+                    *fila.origen,
+                    f'Cita de {tipo} a las {cuando:%H:%M}, fuera de cualquier horario consular',
+                    'Se carga tal cual dice el archivo. Corregir la hora en el Excel o en el '
+                    'sistema; probablemente se digitó mal.'))
 
     def _planear_dinero(self, plan: Plan, hoja: Hoja, fila: Fila, a: Aporte) -> None:
         if not a.servicio:
