@@ -448,6 +448,7 @@ class Usuarios(Base):
     exportaciones: Mapped[list['Exportaciones']] = relationship('Exportaciones', back_populates='usuario')
     fusiones: Mapped[list['Fusiones']] = relationship('Fusiones', back_populates='usuarios')
     importaciones: Mapped[list['Importaciones']] = relationship('Importaciones', back_populates='usuarios')
+    migracion_corridas: Mapped[list['MigracionCorridas']] = relationship('MigracionCorridas', back_populates='usuarios')
     parametros: Mapped[list['Parametros']] = relationship('Parametros', back_populates='usuarios')
     actividades: Mapped[list['Actividades']] = relationship('Actividades', back_populates='usuario')
     oportunidades: Mapped[list['Oportunidades']] = relationship('Oportunidades', back_populates='asesor')
@@ -531,7 +532,8 @@ class Clientes(Base):
         Index('ix_clientes_nombre_busqueda', 'nombre_busqueda', postgresql_using='gin'),
         Index('ix_clientes_telefono', 'telefono'),
         Index('ix_clientes_telefono_norm', 'telefono_normalizado', postgresql_where='(telefono_normalizado IS NOT NULL)'),
-        Index('ux_clientes_documento', 'numero_documento', postgresql_where='(numero_documento IS NOT NULL)', unique=True)
+        Index('ux_clientes_documento', 'numero_documento', postgresql_where='(numero_documento IS NOT NULL)', unique=True),
+        Index('ux_clientes_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -569,6 +571,7 @@ class Clientes(Base):
     oportunidades_referido_por_cliente: Mapped[list['Oportunidades']] = relationship('Oportunidades', foreign_keys='[Oportunidades.referido_por_cliente_id]', back_populates='referido_por_cliente')
     negocios: Mapped[list['Negocios']] = relationship('Negocios', back_populates='cliente')
     solicitantes: Mapped[list['Solicitantes']] = relationship('Solicitantes', back_populates='cliente')
+    migracion_filas: Mapped[list['MigracionFilas']] = relationship('MigracionFilas', back_populates='cliente')
     tareas: Mapped[list['Tareas']] = relationship('Tareas', back_populates='cliente')
 
 
@@ -708,6 +711,28 @@ class Importaciones(Base):
     importaciones_filas: Mapped[list['ImportacionesFilas']] = relationship('ImportacionesFilas', back_populates='importacion')
 
 
+class MigracionCorridas(Base):
+    __tablename__ = 'migracion_corridas'
+    __table_args__ = (
+        CheckConstraint("modo::text = ANY (ARRAY['previsualizacion'::character varying, 'aplicacion'::character varying]::text[])", name='ck_migracion_modo'),
+        ForeignKeyConstraint(['ejecutada_por'], ['usuarios.id'], name='migracion_corridas_ejecutada_por_fkey'),
+        PrimaryKeyConstraint('id', name='migracion_corridas_pkey'),
+        {'comment': 'Cada ejecución de la migración desde los Excel. La '
+                'previsualización no escribe datos: deja la corrida y sus filas '
+                'para poder revisarla antes de aplicar.'}
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    modo: Mapped[str] = mapped_column(String(16), nullable=False)
+    iniciada_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    resumen: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    terminada_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
+    ejecutada_por: Mapped[Optional[int]] = mapped_column(BigInteger)
+
+    usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='migracion_corridas')
+    migracion_filas: Mapped[list['MigracionFilas']] = relationship('MigracionFilas', back_populates='corrida')
+
+
 class Parametros(Base):
     __tablename__ = 'parametros'
     __table_args__ = (
@@ -760,7 +785,8 @@ class Actividades(Base):
         ForeignKeyConstraint(['usuario_id'], ['usuarios.id'], name='actividades_usuario_id_fkey'),
         PrimaryKeyConstraint('id', name='actividades_pkey'),
         Index('ix_actividades_entidad', 'entidad', 'entidad_id', 'ocurrido_en'),
-        Index('ix_actividades_usuario', 'usuario_id', 'ocurrido_en')
+        Index('ix_actividades_usuario', 'usuario_id', 'ocurrido_en'),
+        Index('ux_actividades_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -774,6 +800,9 @@ class Actividades(Base):
     cuerpo: Mapped[Optional[str]] = mapped_column(Text)
     usuario_id: Mapped[Optional[int]] = mapped_column(BigInteger)
     documento_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    origen_archivo: Mapped[Optional[str]] = mapped_column(String(80))
+    origen_hoja: Mapped[Optional[str]] = mapped_column(String(60))
+    origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
 
     documento: Mapped[Optional['Documentos']] = relationship('Documentos', back_populates='actividades')
     usuario: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='actividades')
@@ -803,7 +832,8 @@ class Grupos(Base):
     __table_args__ = (
         ForeignKeyConstraint(['cliente_contacto_id'], ['clientes.id'], name='grupos_cliente_contacto_id_fkey'),
         PrimaryKeyConstraint('id', name='grupos_pkey'),
-        Index('ix_grupos_contacto', 'cliente_contacto_id')
+        Index('ix_grupos_contacto', 'cliente_contacto_id'),
+        Index('ux_grupos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -811,6 +841,9 @@ class Grupos(Base):
     cliente_contacto_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     creado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     observaciones: Mapped[Optional[str]] = mapped_column(Text)
+    origen_archivo: Mapped[Optional[str]] = mapped_column(String(80))
+    origen_hoja: Mapped[Optional[str]] = mapped_column(String(60))
+    origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
 
     cliente_contacto: Mapped['Clientes'] = relationship('Clientes', back_populates='grupos')
     negocios: Mapped[list['Negocios']] = relationship('Negocios', back_populates='grupo')
@@ -878,7 +911,8 @@ class Negocios(Base):
         ForeignKeyConstraint(['servicio_id'], ['servicios.id'], name='negocios_servicio_id_fkey'),
         ForeignKeyConstraint(['vendedor_id'], ['usuarios.id'], name='negocios_vendedor_id_fkey'),
         PrimaryKeyConstraint('id', name='negocios_pkey'),
-        Index('ix_negocios_principal', 'negocio_principal_id', postgresql_where='(negocio_principal_id IS NOT NULL)')
+        Index('ix_negocios_principal', 'negocio_principal_id', postgresql_where='(negocio_principal_id IS NOT NULL)'),
+        Index('ux_negocios_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -916,6 +950,7 @@ class Negocios(Base):
     cuotas_negocio: Mapped[list['CuotasNegocio']] = relationship('CuotasNegocio', back_populates='negocio')
     pagos: Mapped[list['Pagos']] = relationship('Pagos', back_populates='negocio')
     gastos: Mapped[list['Gastos']] = relationship('Gastos', back_populates='negocio')
+    migracion_filas: Mapped[list['MigracionFilas']] = relationship('MigracionFilas', back_populates='negocio')
     tareas: Mapped[list['Tareas']] = relationship('Tareas', back_populates='negocio')
     alertas: Mapped[list['Alertas']] = relationship('Alertas', back_populates='negocio')
 
@@ -934,6 +969,7 @@ class Solicitantes(Base):
         Index('ix_solicitantes_grupo', 'grupo_id', postgresql_where='(grupo_id IS NOT NULL)'),
         Index('ix_solicitantes_nombre_busqueda', 'nombre_busqueda', postgresql_using='gin'),
         Index('ix_solicitantes_telefono_norm', 'telefono_normalizado', postgresql_where='(telefono_normalizado IS NOT NULL)'),
+        Index('ux_solicitantes_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True),
         Index('ux_solicitantes_pasaporte', 'pasaporte_indice', postgresql_where='(pasaporte_indice IS NOT NULL)', unique=True)
     )
 
@@ -965,6 +1001,7 @@ class Solicitantes(Base):
     fusionado_en_reverse: Mapped[list['Solicitantes']] = relationship('Solicitantes', remote_side=[fusionado_en_id], back_populates='fusionado_en')
     grupo: Mapped[Optional['Grupos']] = relationship('Grupos', back_populates='solicitantes')
     casos: Mapped[list['Casos']] = relationship('Casos', back_populates='solicitante')
+    migracion_filas: Mapped[list['MigracionFilas']] = relationship('MigracionFilas', back_populates='solicitante')
 
 
 class AjustesNegocio(Base):
@@ -1011,6 +1048,7 @@ class Casos(Base):
         Index('ix_casos_solicitante', 'solicitante_id'),
         Index('ix_casos_tablero', 'estado_id', 'responsable_id', 'ultima_actividad_en'),
         Index('ux_casos_ds160', 'ds160_hash', postgresql_where='(ds160_hash IS NOT NULL)', unique=True),
+        Index('ux_casos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True),
         Index('ux_casos_solicitud_solicitante', 'id_externo', 'solicitante_id', postgresql_where='(id_externo IS NOT NULL)', unique=True)
     )
 
@@ -1057,6 +1095,7 @@ class Casos(Base):
     conflictos_sincronizacion: Mapped[list['ConflictosSincronizacion']] = relationship('ConflictosSincronizacion', back_populates='caso')
     gastos: Mapped[list['Gastos']] = relationship('Gastos', back_populates='caso')
     importaciones_filas: Mapped[list['ImportacionesFilas']] = relationship('ImportacionesFilas', back_populates='caso')
+    migracion_filas: Mapped[list['MigracionFilas']] = relationship('MigracionFilas', back_populates='caso')
     tareas: Mapped[list['Tareas']] = relationship('Tareas', back_populates='caso')
     alertas: Mapped[list['Alertas']] = relationship('Alertas', back_populates='caso')
 
@@ -1096,7 +1135,8 @@ class CuotasNegocio(Base):
         ForeignKeyConstraint(['negocio_id'], ['negocios.id'], ondelete='CASCADE', name='cuotas_negocio_negocio_id_fkey'),
         PrimaryKeyConstraint('id', name='cuotas_negocio_pkey'),
         UniqueConstraint('negocio_id', 'numero', name='cuotas_negocio_negocio_id_numero_key'),
-        Index('ix_cuotas_fecha', 'fecha_pactada')
+        Index('ix_cuotas_fecha', 'fecha_pactada'),
+        Index('ux_cuotas_negocio_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1106,6 +1146,9 @@ class CuotasNegocio(Base):
     monto: Mapped[decimal.Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     fecha_pactada: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     creado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    origen_archivo: Mapped[Optional[str]] = mapped_column(String(80))
+    origen_hoja: Mapped[Optional[str]] = mapped_column(String(60))
+    origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
 
     negocio: Mapped['Negocios'] = relationship('Negocios', back_populates='cuotas_negocio')
 
@@ -1119,7 +1162,8 @@ class Pagos(Base):
         ForeignKeyConstraint(['medio_pago_id'], ['medios_pago.id'], name='pagos_medio_pago_id_fkey'),
         ForeignKeyConstraint(['negocio_id'], ['negocios.id'], name='pagos_negocio_id_fkey'),
         ForeignKeyConstraint(['registrado_por'], ['usuarios.id'], name='pagos_registrado_por_fkey'),
-        PrimaryKeyConstraint('id', name='pagos_pkey')
+        PrimaryKeyConstraint('id', name='pagos_pkey'),
+        Index('ux_pagos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1204,7 +1248,8 @@ class Citas(Base):
         ForeignKeyConstraint(['sede_id'], ['sedes.id'], name='citas_sede_id_fkey'),
         PrimaryKeyConstraint('id', name='citas_pkey'),
         Index('ix_citas_caso', 'caso_id', 'inicia_en'),
-        Index('ix_citas_proximas', 'inicia_en', postgresql_where="((estado)::text = ANY ((ARRAY['pendiente'::character varying, 'programada'::character varying, 'confirmada'::character varying])::text[]))")
+        Index('ix_citas_proximas', 'inicia_en', postgresql_where="((estado)::text = ANY ((ARRAY['pendiente'::character varying, 'programada'::character varying, 'confirmada'::character varying])::text[]))"),
+        Index('ux_citas_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1216,6 +1261,9 @@ class Citas(Base):
     creado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     sede_id: Mapped[Optional[int]] = mapped_column(Integer)
     observaciones: Mapped[Optional[str]] = mapped_column(Text)
+    origen_archivo: Mapped[Optional[str]] = mapped_column(String(80))
+    origen_hoja: Mapped[Optional[str]] = mapped_column(String(60))
+    origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
 
     caso: Mapped['Casos'] = relationship('Casos', back_populates='citas')
     sede: Mapped[Optional['Sedes']] = relationship('Sedes', back_populates='citas')
@@ -1316,6 +1364,41 @@ class ImportacionesFilas(Base):
 
     caso: Mapped[Optional['Casos']] = relationship('Casos', back_populates='importaciones_filas')
     importacion: Mapped['Importaciones'] = relationship('Importaciones', back_populates='importaciones_filas')
+
+
+class MigracionFilas(Base):
+    __tablename__ = 'migracion_filas'
+    __table_args__ = (
+        CheckConstraint("resultado::text = ANY (ARRAY['creado'::character varying, 'actualizado'::character varying, 'sin_cambios'::character varying, 'excepcion'::character varying, 'omitido'::character varying]::text[])", name='ck_migracion_filas_resultado'),
+        ForeignKeyConstraint(['caso_id'], ['casos.id'], name='migracion_filas_caso_id_fkey'),
+        ForeignKeyConstraint(['cliente_id'], ['clientes.id'], name='migracion_filas_cliente_id_fkey'),
+        ForeignKeyConstraint(['corrida_id'], ['migracion_corridas.id'], ondelete='CASCADE', name='migracion_filas_corrida_id_fkey'),
+        ForeignKeyConstraint(['negocio_id'], ['negocios.id'], name='migracion_filas_negocio_id_fkey'),
+        ForeignKeyConstraint(['solicitante_id'], ['solicitantes.id'], name='migracion_filas_solicitante_id_fkey'),
+        PrimaryKeyConstraint('id', name='migracion_filas_pkey'),
+        Index('ix_migracion_filas_corrida', 'corrida_id', 'resultado'),
+        Index('ix_migracion_filas_huella', 'huella'),
+        Index('ux_migracion_filas_origen', 'archivo', 'hoja', 'fila', 'corrida_id', unique=True)
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    corrida_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    archivo: Mapped[str] = mapped_column(String(80), nullable=False)
+    hoja: Mapped[str] = mapped_column(String(60), nullable=False)
+    fila: Mapped[int] = mapped_column(Integer, nullable=False)
+    huella: Mapped[str] = mapped_column(CHAR(64), nullable=False, comment='sha256 del contenido normalizado de la fila. Si cambia, el Excel se editó después de migrar y la fila se vuelve a mirar.')
+    resultado: Mapped[str] = mapped_column(String(15), nullable=False)
+    motivo: Mapped[Optional[str]] = mapped_column(Text)
+    cliente_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    solicitante_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    caso_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    negocio_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+
+    caso: Mapped[Optional['Casos']] = relationship('Casos', back_populates='migracion_filas')
+    cliente: Mapped[Optional['Clientes']] = relationship('Clientes', back_populates='migracion_filas')
+    corrida: Mapped['MigracionCorridas'] = relationship('MigracionCorridas', back_populates='migracion_filas')
+    negocio: Mapped[Optional['Negocios']] = relationship('Negocios', back_populates='migracion_filas')
+    solicitante: Mapped[Optional['Solicitantes']] = relationship('Solicitantes', back_populates='migracion_filas')
 
 
 class Tareas(Base):

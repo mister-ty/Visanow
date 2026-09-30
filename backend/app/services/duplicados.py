@@ -28,8 +28,9 @@ from sqlalchemy.orm import Session
 
 from app.core import seguridad as seg
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.models.esquema import (Actividades, Clientes, Documentos, Fusiones, Grupos, Negocios,
-                                Oportunidades, Solicitantes, Tareas, Usuarios)
+from app.models.esquema import (Actividades, Clientes, Documentos, Fusiones, Grupos,
+                                MigracionFilas, Negocios, Oportunidades, Solicitantes, Tareas,
+                                Usuarios)
 from app.services.auditoria import auditar, instantanea
 
 PARECIDO_MINIMO = 0.35      # por debajo de esto no se muestra
@@ -169,6 +170,10 @@ REFERENCIAS = [
     (Oportunidades, 'referido_por_cliente_id'),
     (Negocios, 'cliente_id'),
     (Tareas, 'cliente_id'),
+    # La traza de la migración también sigue a la ficha que queda: si no, el
+    # registro «esta fila del Excel creó a este cliente» apuntaría a una ficha
+    # archivada y se perdería de dónde salió el dato.
+    (MigracionFilas, 'cliente_id'),
 ]
 POLIMORFICAS = [Actividades, Documentos]
 
