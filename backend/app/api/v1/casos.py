@@ -29,9 +29,13 @@ def _salida(db: Session, c: Casos) -> esq.CasoSalida:
 def listar(estado: str | None = None, responsable_id: int | None = None, pais_id: int | None = None,
            fuente: esq.Fuente | None = None, sin_asignar: bool = False, sin_venta: bool = False,
            incluir_finalizados: bool = False, texto: str | None = None, pagina: int = 1, tamano: int = 50,
-           _: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
-    """Tablero operativo (RF-022): por estado, responsable, país, origen y riesgo."""
-    total, filas = servicio.listar(db, estado=estado, responsable_id=responsable_id, pais_id=pais_id,
+           actor: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
+    """Tablero operativo (RF-022): por estado, responsable, país, origen y riesgo.
+
+    Lo que devuelve depende del alcance del usuario (RNF-03): quien tiene «solo
+    casos asignados» ve los suyos aunque no filtre por responsable."""
+    total, filas = servicio.listar(db, actor=actor, estado=estado,
+                                   responsable_id=responsable_id, pais_id=pais_id,
                                    fuente=fuente, sin_asignar=sin_asignar, sin_venta=sin_venta,
                                    incluir_finalizados=incluir_finalizados, texto=texto,
                                    pagina=pagina, tamano=tamano)
@@ -52,8 +56,9 @@ def crear(datos: esq.CasoCrear, request: Request,
 
 
 @router.get('/casos/{caso_id}', response_model=esq.CasoDetalle)
-def detalle(caso_id: int, _: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
-    c = servicio.obtener(db, caso_id)
+def detalle(caso_id: int, actor: Usuarios = Depends(requiere('casos.ver')),
+            db: Session = Depends(get_db)):
+    c = servicio.obtener(db, caso_id, actor=actor)
     return esq.CasoDetalle(
         **_salida(db, c).model_dump(), pais_id=c.pais_id, tipo_visa_id=c.tipo_visa_id, modalidad_id=c.modalidad_id,
         sede_id=c.sede_id, negocio_id=c.negocio_id, etapa_saas=c.etapa_saas,

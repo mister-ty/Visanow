@@ -276,3 +276,47 @@ def test_la_cita_le_pone_la_sede_al_tramite(cliente, operaciones, solicitante, p
     cliente.post(f"{CASOS}/{caso['id']}/citas", headers=cab,
                  json={'tipo': 'entrevista', 'inicia_en': '2026-11-18T08:30:00-05:00', 'sede_id': sede})
     assert cliente.get(f"{CASOS}/{caso['id']}", headers=cab).json()['sede_id'] == sede
+
+
+# ------------------------------------------------- alcance por casos asignados
+
+def test_quien_solo_ve_lo_asignado_no_ve_los_tramites_de_los_demas(
+        cliente, db, usuario, solicitante, pais_usa):
+    """RNF-03. El alcance estaba guardado en el usuario desde el principio, pero
+    ninguna consulta lo leía: bastaba con no enviar el filtro de responsable
+    para ver todo. El filtro de la pantalla es una comodidad; esto es control de
+    acceso y vive en el servicio."""
+    from app.services import usuarios as servicio_usuarios
+
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    otro = usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, otro.u.id, alcance='asignados')
+    db.commit()
+
+    cab_dueno = entrar(cliente, dueno)
+    mio = crear_caso(cliente, cab_dueno, solicitante, pais_usa, dueno.u.id)
+
+    cab_otro = entrar(cliente, otro)
+    vistos = cliente.get(CASOS, headers=cab_otro).json()
+    assert mio['id'] not in [c['id'] for c in vistos['items']],         've un trámite que no es suyo'
+    assert vistos['total'] == 0
+
+    # Y tampoco puede abrirlo por la URL directa
+    r = cliente.get(f'{CASOS}/{mio["id"]}', headers=cab_otro)
+    assert r.status_code == 404, 'la URL directa se salta el alcance'
+    # Responde 404 y no 403: decir «existe pero no es suyo» ya revela que esa
+    # persona es cliente de VisaNow.
+    assert 'no existe' in r.json()['detalle']
+
+    # El dueño sí lo ve
+    assert cliente.get(f'{CASOS}/{mio["id"]}', headers=cab_dueno).status_code == 200
+
+
+def test_quien_ve_todo_sigue_viendo_todo(cliente, db, usuario, solicitante, pais_usa):
+    dueno = usuario('operaciones')
+    miron = usuario('operaciones')       # alcance 'todos' por defecto
+    cab = entrar(cliente, dueno)
+    mio = crear_caso(cliente, cab, solicitante, pais_usa, dueno.u.id)
+    vistos = cliente.get(CASOS, headers=entrar(cliente, miron)).json()
+    assert mio['id'] in [c['id'] for c in vistos['items']]

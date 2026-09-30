@@ -24,8 +24,9 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado, Prohibido
-from app.models.esquema import (Casos, CasosChecklist, CasosHistorial, ChecklistItems, Checklists,
-                                Citas, EstadosOperativos, Solicitantes, TransicionesOperativas, Usuarios)
+from app.models.esquema import (Casos, CasosChecklist, CasosHistorial, ChecklistItems,
+                                Checklists, Citas, EstadosOperativos, Solicitantes,
+                                TransicionesOperativas, Usuarios)
 from app.services.auditoria import auditar
 
 ESTADO_INICIAL = 'registrado'
@@ -49,9 +50,14 @@ def _historial(db: Session, caso_id: int, campo: str, anterior, nuevo, actor_id:
                           usuario_id=actor_id, observacion=observacion))
 
 
-def obtener(db: Session, caso_id: int) -> Casos:
+def obtener(db: Session, caso_id: int, *, actor: Usuarios | None = None) -> Casos:
     caso = db.get(Casos, caso_id, options=[selectinload(Casos.solicitante), selectinload(Casos.estado)])
     if caso is None:
+        raise NoEncontrado('El trámite no existe.')
+    if (actor is not None and actor.alcance != 'todos'
+            and caso.responsable_id != actor.id):
+        # Se responde lo mismo que si no existiera: decir «existe pero no es
+        # suyo» ya revela que ese cliente es cliente de VisaNow.
         raise NoEncontrado('El trámite no existe.')
     return caso
 
@@ -118,7 +124,24 @@ def editar(db: Session, actor: Usuarios, caso_id: int, cambios: dict, ip: str | 
 
 # ------------------------------------------------------------------ tablero
 
-def listar(db: Session, *, estado: str | None = None, responsable_id: int | None = None,
+def alcance_de(actor: Usuarios | None):
+    """La condición que limita lo que un usuario puede ver (RNF-03).
+
+    El alcance vive en el usuario desde el principio, pero hasta ahora no lo
+    leía ninguna consulta: quien tenía «solo casos asignados» veía todos los
+    trámites con solo no enviar el filtro de responsable. El filtro de la
+    pantalla es una comodidad del usuario; esto es un control de acceso, y por
+    eso se aplica aquí, en el servicio, y no se puede desactivar desde la API.
+    """
+    if actor is None or actor.alcance == 'todos':
+        return None
+    # «propios» y «asignados» coinciden en un trámite: lo propio de alguien en
+    # la operación es aquello de lo que es responsable.
+    return Casos.responsable_id == actor.id
+
+
+def listar(db: Session, *, actor: Usuarios | None = None, estado: str | None = None,
+           responsable_id: int | None = None,
            pais_id: int | None = None, fuente: str | None = None, sin_asignar: bool = False,
            sin_venta: bool = False, incluir_finalizados: bool = False,
            texto: str | None = None, pagina: int = 1, tamano: int = 50) -> tuple[int, list[Casos]]:
@@ -127,6 +150,9 @@ def listar(db: Session, *, estado: str | None = None, responsable_id: int | None
                         .join(Solicitantes, Solicitantes.id == Casos.solicitante_id)
                         .options(selectinload(Casos.solicitante), selectinload(Casos.estado),
                                  selectinload(Casos.responsable), selectinload(Casos.pais)))
+    limite = alcance_de(actor)
+    if limite is not None:
+        consulta = consulta.where(limite)
     if not incluir_finalizados:
         consulta = consulta.where(EstadosOperativos.es_final.is_(False))
     if estado:
