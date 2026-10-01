@@ -134,6 +134,8 @@ def _titulo_cita(campo: str, despues: str | None, nombres: dict) -> str:
             detalle = resto.removeprefix(f'{tipo}_')
             if detalle == 'inicia_en':
                 return f'Cita de {legible} reprogramada'
+            if detalle == 'observaciones':
+                return f'Cita de {legible}: nota'
             if detalle == 'estado':
                 return f'Cita de {legible}: {despues or "—"}'
             if detalle == 'sede_id':

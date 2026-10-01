@@ -290,3 +290,84 @@ def test_el_pais_el_canal_y_el_consentimiento_se_guardan_y_se_leen(cliente, db, 
     catalogos = cliente.get('/api/v1/catalogos', headers=cab).json()
     assert canal in [c['id'] for c in catalogos['canales']]
     assert any(c['codigo'] == 'instagram' for c in catalogos['canales'])
+
+
+# ------------------------------- mover personas entre grupos y corregir grupos
+
+def test_una_persona_se_puede_mover_a_un_grupo_sin_perder_su_tramite(cliente, usuario):
+    """La familia casi nunca se conoce el primer día: el cliente llega solo y dos
+    semanas después dice que viajan los tres. Sin poder mover a la persona habría
+    que borrarla y volverla a crear, perdiendo su trámite."""
+    cab = entrar(cliente, usuario('comercial'))
+    c = cliente.post('/api/v1/clientes', headers=cab, json={'nombre': 'Marta Isaza Gil'}).json()
+    s = cliente.post('/api/v1/solicitantes', headers=cab,
+                     json={'cliente_id': c['id'], 'nombre': 'Marta Isaza Gil'}).json()
+    g = cliente.post('/api/v1/grupos', headers=cab,
+                     json={'cliente_contacto_id': c['id'], 'nombre': 'Familia Isaza'}).json()
+
+    r = cliente.patch(f'/api/v1/solicitantes/{s["id"]}', headers=cab, json={'grupo_id': g['id']})
+    assert r.status_code == 200, r.text
+    assert r.json()['grupo_id'] == g['id']
+    assert r.json()['cliente_id'] is None, 'al entrar al grupo deja de colgar del cliente'
+
+    # No aparece dos veces en la ficha
+    ficha = cliente.get(f'/api/v1/clientes/{c["id"]}', headers=cab).json()
+    sueltos = [x for x in ficha['solicitantes'] if not x['grupo_id']]
+    assert sueltos == []
+    assert [x['id'] for x in ficha['grupos'][0]['solicitantes']] == [s['id']]
+
+
+def test_una_persona_se_puede_sacar_del_grupo_pero_no_quedar_suelta(cliente, usuario):
+    cab = entrar(cliente, usuario('comercial'))
+    c = cliente.post('/api/v1/clientes', headers=cab, json={'nombre': 'Hugo Arenas Mora'}).json()
+    g = cliente.post('/api/v1/grupos', headers=cab,
+                     json={'cliente_contacto_id': c['id'], 'nombre': 'Familia Arenas'}).json()
+    s = cliente.post('/api/v1/solicitantes', headers=cab,
+                     json={'grupo_id': g['id'], 'nombre': 'Hugo Arenas Mora'}).json()
+
+    # Sacarlo del grupo exige decir de qué cliente queda colgando
+    r = cliente.patch(f'/api/v1/solicitantes/{s["id"]}', headers=cab,
+                      json={'grupo_id': None, 'cliente_id': None})
+    assert r.status_code == 422
+    assert 'grupo o a un cliente' in r.json()['detalle']
+
+    r = cliente.patch(f'/api/v1/solicitantes/{s["id"]}', headers=cab,
+                      json={'grupo_id': None, 'cliente_id': c['id']})
+    assert r.status_code == 200 and r.json()['cliente_id'] == c['id']
+
+
+def test_un_grupo_mal_escrito_se_puede_corregir(cliente, usuario):
+    """Hasta ahora el grupo era inmutable: un nombre mal escrito o un contacto
+    equivocado solo se arreglaban con SQL."""
+    cab = entrar(cliente, usuario('comercial'))
+    c = cliente.post('/api/v1/clientes', headers=cab, json={'nombre': 'Rosa Mejía Tobón'}).json()
+    otro = cliente.post('/api/v1/clientes', headers=cab, json={'nombre': 'Jorge Mejía Tobón'}).json()
+    g = cliente.post('/api/v1/grupos', headers=cab,
+                     json={'cliente_contacto_id': c['id'], 'nombre': 'Familia Megia'}).json()
+
+    r = cliente.patch(f'/api/v1/grupos/{g["id"]}', headers=cab,
+                      json={'nombre': 'Familia Mejía', 'cliente_contacto_id': otro['id'],
+                            'observaciones': 'Paga Jorge'})
+    assert r.status_code == 200, r.text
+    assert r.json()['nombre'] == 'Familia Mejía'
+    assert r.json()['cliente_contacto_id'] == otro['id']
+
+    # El grupo se mudó: ahora cuelga del otro cliente
+    assert cliente.get(f'/api/v1/clientes/{otro["id"]}', headers=cab).json()['grupos'][0]['id'] == g['id']
+    assert cliente.get(f'/api/v1/clientes/{c["id"]}', headers=cab).json()['grupos'] == []
+
+
+def test_editar_un_grupo_queda_en_la_auditoria(cliente, db, usuario):
+    from sqlalchemy import select
+
+    from app.models.esquema import Auditoria
+
+    cab = entrar(cliente, usuario('comercial'))
+    c = cliente.post('/api/v1/clientes', headers=cab, json={'nombre': 'Elsa Prada Ruiz'}).json()
+    g = cliente.post('/api/v1/grupos', headers=cab,
+                     json={'cliente_contacto_id': c['id'], 'nombre': 'Familia Prada'}).json()
+    cliente.patch(f'/api/v1/grupos/{g["id"]}', headers=cab, json={'nombre': 'Familia Prada Ruiz'})
+    registro = db.scalar(select(Auditoria).where(Auditoria.entidad == 'grupos',
+                                                 Auditoria.entidad_id == g['id'],
+                                                 Auditoria.operacion == 'update'))
+    assert registro is not None and registro.despues['nombre'] == 'Familia Prada Ruiz'

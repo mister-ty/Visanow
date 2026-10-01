@@ -324,12 +324,28 @@ def actualizar_cita(db: Session, actor: Usuarios, cita_id: int, cambios: dict,
     cita = db.get(Citas, cita_id)
     if cita is None:
         raise NoEncontrado('La cita no existe.')
+
+    antes_fecha, antes_estado = cita.inicia_en, cita.estado
+    cambiados = []
     for campo, valor in cambios.items():
         if campo in ('sede_id', 'inicia_en', 'zona_horaria', 'estado', 'observaciones'):
-            anterior = getattr(cita, campo)
-            if anterior != valor:
+            if getattr(cita, campo) != valor:
                 setattr(cita, campo, valor)
-                _historial(db, cita.caso_id, f'cita_{cita.tipo}_{campo}', anterior, valor, actor.id)
+                cambiados.append(campo)
+
+    # Una sola línea de historial por acción. Mover una cita cambia la fecha, el
+    # estado y la observación a la vez, y escribir una entrada por campo dejaba
+    # tres renglones casi idénticos para algo que la persona vivió como un solo
+    # acto: «el consulado me corrió la cita».
+    if 'inicia_en' in cambiados:
+        _historial(db, cita.caso_id, f'cita_{cita.tipo}_inicia_en',
+                   antes_fecha, cita.inicia_en, actor.id, cambios.get('observaciones'))
+    elif 'estado' in cambiados:
+        _historial(db, cita.caso_id, f'cita_{cita.tipo}_estado',
+                   antes_estado, cita.estado, actor.id, cambios.get('observaciones'))
+    elif cambiados:
+        _historial(db, cita.caso_id, f'cita_{cita.tipo}_{cambiados[0]}',
+                   None, None, actor.id, cambios.get('observaciones'))
     auditar(db, operacion='update', entidad='citas', usuario_id=actor.id, entidad_id=cita.id,
             despues=cambios, ip=ip)
     db.commit()

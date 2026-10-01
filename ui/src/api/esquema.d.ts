@@ -477,6 +477,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/grupos/{grupo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Editar Grupo */
+        patch: operations["editar_grupo_api_v1_grupos__grupo_id__patch"];
+        trace?: never;
+    };
     "/api/v1/solicitantes": {
         parameters: {
             query?: never;
@@ -1300,6 +1317,18 @@ export interface components {
             /** Observaciones */
             observaciones?: string | null;
         };
+        /** GrupoEditar */
+        GrupoEditar: {
+            /** Nombre */
+            nombre?: string | null;
+            /**
+             * Cliente Contacto Id
+             * @description Quién contrata por el grupo
+             */
+            cliente_contacto_id?: number | null;
+            /** Observaciones */
+            observaciones?: string | null;
+        };
         /** GrupoSalida */
         GrupoSalida: {
             /** Id */
@@ -1590,6 +1619,16 @@ export interface components {
         SolicitanteEditar: {
             /** Nombre */
             nombre?: string | null;
+            /**
+             * Grupo Id
+             * @description Mover a este grupo
+             */
+            grupo_id?: number | null;
+            /**
+             * Cliente Id
+             * @description Sacar del grupo y dejar en el cliente
+             */
+            cliente_id?: number | null;
             /** Tipo Documento */
             tipo_documento?: string | null;
             /** Numero Documento */
@@ -1638,6 +1677,8 @@ export interface components {
             email: string | null;
             /** Relacion Con Cliente */
             relacion_con_cliente: string | null;
+            /** Observaciones */
+            observaciones?: string | null;
         };
         /** SucesoSalida */
         SucesoSalida: {
@@ -2702,6 +2743,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrupoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editar_grupo_api_v1_grupos__grupo_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grupo_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrupoEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

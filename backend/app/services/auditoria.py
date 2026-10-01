@@ -18,11 +18,18 @@ NUNCA_AUDITAR = {'password_hash', 'mfa_secreto'}
 
 
 def _a_json(valor: Any) -> Any:
-    if isinstance(valor, (dt.datetime, dt.date)):
+    """Deja el valor como algo que la columna jsonb pueda guardar."""
+    if isinstance(valor, (dt.datetime, dt.date, dt.time)):
         return valor.isoformat()
     if isinstance(valor, decimal.Decimal):
         return str(valor)
-    return valor
+    if isinstance(valor, dict):
+        return {k: _a_json(v) for k, v in valor.items()}
+    if isinstance(valor, (list, tuple, set)):
+        return [_a_json(v) for v in valor]
+    if valor is None or isinstance(valor, (str, int, float, bool)):
+        return valor
+    return str(valor)
 
 
 def instantanea(objeto) -> dict:
@@ -37,6 +44,11 @@ def auditar(db: Session, *, operacion: str, entidad: str, usuario_id: int | None
     """Agrega el registro a la sesión. Lo confirma el commit del servicio que
     llama, para que la auditoría y el cambio auditado queden en la misma
     transacción: o quedan los dos o ninguno."""
+    # Se limpia aquí y no en cada servicio: un servicio que pase un datetime
+    # crudo rompía la petición entera con un 500, porque la columna es jsonb.
+    # Registrar la auditoría no puede ser lo que tumbe la operación que audita.
+    antes = _a_json(antes) if antes else antes
+    despues = _a_json(despues) if despues else despues
     if antes and despues:
         # Solo lo que cambió: el registro se lee de un vistazo
         claves = {k for k in antes.keys() | despues.keys() if antes.get(k) != despues.get(k)}

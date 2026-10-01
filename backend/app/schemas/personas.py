@@ -62,6 +62,9 @@ class SolicitanteSalida(BaseModel):
     telefono: str | None
     email: str | None
     relacion_con_cliente: str | None
+    # La migración deja aquí de qué hoja salió la persona y qué se anotó al lado
+    # de su nombre en el Excel; sin exponerlo, ese dato quedaba invisible.
+    observaciones: str | None = None
 
 
 class GrupoSalida(BaseModel):
@@ -112,6 +115,8 @@ class SolicitanteCrear(BaseModel):
 
 class SolicitanteEditar(BaseModel):
     nombre: str | None = Field(default=None, min_length=2, max_length=160)
+    grupo_id: int | None = Field(default=None, description='Mover a este grupo')
+    cliente_id: int | None = Field(default=None, description='Sacar del grupo y dejar en el cliente')
     tipo_documento: str | None = None
     numero_documento: str | None = None
     pasaporte: str | None = None
@@ -160,3 +165,9 @@ class FusionSalida(BaseModel):
 class PasaporteSalida(BaseModel):
     solicitante_id: int
     pasaporte: str = Field(description='Valor completo. La consulta queda en la auditoría.')
+
+
+class GrupoEditar(BaseModel):
+    nombre: str | None = Field(default=None, min_length=2, max_length=120)
+    cliente_contacto_id: int | None = Field(default=None, description='Quién contrata por el grupo')
+    observaciones: str | None = None

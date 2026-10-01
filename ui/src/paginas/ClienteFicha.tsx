@@ -7,10 +7,10 @@ import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  IconArchive, IconBrandWhatsapp, IconCalendarEvent, IconEye, IconHistory, IconMail, IconMessage2,
-  IconPencil, IconPhone, IconPlaneDeparture, IconPlus, IconUsersGroup,
+  IconArchive, IconArrowsExchange, IconBrandWhatsapp, IconCalendarEvent, IconEye, IconHistory,
+  IconMail, IconMessage2, IconPencil, IconPhone, IconPlaneDeparture, IconPlus, IconUsersGroup,
 } from '@tabler/icons-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link as Enlace, useNavigate, useParams } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
@@ -21,6 +21,7 @@ import { aSelect, type Opcion, porPais, useAsignables, useCatalogos } from '../l
 
 type Detalle = Esquemas['ClienteDetalle']
 type Solicitante = Esquemas['SolicitanteSalida']
+type Grupo = Esquemas['GrupoSalida']
 
 const RELACIONES = ['titular', 'cónyuge', 'hijo', 'hija', 'padre', 'madre', 'otro']
 
@@ -34,6 +35,9 @@ export function ClienteFicha() {
   const [agregarA, setAgregarA] = useState<{ grupo_id?: number; cliente_id?: number } | null>(null)
   const [tramitando, setTramitando] = useState<Solicitante | null>(null)
   const [anotando, setAnotando] = useState(false)
+  const [editandoPersona, setEditandoPersona] = useState<Solicitante | null>(null)
+  const [moviendo, setMoviendo] = useState<Solicitante | null>(null)
+  const [editandoGrupo, setEditandoGrupo] = useState<Grupo | null>(null)
   const catalogosFicha = useCatalogos()
 
   // Una sola consulta trae el cliente, su familia, sus trámites, sus próximas
@@ -170,6 +174,11 @@ export function ClienteFicha() {
               <Text size="sm" fw={600}>{g.nombre}</Text>
               <Group gap="xs">
                 <Badge variant="light" size="sm">{g.solicitantes.length} persona(s)</Badge>
+                {puede('solicitantes.editar') && (
+                  <Tooltip label="Corregir el nombre o quién contrata">
+                    <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Editar grupo"
+                      onClick={() => setEditandoGrupo(g)}><IconPencil size={13} /></ActionIcon>
+                  </Tooltip>)}
                 {puede('solicitantes.crear') && (
                   <Button size="compact-xs" variant="subtle"
                     onClick={() => setAgregarA({ grupo_id: g.id })}>Agregar</Button>
@@ -177,7 +186,8 @@ export function ClienteFicha() {
               </Group>
             </Group>
             <TablaSolicitantes solicitantes={g.solicitantes} tramitar={setTramitando}
-              puedeTramitar={puede('casos.crear')} />
+              puedeTramitar={puede('casos.crear')} puedeEditar={puede('solicitantes.editar')}
+              editar={setEditandoPersona} mover={setMoviendo} />
           </Card>
         ))}
 
@@ -187,7 +197,8 @@ export function ClienteFicha() {
             <Card withBorder padding="sm" mt="sm">
               <Text size="sm" fw={600} mb="xs">Sin grupo</Text>
               <TablaSolicitantes solicitantes={sueltos} tramitar={setTramitando}
-                puedeTramitar={puede('casos.crear')} />
+                puedeTramitar={puede('casos.crear')} puedeEditar={puede('solicitantes.editar')}
+                editar={setEditandoPersona} mover={setMoviendo} />
             </Card>
           )
         })()}
@@ -203,6 +214,12 @@ export function ClienteFicha() {
       <FormularioGrupo clienteId={clienteId} abierto={nuevoGrupo} cerrar={() => setNuevoGrupo(false)} creado={refrescar} />
       <FormularioSolicitante destino={agregarA} cerrar={() => setAgregarA(null)} creado={refrescar} />
       <FormularioTramite solicitante={tramitando} cerrar={() => setTramitando(null)} />
+      <FormularioEditarPersona solicitante={editandoPersona}
+        cerrar={() => setEditandoPersona(null)} guardado={refrescar} />
+      <FormularioMover solicitante={moviendo} clienteId={clienteId} grupos={c.grupos}
+        cerrar={() => setMoviendo(null)} guardado={refrescar} />
+      <FormularioEditarGrupo grupo={editandoGrupo} cerrar={() => setEditandoGrupo(null)}
+        guardado={refrescar} />
     </Stack>
   )
 }
@@ -218,8 +235,13 @@ const Dato = ({ titulo, valor }: { titulo: string; valor: string | null | undefi
   </div>
 )
 
-function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar }: {
-  solicitantes: Solicitante[]; tramitar: (s: Solicitante) => void; puedeTramitar: boolean
+function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar, editar, mover }: {
+  solicitantes: Solicitante[]
+  tramitar: (s: Solicitante) => void
+  puedeTramitar: boolean
+  puedeEditar: boolean
+  editar: (s: Solicitante) => void
+  mover: (s: Solicitante) => void
 }) {
   const ver = useMutation({
     mutationFn: (id: number) => exigir(api.GET('/api/v1/solicitantes/{solicitante_id}/pasaporte', {
@@ -266,9 +288,22 @@ function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar }: {
               ) : <Text size="sm" c="dimmed">—</Text>}
             </Table.Td>
             <Table.Td>
-              {puedeTramitar && (
-                <Button size="compact-xs" variant="light" leftSection={<IconPlaneDeparture size={12} />}
-                  onClick={() => tramitar(s)}>Nuevo trámite</Button>)}
+              <Group gap={4} justify="flex-end" wrap="nowrap">
+                {puedeEditar && (
+                  <>
+                    <Tooltip label="Corregir sus datos">
+                      <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Editar persona"
+                        onClick={() => editar(s)}><IconPencil size={13} /></ActionIcon>
+                    </Tooltip>
+                    <Tooltip label={s.grupo_id ? 'Sacar del grupo o pasarlo a otro' : 'Meterlo en un grupo'}>
+                      <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Mover de grupo"
+                        onClick={() => mover(s)}><IconArrowsExchange size={13} /></ActionIcon>
+                    </Tooltip>
+                  </>)}
+                {puedeTramitar && (
+                  <Button size="compact-xs" variant="light" leftSection={<IconPlaneDeparture size={12} />}
+                    onClick={() => tramitar(s)}>Nuevo trámite</Button>)}
+              </Group>
             </Table.Td>
           </Table.Tr>
         ))}
@@ -670,6 +705,156 @@ function FormularioNota({ clienteId, tramites, abierto, cerrar, guardado }: {
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
             <Button type="submit" loading={guardar.isPending}>Registrar</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>)
+}
+
+
+/** Corregir los datos de una persona. El pasaporte se deja en blanco si no se
+ *  va a cambiar: llega enmascarado y reenviarlo así lo dañaría. */
+function FormularioEditarPersona({ solicitante, cerrar, guardado }: {
+  solicitante: Solicitante | null; cerrar: () => void; guardado: () => void
+}) {
+  const formulario = useForm({
+    initialValues: { nombre: '', tipo_documento: '', numero_documento: '', pasaporte: '',
+                     nacionalidad: '', relacion_con_cliente: '', observaciones: '' },
+  })
+  useEffect(() => {
+    if (!solicitante) return
+    formulario.setValues({
+      nombre: solicitante.nombre, tipo_documento: solicitante.tipo_documento ?? '',
+      numero_documento: solicitante.numero_documento ?? '', pasaporte: '',
+      nacionalidad: solicitante.nacionalidad ?? '',
+      relacion_con_cliente: solicitante.relacion_con_cliente ?? '',
+      observaciones: solicitante.observaciones ?? '',
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solicitante?.id])
+
+  const guardar = useMutation({
+    mutationFn: (v: typeof formulario.values) => exigir(api.PATCH('/api/v1/solicitantes/{solicitante_id}', {
+      params: { path: { solicitante_id: solicitante!.id } },
+      body: Object.fromEntries(
+        Object.entries(v).filter(([k, x]) => k !== 'pasaporte' || x !== '')
+          .map(([k, x]) => [k, x === '' ? null : x])) as never,
+    })),
+    onSuccess: () => {
+      notifications.show({ color: 'teal', message: 'Datos corregidos' })
+      guardado(); cerrar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo guardar'),
+  })
+
+  return (
+    <Modal opened={solicitante !== null} onClose={cerrar} title="Corregir los datos de la persona">
+      <form onSubmit={formulario.onSubmit((v) => guardar.mutate(v))}>
+        <Stack>
+          <TextInput label="Nombre completo" data-autofocus {...formulario.getInputProps('nombre')} />
+          <Group grow>
+            <TextInput label="Tipo de documento" {...formulario.getInputProps('tipo_documento')} />
+            <TextInput label="Número de documento" {...formulario.getInputProps('numero_documento')} />
+          </Group>
+          <TextInput label="Pasaporte" placeholder="Déjelo vacío si no cambia"
+            description="Se guarda cifrado. Escribirlo aquí reemplaza el que estaba."
+            {...formulario.getInputProps('pasaporte')} />
+          <Group grow>
+            <TextInput label="Nacionalidad" {...formulario.getInputProps('nacionalidad')} />
+            <Select label="Relación" data={RELACIONES} clearable
+              {...formulario.getInputProps('relacion_con_cliente')} />
+          </Group>
+          <TextInput label="Observaciones" {...formulario.getInputProps('observaciones')} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={cerrar}>Cancelar</Button>
+            <Button type="submit" loading={guardar.isPending}>Guardar</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>)
+}
+
+/** Mover a alguien entre el cliente y sus grupos. Nadie puede quedar suelto:
+ *  un solicitante sin grupo y sin cliente sería un trámite de nadie. */
+function FormularioMover({ solicitante, clienteId, grupos, cerrar, guardado }: {
+  solicitante: Solicitante | null; clienteId: number; grupos: Grupo[]
+  cerrar: () => void; guardado: () => void
+}) {
+  const [destino, setDestino] = useState<string>('cliente')
+  useEffect(() => {
+    setDestino(solicitante?.grupo_id ? String(solicitante.grupo_id) : 'cliente')
+  }, [solicitante?.id, solicitante?.grupo_id])
+
+  const mover = useMutation({
+    mutationFn: () => exigir(api.PATCH('/api/v1/solicitantes/{solicitante_id}', {
+      params: { path: { solicitante_id: solicitante!.id } },
+      body: destino === 'cliente'
+        ? { grupo_id: null, cliente_id: clienteId }
+        : { grupo_id: Number(destino) },
+    })),
+    onSuccess: () => {
+      notifications.show({ color: 'teal', message: 'Persona movida' })
+      guardado(); cerrar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo mover'),
+  })
+
+  const opciones = [
+    { value: 'cliente', label: 'Sin grupo (cuelga del cliente)' },
+    ...grupos.map((g) => ({ value: String(g.id), label: g.nombre })),
+  ]
+
+  return (
+    <Modal opened={solicitante !== null} onClose={cerrar}
+      title={`Mover a ${solicitante?.nombre ?? ''}`}>
+      <Stack>
+        <Select label="¿Dónde queda?" data={opciones} value={destino} allowDeselect={false}
+          onChange={(v) => setDestino(v ?? 'cliente')} data-autofocus
+          description="Sus trámites se mueven con la persona: no se pierde nada." />
+        {grupos.length === 0 && (
+          <Alert color="gray" variant="light">
+            Todavía no hay grupos. Cree uno desde «Nuevo grupo» para poder mover personas.
+          </Alert>)}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={cerrar}>Cancelar</Button>
+          <Button loading={mover.isPending} onClick={() => mover.mutate()}>Mover</Button>
+        </Group>
+      </Stack>
+    </Modal>)
+}
+
+/** Corregir el grupo. «Quién contrata» es el verbo que pide RF-003 y hasta
+ *  ahora quedaba fijo en quien lo creó. */
+function FormularioEditarGrupo({ grupo, cerrar, guardado }: {
+  grupo: Grupo | null; cerrar: () => void; guardado: () => void
+}) {
+  const formulario = useForm({ initialValues: { nombre: '', observaciones: '' } })
+  useEffect(() => {
+    if (grupo) formulario.setValues({ nombre: grupo.nombre, observaciones: grupo.observaciones ?? '' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grupo?.id])
+
+  const guardar = useMutation({
+    mutationFn: (v: typeof formulario.values) => exigir(api.PATCH('/api/v1/grupos/{grupo_id}', {
+      params: { path: { grupo_id: grupo!.id } },
+      body: { nombre: v.nombre, observaciones: v.observaciones || null },
+    })),
+    onSuccess: () => {
+      notifications.show({ color: 'teal', message: 'Grupo corregido' })
+      guardado(); cerrar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo guardar'),
+  })
+
+  return (
+    <Modal opened={grupo !== null} onClose={cerrar} title="Corregir el grupo">
+      <form onSubmit={formulario.onSubmit((v) => guardar.mutate(v))}>
+        <Stack>
+          <TextInput label="Nombre del grupo" data-autofocus {...formulario.getInputProps('nombre')} />
+          <TextInput label="Observaciones" {...formulario.getInputProps('observaciones')} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={cerrar}>Cancelar</Button>
+            <Button type="submit" loading={guardar.isPending}>Guardar</Button>
           </Group>
         </Stack>
       </form>

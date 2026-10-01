@@ -320,3 +320,47 @@ def test_quien_ve_todo_sigue_viendo_todo(cliente, db, usuario, solicitante, pais
     mio = crear_caso(cliente, cab, solicitante, pais_usa, dueno.u.id)
     vistos = cliente.get(CASOS, headers=entrar(cliente, miron)).json()
     assert mio['id'] in [c['id'] for c in vistos['items']]
+
+
+def test_reprogramar_una_cita_no_tumba_la_peticion(cliente, operaciones, solicitante, pais_usa, db):
+    """La auditoría recibía la fecha nueva como datetime crudo y la columna es
+    jsonb: la petición entera moría con un 500. Registrar la auditoría no puede
+    ser lo que tumbe la operación que audita."""
+    cab, p = operaciones
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, p.u.id)
+    cita = cliente.post(f'{CASOS}/{caso["id"]}/citas', headers=cab, json={
+        'tipo': 'entrevista', 'inicia_en': '2027-04-15T07:30:00-05:00'}).json()
+
+    r = cliente.patch(f'/api/v1/citas/{cita["id"]}', headers=cab, json={
+        'inicia_en': '2027-05-20T09:00:00-05:00', 'estado': 'reprogramada',
+        'observaciones': 'El consulado la corrió dos semanas'})
+    assert r.status_code == 200, r.text
+    assert r.json()['estado'] == 'reprogramada'
+    assert r.json()['inicia_en'].startswith('2027-05-20')
+
+    # y el cambio quedó contado en el historial del trámite
+    titulos = [h['titulo'] for h in
+               cliente.get(f'{CASOS}/{caso["id"]}/historial', headers=cab).json()]
+    assert any('reprogramada' in t for t in titulos), titulos
+
+
+def test_mover_una_cita_deja_una_sola_linea_en_el_historial(cliente, operaciones, solicitante,
+                                                            pais_usa):
+    """Reprogramar cambia fecha, estado y nota a la vez. Escribir una entrada por
+    campo dejaba tres renglones casi iguales para algo que la persona vivió como
+    un solo acto: «el consulado me corrió la cita»."""
+    cab, p = operaciones
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, p.u.id)
+    cita = cliente.post(f'{CASOS}/{caso["id"]}/citas', headers=cab, json={
+        'tipo': 'entrevista', 'inicia_en': '2027-04-15T07:30:00-05:00'}).json()
+    antes = len(cliente.get(f'{CASOS}/{caso["id"]}/historial', headers=cab).json())
+
+    cliente.patch(f'/api/v1/citas/{cita["id"]}', headers=cab, json={
+        'inicia_en': '2027-05-20T09:00:00-05:00', 'estado': 'reprogramada',
+        'observaciones': 'El consulado la corrió'})
+
+    historial = cliente.get(f'{CASOS}/{caso["id"]}/historial', headers=cab).json()
+    assert len(historial) == antes + 1, [h['titulo'] for h in historial]
+    nueva = historial[0]
+    assert 'reprogramada' in nueva['titulo']
+    assert nueva['observacion'] == 'El consulado la corrió', 'la nota va en la misma línea'

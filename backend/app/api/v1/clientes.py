@@ -108,6 +108,18 @@ def crear_grupo(datos: esq.GrupoCrear, request: Request,
                            observaciones=g.observaciones, solicitantes=[])
 
 
+@router.patch('/grupos/{grupo_id}', response_model=esq.GrupoSalida)
+def editar_grupo(grupo_id: int, datos: esq.GrupoEditar, request: Request,
+                 actor: Usuarios = Depends(requiere('solicitantes.editar')),
+                 db: Session = Depends(get_db)):
+    g = personas.editar_grupo(db, actor, grupo_id, datos.model_dump(exclude_unset=True),
+                              ip=ip_cliente(request))
+    return esq.GrupoSalida(id=g.id, nombre=g.nombre, cliente_contacto_id=g.cliente_contacto_id,
+                           observaciones=g.observaciones,
+                           solicitantes=[_solicitante(s) for s in
+                                         personas.solicitantes_de(db, grupo_id=g.id)])
+
+
 @router.get('/solicitantes', response_model=list[esq.SolicitanteSalida])
 def listar_solicitantes(cliente_id: int | None = None, grupo_id: int | None = None,
                         _: Usuarios = Depends(requiere('solicitantes.ver')), db: Session = Depends(get_db)):

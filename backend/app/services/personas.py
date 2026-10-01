@@ -182,6 +182,58 @@ def obtener_solicitante(db: Session, solicitante_id: int) -> Solicitantes:
     return s
 
 
+def _mover(db: Session, solicitante: Solicitantes, cambios: dict) -> None:
+    """Cambia a la persona de grupo, o la saca del grupo y la deja colgando del
+    cliente.
+
+    La familia casi nunca se conoce el primer día: el cliente llega solo, se le
+    abre su ficha, y dos semanas después dice que viajan los tres. Sin esto hay
+    que borrar a la persona y volverla a crear, perdiendo su trámite.
+
+    La regla de siempre se mantiene: nadie queda suelto. Un solicitante sin
+    grupo y sin cliente sería un trámite que no le pertenece a nadie.
+    """
+    grupo_id = cambios.get('grupo_id', solicitante.grupo_id)
+    cliente_id = cambios.get('cliente_id', solicitante.cliente_id)
+    if not grupo_id and not cliente_id:
+        raise Invalido('El solicitante debe pertenecer a un grupo o a un cliente.')
+    if grupo_id:
+        grupo = db.get(Grupos, grupo_id)
+        if grupo is None:
+            raise NoEncontrado('El grupo no existe.')
+        # Al entrar a un grupo deja de colgar del cliente: si no, aparecería dos
+        # veces en la ficha, dentro del grupo y en «Sin grupo».
+        cliente_id = None
+    elif cliente_id:
+        obtener(db, cliente_id)
+    solicitante.grupo_id, solicitante.cliente_id = grupo_id, cliente_id
+
+
+def editar_grupo(db: Session, actor: Usuarios, grupo_id: int, cambios: dict,
+                 ip: str | None = None) -> Grupos:
+    """Corregir el nombre, las observaciones o quién es el contacto principal.
+
+    Hasta ahora el grupo era inmutable: un nombre mal escrito o un contacto
+    equivocado no se podían arreglar desde el producto.
+    """
+    grupo = db.get(Grupos, grupo_id)
+    if grupo is None:
+        raise NoEncontrado('El grupo no existe.')
+    antes = instantanea(grupo)
+    if cambios.get('cliente_contacto_id'):
+        obtener(db, cambios['cliente_contacto_id'])
+        grupo.cliente_contacto_id = cambios['cliente_contacto_id']
+    if cambios.get('nombre'):
+        grupo.nombre = cambios['nombre'].strip()
+    if 'observaciones' in cambios:
+        grupo.observaciones = cambios['observaciones']
+    db.flush()
+    auditar(db, operacion='update', entidad='grupos', usuario_id=actor.id, entidad_id=grupo.id,
+            antes=antes, despues=instantanea(grupo), ip=ip)
+    db.commit()
+    return grupo
+
+
 def crear_solicitante(db: Session, actor: Usuarios, datos: dict, ip: str | None = None) -> Solicitantes:
     """Cada persona que viaja. Debe colgar de un grupo o de un cliente: un
     solicitante suelto sería un trámite que no le pertenece a nadie."""
@@ -215,6 +267,8 @@ def editar_solicitante(db: Session, actor: Usuarios, solicitante_id: int, cambio
     for campo, valor in cambios.items():
         if campo in CAMPOS_SOLICITANTE:
             setattr(solicitante, campo, valor)
+    if 'grupo_id' in cambios or 'cliente_id' in cambios:
+        _mover(db, solicitante, cambios)
     if 'pasaporte' in cambios:
         _cifrar_pasaporte(solicitante, cambios['pasaporte'])
     try:
