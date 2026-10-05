@@ -216,8 +216,10 @@ export function ClienteFicha() {
       <FormularioTramite solicitante={tramitando} cerrar={() => setTramitando(null)} />
       <FormularioEditarPersona solicitante={editandoPersona}
         cerrar={() => setEditandoPersona(null)} guardado={refrescar} />
-      <FormularioMover solicitante={moviendo} clienteId={clienteId} grupos={c.grupos}
-        cerrar={() => setMoviendo(null)} guardado={refrescar} />
+      {/* La `key` remonta el formulario al cambiar de persona: sin eso se vería
+          por un instante el grupo de la anterior. */}
+      <FormularioMover key={moviendo?.id ?? 'ninguno'} solicitante={moviendo} clienteId={clienteId}
+        grupos={c.grupos} cerrar={() => setMoviendo(null)} guardado={refrescar} />
       <FormularioEditarGrupo grupo={editandoGrupo} cerrar={() => setEditandoGrupo(null)}
         guardado={refrescar} />
     </Stack>
@@ -780,10 +782,10 @@ function FormularioMover({ solicitante, clienteId, grupos, cerrar, guardado }: {
   solicitante: Solicitante | null; clienteId: number; grupos: Grupo[]
   cerrar: () => void; guardado: () => void
 }) {
-  const [destino, setDestino] = useState<string>('cliente')
-  useEffect(() => {
-    setDestino(solicitante?.grupo_id ? String(solicitante.grupo_id) : 'cliente')
-  }, [solicitante?.id, solicitante?.grupo_id])
+  // El componente se remonta por su `key` cuando cambia la persona, así que el
+  // valor inicial basta y no hace falta un efecto que lo sincronice.
+  const [destino, setDestino] = useState<string>(
+    solicitante?.grupo_id ? String(solicitante.grupo_id) : 'cliente')
 
   const mover = useMutation({
     mutationFn: () => exigir(api.PATCH('/api/v1/solicitantes/{solicitante_id}', {

@@ -18,6 +18,7 @@ import { CambiarContrasena } from './paginas/CambiarContrasena'
 import { CasoFicha } from './paginas/CasoFicha'
 import { Casos } from './paginas/Casos'
 import { ClienteFicha } from './paginas/ClienteFicha'
+import { Embudo } from './paginas/Embudo'
 import { Clientes } from './paginas/Clientes'
 import { Configuracion } from './paginas/Configuracion'
 import { DobleFactor } from './paginas/DobleFactor'
@@ -67,6 +68,7 @@ const enruta = createBrowserRouter([
               { path: '/', element: <Inicio /> },
               { path: '/casos', element: <Casos /> },
               { path: '/casos/:id', element: <CasoFicha /> },
+              { path: '/embudo', element: <Embudo /> },
               { path: '/clientes', element: <Clientes /> },
               { path: '/clientes/:id', element: <ClienteFicha /> },
               { path: '/usuarios', element: <Usuarios /> },

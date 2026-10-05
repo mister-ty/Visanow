@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import requiere
 from app.db.session import get_db
-from app.models.esquema import (Canales, EstadosComerciales, EstadosOperativos, Modalidades,
-                                Paises, Sedes, Servicios, TiposVisa, Usuarios)
+from app.models.esquema import (Campanias, Canales, EstadosComerciales, EstadosOperativos,
+                                Modalidades, MotivosPerdida, Paises, Sedes, Servicios, TiposVisa,
+                                Usuarios)
 
 router = APIRouter(tags=['catálogos'])
 
@@ -32,6 +33,8 @@ class Catalogos(BaseModel):
     servicios: list[Opcion]
     estados_operativos: list[Opcion]
     estados_comerciales: list[Opcion]
+    motivos_perdida: list[Opcion]
+    campanias: list[Opcion]
 
 
 @router.get('/catalogos', response_model=Catalogos)
@@ -56,4 +59,7 @@ def catalogos(_: Usuarios = Depends(requiere('catalogos.ver')), db: Session = De
         servicios=opciones(Servicios, activos=True),
         estados_operativos=opciones(EstadosOperativos, activos=True, orden=EstadosOperativos.orden),
         estados_comerciales=opciones(EstadosComerciales, activos=True, orden=EstadosComerciales.orden),
+        # Perder se explica con un motivo del catálogo, no con texto libre (RF-015)
+        motivos_perdida=opciones(MotivosPerdida),
+        campanias=opciones(Campanias, activos=True),
     )

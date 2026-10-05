@@ -31,16 +31,8 @@ export const SECCIONES: Seccion[] = [
     },
   },
   {
-    ruta: '/embudo', titulo: 'Embudo comercial', icono: IconFilter, permiso: 'oportunidades.ver',
-    pendiente: {
-      actividad: '3.1 a 3.4', fecha: '05 y 06/10', desde: '05/10',
-      contenido: [
-        'Leads por canal, campaña, influencer o referido',
-        'Tablero Kanban del embudo, con próxima acción obligatoria',
-        'Cotización con las tarifas del catálogo según el número de personas',
-        'Al marcar «Ganado» se crean la venta y los trámites sin volver a digitar',
-      ],
-    },
+    ruta: '/embudo', titulo: 'Embudo comercial', icono: IconFilter,
+    permiso: 'oportunidades.ver',
   },
   {
     ruta: '/pagos', titulo: 'Pagos y cartera', icono: IconCash, permiso: 'pagos.ver',

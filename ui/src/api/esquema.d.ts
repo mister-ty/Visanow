@@ -647,6 +647,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/oportunidades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar
+         * @description Lista filtrable del embudo (RF-011).
+         *
+         *     Lo que devuelve depende del alcance del usuario (RNF-03): una comercial con
+         *     alcance «propios» ve sus oportunidades aunque no filtre por asesor.
+         */
+        get: operations["listar_api_v1_oportunidades_get"];
+        put?: never;
+        /** Crear */
+        post: operations["crear_api_v1_oportunidades_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oportunidades/embudo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Embudo
+         * @description Cuántas oportunidades y cuánto dinero hay en cada paso: el Kanban en números.
+         */
+        get: operations["embudo_api_v1_oportunidades_embudo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oportunidades/{oportunidad_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detalle */
+        get: operations["detalle_api_v1_oportunidades__oportunidad_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Editar */
+        patch: operations["editar_api_v1_oportunidades__oportunidad_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/oportunidades/{oportunidad_id}/estado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mover
+         * @description Mueve la oportunidad por el embudo. Perder exige motivo (RF-015).
+         */
+        post: operations["mover_api_v1_oportunidades__oportunidad_id__estado_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oportunidades/{oportunidad_id}/contacto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Contacto
+         * @description Deja constancia de que se le habló y de qué sigue (RF-012).
+         */
+        post: operations["contacto_api_v1_oportunidades__oportunidad_id__contacto_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usuarios": {
         parameters: {
             query?: never;
@@ -1003,6 +1105,10 @@ export interface components {
             estados_operativos: components["schemas"]["Opcion"][];
             /** Estados Comerciales */
             estados_comerciales: components["schemas"]["Opcion"][];
+            /** Motivos Perdida */
+            motivos_perdida: components["schemas"]["Opcion"][];
+            /** Campanias */
+            campanias: components["schemas"]["Opcion"][];
         };
         /** CitaCrear */
         CitaCrear: {
@@ -1237,6 +1343,13 @@ export interface components {
              */
             posible_familiar: boolean;
         };
+        /** ContactoOportunidad */
+        ContactoOportunidad: {
+            /** Proxima Accion */
+            proxima_accion?: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha?: string | null;
+        };
         /** DesafioMfa */
         DesafioMfa: {
             /**
@@ -1416,6 +1529,23 @@ export interface components {
              */
             uri: string;
         };
+        /** MoverOportunidad */
+        MoverOportunidad: {
+            /** Codigo Destino */
+            codigo_destino: string;
+            /**
+             * Motivo Perdida
+             * @description Obligatorio al cerrar como perdida
+             */
+            motivo_perdida?: string | null;
+            /** Nota */
+            nota?: string | null;
+            /**
+             * Proxima Accion
+             * @description Obligatoria mientras siga abierta
+             */
+            proxima_accion?: string | null;
+        };
         /** NotaCrear */
         NotaCrear: {
             /**
@@ -1456,6 +1586,117 @@ export interface components {
             /** Pais Id */
             pais_id?: number | null;
         };
+        /** OportunidadCrear */
+        OportunidadCrear: {
+            /** Cliente Id */
+            cliente_id: number;
+            /**
+             * Servicio Id
+             * @description Qué le interesa
+             */
+            servicio_id?: number | null;
+            /** Pais Id */
+            pais_id?: number | null;
+            /**
+             * Canal Id
+             * @description Por dónde llegó
+             */
+            canal_id?: number | null;
+            /** Campania Id */
+            campania_id?: number | null;
+            /**
+             * Campania
+             * @description La campaña o el influencer, si no está en catálogo
+             */
+            campania?: string | null;
+            /**
+             * Referido Por Cliente Id
+             * @description Quién lo recomendó
+             */
+            referido_por_cliente_id?: number | null;
+            /**
+             * Asesor Id
+             * @description Si no se dice, queda a nombre de quien lo crea
+             */
+            asesor_id?: number | null;
+            /** Valor Estimado */
+            valor_estimado?: number | null;
+            /** Proxima Accion */
+            proxima_accion: string;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha?: string | null;
+        };
+        /** OportunidadEditar */
+        OportunidadEditar: {
+            /** Servicio Id */
+            servicio_id?: number | null;
+            /** Pais Id */
+            pais_id?: number | null;
+            /** Canal Id */
+            canal_id?: number | null;
+            /** Campania Id */
+            campania_id?: number | null;
+            /** Campania */
+            campania?: string | null;
+            /** Referido Por Cliente Id */
+            referido_por_cliente_id?: number | null;
+            /** Asesor Id */
+            asesor_id?: number | null;
+            /** Valor Estimado */
+            valor_estimado?: number | null;
+            /** Proxima Accion */
+            proxima_accion?: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha?: string | null;
+        };
+        /** OportunidadSalida */
+        OportunidadSalida: {
+            /** Id */
+            id: number;
+            /** Cliente Id */
+            cliente_id: number;
+            /** Cliente */
+            cliente: string;
+            /** Estado */
+            estado: string;
+            /** Estado Nombre */
+            estado_nombre: string;
+            /** Es Cierre */
+            es_cierre: boolean;
+            /** Asesor */
+            asesor: string | null;
+            /** Asesor Id */
+            asesor_id: number | null;
+            /** Servicio Id */
+            servicio_id: number | null;
+            /** Pais Id */
+            pais_id: number | null;
+            /** Canal Id */
+            canal_id: number | null;
+            /** Campania Id */
+            campania_id: number | null;
+            /** Campania */
+            campania: string | null;
+            /** Valor Estimado */
+            valor_estimado: number | null;
+            /** Proxima Accion */
+            proxima_accion: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha: string | null;
+            /** Dias Sin Contacto */
+            dias_sin_contacto: number;
+            /** Ultimo Contacto En */
+            ultimo_contacto_en: string | null;
+            /** Motivo Perdida Id */
+            motivo_perdida_id: number | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+            /** Cerrado En */
+            cerrado_en: string | null;
+        };
         /** PaginaCasos */
         PaginaCasos: {
             /** Total */
@@ -1478,6 +1719,17 @@ export interface components {
             /** Items */
             items: components["schemas"]["ClienteSalida"][];
         };
+        /** PaginaOportunidades */
+        PaginaOportunidades: {
+            /** Total */
+            total: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["OportunidadSalida"][];
+        };
         /** PasaporteSalida */
         PasaporteSalida: {
             /** Solicitante Id */
@@ -1487,6 +1739,21 @@ export interface components {
              * @description Valor completo. La consulta queda en la auditoría.
              */
             pasaporte: string;
+        };
+        /** PasoEmbudo */
+        PasoEmbudo: {
+            /** Codigo */
+            codigo: string;
+            /** Nombre */
+            nombre: string;
+            /** Orden */
+            orden: number;
+            /** Es Cierre */
+            es_cierre: boolean;
+            /** Cuantas */
+            cuantas: number;
+            /** Valor Estimado */
+            valor_estimado: number;
         };
         /** PasswordTemporalSalida */
         PasswordTemporalSalida: {
@@ -3078,6 +3345,236 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_api_v1_oportunidades_get: {
+        parameters: {
+            query?: {
+                estado?: string | null;
+                asesor_id?: number | null;
+                canal_id?: number | null;
+                servicio_id?: number | null;
+                campania_id?: number | null;
+                incluir_cerradas?: boolean;
+                /** @description Sin contacto hace más de N días */
+                frias_desde?: number | null;
+                texto?: string | null;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaOportunidades"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_api_v1_oportunidades_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OportunidadCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OportunidadSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    embudo_api_v1_oportunidades_embudo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasoEmbudo"][];
+                };
+            };
+        };
+    };
+    detalle_api_v1_oportunidades__oportunidad_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                oportunidad_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OportunidadSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editar_api_v1_oportunidades__oportunidad_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                oportunidad_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OportunidadEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OportunidadSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mover_api_v1_oportunidades__oportunidad_id__estado_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                oportunidad_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoverOportunidad"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OportunidadSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    contacto_api_v1_oportunidades__oportunidad_id__contacto_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                oportunidad_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContactoOportunidad"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OportunidadSalida"];
                 };
             };
             /** @description Validation Error */

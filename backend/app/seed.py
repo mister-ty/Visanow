@@ -486,6 +486,61 @@ def sembrar_parametros(cur) -> int:
     return len(PARAMETROS)
 
 
+
+# La regla de comisión, tal como la dio la administradora el 03/10/2026 (D-03).
+#
+# Angie comisiona el 7 % del valor de la venta. Sobre sus primeras diez ventas
+# de servicio premium del periodo se le paga el 10 %, y de la once en adelante
+# vuelve al 7 %. La renovación no cuenta para esas diez. La comisión se gana
+# cuando el cliente termina de pagar toda la venta, no al cerrarla. Y la base es
+# solo el valor del servicio: la tasa consular es plata del consulado y la paga
+# el cliente directamente allá.
+#
+# La regla vive en una fila y no en el código porque RN-07 exige que cada venta
+# congele la regla que tenía ese día: si en enero cambia el porcentaje, las
+# comisiones de octubre no se mueven.
+COMISIONES = [
+    # base='vendido' porque dijo «el 7 % del valor de la venta». Que la comisión
+    # se GANE cuando el cliente termina de pagar es el disparador, no la base, y
+    # va en `se_causa_con`. Que la tasa consular quede fuera tampoco cabe en la
+    # columna: va en `excluye_de_la_base`.
+    ('Angie — 7 % con escalón del 10 % en las primeras 10 premium', 'angie', 'vendido', 7.0, 10, {
+        'se_causa_con': 'pago_total',
+        'porcentaje_base': 7.0,
+        'porcentaje_meta': 10.0,
+        'meta_cantidad': 10,
+        'meta_periodo': 'mes',
+        'servicios_que_cuentan_para_la_meta': ['asesoria_adelanto', 'renovacion_premium'],
+        'servicios_excluidos_de_la_meta': ['renovacion'],
+        'excluye_de_la_base': ['recaudo_terceros'],
+        'dicho_por': 'Administradora VisaNow, WhatsApp del 03/10/2026 (decisión D-03)',
+    }),
+    # La respuesta dice que comisionan Angie y Yas, pero solo dio el porcentaje
+    # de Angie. Se deja el 7 % para Yas y queda por confirmar antes del 09/10.
+    ('Yas — 7 % (porcentaje por confirmar)', 'yasmin', 'vendido', 7.0, None, {
+        'se_causa_con': 'pago_total',
+        'porcentaje_base': 7.0,
+        'excluye_de_la_base': ['recaudo_terceros'],
+        'por_confirmar': 'La administradora dijo que Yas comisiona, pero no dio su porcentaje. '
+                         'Se asume el mismo 7 % de Angie hasta que lo confirme.',
+        'dicho_por': 'Administradora VisaNow, WhatsApp del 03/10/2026 (decisión D-03)',
+    }),
+]
+
+
+def sembrar_comisiones(cur) -> int:
+    n = 0
+    for nombre, vendedor, base, porcentaje, meta, definicion in COMISIONES:
+        cur.execute("""insert into comisiones_reglas
+                           (nombre, base, porcentaje, meta_cantidad, vigente_desde,
+                            definicion, activo)
+                       values (%s, %s, %s, %s, date '2026-01-01', %s::jsonb, true)
+                       on conflict do nothing""",
+                    (nombre, base, porcentaje, meta, json.dumps(definicion)))
+        n += cur.rowcount
+    return n
+
+
 def main() -> None:
     cargar_env()
     url = os.environ['DATABASE_URL'].replace('postgresql+psycopg://', 'postgresql://')
@@ -600,6 +655,12 @@ def main() -> None:
         except psycopg.errors.UndefinedColumn as e:
             con.rollback()
             print(f'  alertas_tipos         (columnas distintas: {str(e).splitlines()[0][:60]})')
+
+        try:
+            print(f'  comisiones_reglas     {sembrar_comisiones(cur)}')
+        except psycopg.errors.UndefinedTable:
+            con.rollback()
+            print('  comisiones_reglas     (tabla ausente)')
 
         con.commit()
     print('\nSeed completo.')
