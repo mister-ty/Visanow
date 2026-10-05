@@ -858,6 +858,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cotizar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cotizar
+         * @description El precio del catálogo para N personas, con la tarifa vigente ese día (RF-013).
+         *
+         *     No escribe nada: sirve para mostrarle al cliente qué va a pagar antes de
+         *     cerrar la venta.
+         */
+        post: operations["cotizar_api_v1_cotizar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oportunidades/{oportunidad_id}/ganar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ganar
+         * @description Convierte la oportunidad en venta y abre un trámite por persona (RF-014).
+         *
+         *     Sin volver a digitar: el cliente, el servicio, el país y el asesor salen de
+         *     la oportunidad, y las personas, de la ficha del cliente.
+         */
+        post: operations["ganar_api_v1_oportunidades__oportunidad_id__ganar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ventas/{negocio_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detalle */
+        get: operations["detalle_api_v1_ventas__negocio_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/salud": {
         parameters: {
             query?: never;
@@ -935,6 +998,15 @@ export interface components {
             proxima_accion?: string | null;
             /** Proxima Accion Fecha */
             proxima_accion_fecha?: string | null;
+        };
+        /** CasoDeVenta */
+        CasoDeVenta: {
+            /** Id */
+            id: number;
+            /** Solicitante Id */
+            solicitante_id: number;
+            /** Solicitante */
+            solicitante: string;
         };
         /** CasoDetalle */
         CasoDetalle: {
@@ -1349,6 +1421,100 @@ export interface components {
             proxima_accion?: string | null;
             /** Proxima Accion Fecha */
             proxima_accion_fecha?: string | null;
+        };
+        /** ConvertirEntrada */
+        ConvertirEntrada: {
+            /**
+             * Servicio Id
+             * @description Si no se dice, el de la oportunidad
+             */
+            servicio_id?: number | null;
+            /** Personas */
+            personas?: number | null;
+            /**
+             * Descuento
+             * @default 0
+             */
+            descuento: number;
+            /** Valor Pactado */
+            valor_pactado?: number | null;
+            /** Fecha Venta */
+            fecha_venta?: string | null;
+            /**
+             * Solicitantes Ids
+             * @description Quiénes viajan. Si no se dice, todas las personas del cliente
+             */
+            solicitantes_ids?: number[] | null;
+            /** Pais Id */
+            pais_id?: number | null;
+            /** Observaciones */
+            observaciones?: string | null;
+            /**
+             * Abrir Tramites
+             * @description Abre un trámite por persona que viaja (RF-014)
+             * @default true
+             */
+            abrir_tramites: boolean;
+        };
+        /** CotizacionSalida */
+        CotizacionSalida: {
+            /** Servicio Id */
+            servicio_id: number;
+            /** Servicio */
+            servicio: string;
+            /** Personas */
+            personas: number;
+            /** Valor Lista */
+            valor_lista: number;
+            /** Descuento */
+            descuento: number;
+            /** Valor Pactado */
+            valor_pactado: number;
+            /** Moneda */
+            moneda: string;
+            /** Tarifa Id */
+            tarifa_id: number | null;
+            /** Vigente Desde */
+            vigente_desde: string | null;
+            /** Tasa Consular Valor */
+            tasa_consular_valor: number | null;
+            /** Tasa Consular Moneda */
+            tasa_consular_moneda: string | null;
+            /**
+             * Tasa Consular Total
+             * @description La paga el cliente directo al consulado: no suma al pactado
+             */
+            tasa_consular_total?: number | null;
+            /**
+             * Avisos
+             * @default []
+             */
+            avisos: string[];
+        };
+        /** CotizarEntrada */
+        CotizarEntrada: {
+            /** Servicio Id */
+            servicio_id: number;
+            /**
+             * Personas
+             * @default 1
+             */
+            personas: number;
+            /**
+             * Descuento
+             * @default 0
+             */
+            descuento: number;
+            /**
+             * Valor Pactado
+             * @description El precio negociado, si no es el de lista
+             */
+            valor_pactado?: number | null;
+            /**
+             * Fecha
+             * @description Para cotizar con la tarifa de ese día
+             */
+            fecha?: string | null;
         };
         /** DesafioMfa */
         DesafioMfa: {
@@ -2055,6 +2221,50 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VentaSalida */
+        VentaSalida: {
+            /** Id */
+            id: number;
+            /** Cliente Id */
+            cliente_id: number;
+            /** Cliente */
+            cliente: string;
+            /** Oportunidad Id */
+            oportunidad_id: number | null;
+            /** Servicio Id */
+            servicio_id: number;
+            /** Servicio */
+            servicio: string;
+            /**
+             * Fecha Venta
+             * Format: date
+             */
+            fecha_venta: string;
+            /** Cantidad Solicitantes */
+            cantidad_solicitantes: number;
+            /** Valor Lista */
+            valor_lista: number;
+            /** Descuento */
+            descuento: number;
+            /** Valor Pactado */
+            valor_pactado: number;
+            /** Moneda */
+            moneda: string;
+            /** Vendedor Id */
+            vendedor_id: number | null;
+            /** Observaciones */
+            observaciones: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+            /**
+             * Casos
+             * @default []
+             */
+            casos: components["schemas"]["CasoDeVenta"][];
         };
         /**
          * VerificarDuplicados
@@ -3774,6 +3984,105 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RolSalida"][];
+                };
+            };
+        };
+    };
+    cotizar_api_v1_cotizar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CotizarEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CotizacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ganar_api_v1_oportunidades__oportunidad_id__ganar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                oportunidad_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertirEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VentaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detalle_api_v1_ventas__negocio_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                negocio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VentaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

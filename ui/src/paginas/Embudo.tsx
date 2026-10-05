@@ -1,12 +1,13 @@
 import {
-  ActionIcon, Alert, Badge, Button, Card, Center, Group, Loader, Modal, NumberInput, Paper,
-  ScrollArea, Select, Stack, Switch, Text, TextInput, Textarea, Title, Tooltip,
+  ActionIcon, Alert, Badge, Button, Card, Center, Group, Loader, Modal, MultiSelect,
+  NumberInput, Paper, ScrollArea, Select, Stack, Switch, Text, TextInput, Textarea, Title,
+  Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { notifications } from '@mantine/notifications'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  IconArrowRight, IconPhoneCall, IconPlus, IconSnowflake, IconUser,
+  IconArrowRight, IconPhoneCall, IconPlus, IconSnowflake, IconTrophy, IconUser,
 } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -34,6 +35,7 @@ export function Embudo() {
   const [creando, setCreando] = useState(false)
   const [moviendo, setMoviendo] = useState<Oportunidad | null>(null)
   const [contactando, setContactando] = useState<Oportunidad | null>(null)
+  const [ganando, setGanando] = useState<Oportunidad | null>(null)
 
   const catalogos = useCatalogos()
   const asignables = useAsignables()
@@ -111,6 +113,7 @@ export function Embudo() {
                   {columna.map((o) => (
                     <Tarjeta key={o.id} o={o} abrir={() => navegar(`/clientes/${o.cliente_id}`)}
                       mover={() => setMoviendo(o)} contactar={() => setContactando(o)}
+                      ganar={() => setGanando(o)} puedeGanar={puede('negocios.crear')}
                       editable={puede('oportunidades.editar')} />
                   ))}
                   {columna.length === 0 && (
@@ -131,12 +134,21 @@ export function Embudo() {
       <ModalMover oportunidad={moviendo} pasos={pasos.data ?? []}
         cerrar={() => setMoviendo(null)} hecho={refrescar} />
       <ModalContacto oportunidad={contactando} cerrar={() => setContactando(null)} hecho={refrescar} />
+      {/* La `key` remonta el formulario al cambiar de oportunidad */}
+      <ModalGanar key={ganando?.id ?? 'ninguno'} oportunidad={ganando}
+        cerrar={() => setGanando(null)} hecho={refrescar} />
     </Stack>
   )
 }
 
-function Tarjeta({ o, abrir, mover, contactar, editable }: {
-  o: Oportunidad; abrir: () => void; mover: () => void; contactar: () => void; editable: boolean
+function Tarjeta({ o, abrir, mover, contactar, ganar, puedeGanar, editable }: {
+  o: Oportunidad
+  abrir: () => void
+  mover: () => void
+  contactar: () => void
+  ganar: () => void
+  puedeGanar: boolean
+  editable: boolean
 }) {
   const frio = o.dias_sin_contacto >= DIAS_FRIO
   return (
@@ -167,9 +179,14 @@ function Tarjeta({ o, abrir, mover, contactar, editable }: {
                 onClick={contactar}><IconPhoneCall size={13} /></ActionIcon>
             </Tooltip>
             <Tooltip label="Mover de paso">
-              <ActionIcon size="sm" variant="subtle" color="teal" aria-label="Mover oportunidad"
+              <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Mover oportunidad"
                 onClick={mover}><IconArrowRight size={13} /></ActionIcon>
             </Tooltip>
+            {puedeGanar && (
+              <Tooltip label="Ganada: crear la venta y abrir los trámites">
+                <ActionIcon size="sm" variant="subtle" color="teal" aria-label="Ganar oportunidad"
+                  onClick={ganar}><IconTrophy size={13} /></ActionIcon>
+              </Tooltip>)}
           </Group>)}
       </Group>
     </Card>)
@@ -359,5 +376,110 @@ function FormularioLead({ abierto, cerrar, creado }: {
           </Group>
         </Stack>
       </form>
+    </Modal>)
+}
+
+
+/** Ganar la oportunidad: se crea la venta y se abre un trámite por cada persona
+ *  que viaja, sin volver a digitar nada (RF-014). El precio sale del catálogo
+ *  según cuántos viajan, y se puede negociar encima. */
+function ModalGanar({ oportunidad, cerrar, hecho }: {
+  oportunidad: Oportunidad | null; cerrar: () => void; hecho: () => void
+}) {
+  const catalogos = useCatalogos()
+  const [servicio, setServicio] = useState<string | null>(
+    oportunidad?.servicio_id ? String(oportunidad.servicio_id) : null)
+  const [elegidos, setElegidos] = useState<string[]>([])
+  const [negociado, setNegociado] = useState<number | string>('')
+  const [observaciones, setObservaciones] = useState('')
+
+  const personas = useQuery({
+    queryKey: ['solicitantes-venta', oportunidad?.cliente_id],
+    queryFn: () => exigir(api.GET('/api/v1/solicitantes', {
+      params: { query: { cliente_id: oportunidad!.cliente_id } },
+    })),
+    enabled: oportunidad !== null,
+  })
+  const viajan = elegidos.length || personas.data?.length || 1
+
+  const cotizacion = useQuery({
+    queryKey: ['cotizar', servicio, viajan, negociado],
+    queryFn: () => exigir(api.POST('/api/v1/cotizar', {
+      body: {
+        servicio_id: Number(servicio), personas: viajan, descuento: 0,
+        ...(negociado ? { valor_pactado: Number(negociado) } : {}),
+      },
+    })),
+    enabled: oportunidad !== null && servicio !== null,
+  })
+
+  const ganar = useMutation({
+    mutationFn: () => exigir(api.POST('/api/v1/oportunidades/{oportunidad_id}/ganar', {
+      params: { path: { oportunidad_id: oportunidad!.id } },
+      body: {
+        descuento: 0, abrir_tramites: true,
+        ...(servicio ? { servicio_id: Number(servicio) } : {}),
+        ...(elegidos.length ? { solicitantes_ids: elegidos.map(Number) } : {}),
+        ...(negociado ? { valor_pactado: Number(negociado) } : {}),
+        ...(observaciones ? { observaciones } : {}),
+      },
+    })),
+    onSuccess: (venta) => {
+      notifications.show({
+        color: 'teal', title: 'Venta creada',
+        message: `Se abrieron ${venta.casos.length} trámite(s) sin volver a digitar nada.`,
+      })
+      hecho(); cerrar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo cerrar la venta'),
+  })
+
+  const c = cotizacion.data
+
+  return (
+    <Modal opened={oportunidad !== null} onClose={cerrar} size="lg"
+      title={`Cerrar la venta de ${oportunidad?.cliente ?? ''}`}>
+      <Stack>
+        <Select label="¿Qué se vendió?" data={aSelect(catalogos.data?.servicios)} searchable
+          value={servicio} onChange={(v) => setServicio(v === null ? null : String(v))}
+          data-autofocus />
+        <MultiSelect label="¿Quiénes viajan?" searchable
+          description="Si no elige a nadie, se abre un trámite para todas las personas del cliente"
+          data={(personas.data ?? []).map((s) => ({ value: String(s.id), label: s.nombre }))}
+          value={elegidos} onChange={setElegidos} />
+
+        {c && (
+          <Card withBorder padding="sm" bg="gray.0">
+            <Group justify="space-between">
+              <Text size="sm">Precio de lista para {c.personas} persona(s)</Text>
+              <Text size="sm" fw={600}>{formatearPesos(c.valor_lista)}</Text>
+            </Group>
+            {c.descuento > 0 && (
+              <Group justify="space-between">
+                <Text size="sm" c="dimmed">Descuento</Text>
+                <Text size="sm" c="dimmed">- {formatearPesos(c.descuento)}</Text>
+              </Group>)}
+            <Group justify="space-between" mt={4}>
+              <Text size="sm" fw={600}>Valor pactado</Text>
+              <Text size="sm" fw={700} c="teal.8">{formatearPesos(c.valor_pactado)}</Text>
+            </Group>
+            {c.avisos.map((a) => (
+              <Text key={a} size="xs" c="dimmed" mt={6}>{a}</Text>))}
+          </Card>)}
+
+        <NumberInput label="Precio negociado" thousandSeparator="." decimalSeparator=","
+          prefix="$ " allowNegative={false} value={negociado} onChange={(v) => setNegociado(typeof v === 'bigint' ? Number(v) : v)}
+          description="Déjelo vacío para cobrar el de lista" />
+        <TextInput label="Observaciones" value={observaciones}
+          placeholder="Descuento por ser referida"
+          onChange={(e) => setObservaciones(e.currentTarget.value)} />
+
+        <Group justify="flex-end">
+          <Button variant="default" onClick={cerrar}>Cancelar</Button>
+          <Button loading={ganar.isPending} disabled={!servicio} onClick={() => ganar.mutate()}>
+            Cerrar la venta
+          </Button>
+        </Group>
+      </Stack>
     </Modal>)
 }
