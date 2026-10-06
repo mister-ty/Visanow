@@ -9,16 +9,16 @@ El evento NO lleva un `check` en la base: el catálogo de eventos vive en el
 servicio y crece con el negocio; atarlo a una restricción obligaría a una
 migración por cada evento nuevo.
 
-Revision ID: 0010_plantillas
-Revises: 0009_liquidaciones
+Revision ID: 0011_plantillas
+Revises: 0010_regla_vendedora
 Create Date: 2026-10-06
 """
 from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = '0010_plantillas'
-down_revision: Union[str, None] = '0009_liquidaciones'
+revision: str = '0011_plantillas'
+down_revision: Union[str, None] = '0010_regla_vendedora'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
