@@ -749,6 +749,190 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pagos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar */
+        get: operations["listar_api_v1_pagos_get"];
+        put?: never;
+        /**
+         * Registrar
+         * @description Un pago es una fila, no una columna (RN-02): caben los que sean.
+         *
+         *     Si no se sabe de qué venta es, entra igual y queda en la bandeja de no
+         *     identificados: es mejor que perderlo o inventarle dueño (RF-043).
+         */
+        post: operations["registrar_api_v1_pagos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pagos/{pago_id}/asignar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Asignar
+         * @description Le pone dueño a un pago que llegó suelto.
+         */
+        post: operations["asignar_api_v1_pagos__pago_id__asignar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pagos/{pago_id}/estado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cambiar Estado
+         * @description Reversar o marcar duplicado. Nunca se borra: un pago borrado es plata que
+         *     desaparece del historial sin dejar rastro.
+         */
+        post: operations["cambiar_estado_api_v1_pagos__pago_id__estado_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ventas/{negocio_id}/cuotas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Crear Cuotas
+         * @description Parte la venta en anticipo y saldo (RF-040).
+         *
+         *     Sin plan de cuotas la cartera vencida sale en cero: una venta que no vence
+         *     nunca no la cobra nadie.
+         */
+        post: operations["crear_cuotas_api_v1_ventas__negocio_id__cuotas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ventas/{negocio_id}/estado-financiero": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Estado Financiero
+         * @description El saldo y su desglose (RF-042). Lo calcula la vista, no se guarda (RN-01).
+         */
+        get: operations["estado_financiero_api_v1_ventas__negocio_id__estado_financiero_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ventas/{negocio_id}/ajustes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ajustar
+         * @description Reembolsos, cargos, descuentos posteriores y condonaciones (RF-045).
+         *
+         *     El monto va siempre en positivo: el tipo decide si sube o baja la deuda.
+         */
+        post: operations["ajustar_api_v1_ventas__negocio_id__ajustes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cartera": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Cartera
+         * @description Quién debe, cuánto y desde cuándo (RF-046).
+         */
+        get: operations["listar_cartera_api_v1_cartera_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cartera/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resumen Cartera */
+        get: operations["resumen_cartera_api_v1_cartera_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cartera/por-estado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cartera Por Estado */
+        get: operations["cartera_por_estado_api_v1_cartera_por_estado_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usuarios": {
         parameters: {
             query?: never;
@@ -942,6 +1126,62 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AjusteCrear */
+        AjusteCrear: {
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "reembolso" | "cargo" | "descuento" | "condonacion";
+            /**
+             * Monto
+             * @description Siempre en positivo: el tipo decide el signo
+             */
+            monto: number;
+            /** Motivo */
+            motivo: string;
+            /** Fecha */
+            fecha?: string | null;
+        };
+        /** AjusteSalida */
+        AjusteSalida: {
+            /** Id */
+            id: number;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "reembolso" | "cargo" | "descuento" | "condonacion";
+            /**
+             * Monto
+             * @description Con signo: positivo sube la deuda, negativo la baja
+             */
+            monto: number;
+            /** Motivo */
+            motivo: string;
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /** Autorizado Por */
+            autorizado_por: number;
+        };
+        /** AsignarPago */
+        AsignarPago: {
+            /** Negocio Id */
+            negocio_id: number;
+        };
+        /** CambiarEstadoPago */
+        CambiarEstadoPago: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "confirmado" | "pendiente" | "no_identificado" | "reversado" | "duplicado";
+            /** Observacion */
+            observacion?: string | null;
+        };
         /** CambioEstado */
         CambioEstado: {
             /** Codigo Destino */
@@ -1516,6 +1756,20 @@ export interface components {
              */
             fecha?: string | null;
         };
+        /** CuotaSalida */
+        CuotaSalida: {
+            /** Numero */
+            numero: number;
+            /** Concepto */
+            concepto: string;
+            /** Monto */
+            monto: number;
+            /**
+             * Fecha Pactada
+             * Format: date
+             */
+            fecha_pactada: string;
+        };
         /** DesafioMfa */
         DesafioMfa: {
             /**
@@ -1526,6 +1780,40 @@ export interface components {
             requiere_mfa: true;
             /** Token Mfa */
             token_mfa: string;
+        };
+        /** EstadoFinancieroSalida */
+        EstadoFinancieroSalida: {
+            /** Negocio Id */
+            negocio_id: number;
+            /** Valor Pactado */
+            valor_pactado: number;
+            /** Total Pagado */
+            total_pagado: number;
+            /** Neto Recibido */
+            neto_recibido: number;
+            /** Ajustes */
+            ajustes: number;
+            /** Saldo */
+            saldo: number;
+            /** Estado Financiero */
+            estado_financiero: string;
+            /** Moneda */
+            moneda: string;
+            /**
+             * Cuotas
+             * @default []
+             */
+            cuotas: components["schemas"]["CuotaSalida"][];
+            /**
+             * Pagos
+             * @default []
+             */
+            pagos: components["schemas"]["PagoSalida"][];
+            /**
+             * Ajustes Detalle
+             * @default []
+             */
+            ajustes_detalle: components["schemas"]["AjusteSalida"][];
         };
         /** EstadoPosible */
         EstadoPosible: {
@@ -1561,6 +1849,40 @@ export interface components {
              * @description False si el rol no tiene permiso de ver trámites
              */
             ve_tramites: boolean;
+        };
+        /** FilaCarteraSalida */
+        FilaCarteraSalida: {
+            /** Negocio Id */
+            negocio_id: number;
+            /** Cliente Id */
+            cliente_id: number;
+            /** Cliente */
+            cliente: string;
+            /** Servicio */
+            servicio: string;
+            /**
+             * Fecha Venta
+             * Format: date
+             */
+            fecha_venta: string;
+            /** Vendedor */
+            vendedor: string | null;
+            /** Valor Pactado */
+            valor_pactado: number;
+            /** Total Pagado */
+            total_pagado: number;
+            /** Saldo */
+            saldo: number;
+            /** Exigible Hoy */
+            exigible_hoy: number;
+            /** Vencido */
+            vencido: number;
+            /** Por Vencer */
+            por_vencer: number;
+            /** Dias Vencido */
+            dias_vencido: number;
+            /** Moneda */
+            moneda: string;
         };
         /** FusionEntrada */
         FusionEntrada: {
@@ -1863,6 +2185,19 @@ export interface components {
             /** Cerrado En */
             cerrado_en: string | null;
         };
+        /** PaginaCartera */
+        PaginaCartera: {
+            /** Total */
+            total: number;
+            /** Suma Saldo */
+            suma_saldo: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["FilaCarteraSalida"][];
+        };
         /** PaginaCasos */
         PaginaCasos: {
             /** Total */
@@ -1895,6 +2230,97 @@ export interface components {
             tamano: number;
             /** Items */
             items: components["schemas"]["OportunidadSalida"][];
+        };
+        /** PaginaPagos */
+        PaginaPagos: {
+            /** Total */
+            total: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["PagoSalida"][];
+        };
+        /** PagoCrear */
+        PagoCrear: {
+            /**
+             * Negocio Id
+             * @description Si no se sabe, queda en la bandeja sin asignar
+             */
+            negocio_id?: number | null;
+            /** Fecha */
+            fecha?: string | null;
+            /** Monto Bruto */
+            monto_bruto: number;
+            /**
+             * Costo Medio
+             * @description Lo que cobra la pasarela o el banco
+             * @default 0
+             */
+            costo_medio: number;
+            /**
+             * Moneda
+             * @default COP
+             */
+            moneda: string;
+            /** Medio Pago Id */
+            medio_pago_id?: number | null;
+            /** Banco Cuenta Id */
+            banco_cuenta_id?: number | null;
+            /** Referencia */
+            referencia?: string | null;
+            /** Comprobante Url */
+            comprobante_url?: string | null;
+            /**
+             * Pagador Nombre
+             * @description Quién consignó, si no es el cliente
+             */
+            pagador_nombre?: string | null;
+            /** Observacion */
+            observacion?: string | null;
+        };
+        /** PagoSalida */
+        PagoSalida: {
+            /** Id */
+            id: number;
+            /** Negocio Id */
+            negocio_id: number | null;
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /** Monto Bruto */
+            monto_bruto: number;
+            /** Costo Medio */
+            costo_medio: number;
+            /** Monto Neto */
+            monto_neto: number;
+            /** Moneda */
+            moneda: string;
+            /** Medio Pago Id */
+            medio_pago_id: number | null;
+            /** Medio Pago */
+            medio_pago: string | null;
+            /** Banco Cuenta Id */
+            banco_cuenta_id: number | null;
+            /** Referencia */
+            referencia: string | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "confirmado" | "pendiente" | "no_identificado" | "reversado" | "duplicado";
+            /** Pagador Nombre */
+            pagador_nombre: string | null;
+            /** Observacion */
+            observacion: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
         };
         /** PasaporteSalida */
         PasaporteSalida: {
@@ -1929,6 +2355,28 @@ export interface components {
              * @description Se muestra una sola vez. Entregarla por un canal seguro.
              */
             password_temporal: string;
+        };
+        /** PlanCuotas */
+        PlanCuotas: {
+            /**
+             * Reparto
+             * @description Porcentajes que suman 100. Por defecto [20, 80]
+             */
+            reparto?: number[] | null;
+            /**
+             * Plazo Dias
+             * @description Días para el saldo. Por defecto, el del catálogo
+             */
+            plazo_dias?: number | null;
+        };
+        /** PorEstado */
+        PorEstado: {
+            /** Estado */
+            estado: string;
+            /** Cuantas */
+            cuantas: number;
+            /** Saldo */
+            saldo: number;
         };
         /** RecuperarEntrada */
         RecuperarEntrada: {
@@ -1974,6 +2422,19 @@ export interface components {
             fecha?: string | null;
             /** Nota */
             nota?: string | null;
+        };
+        /** ResumenCartera */
+        ResumenCartera: {
+            /** Vendido */
+            vendido: number;
+            /** Cobrado */
+            cobrado: number;
+            /** Cartera */
+            cartera: number;
+            /** Vencido */
+            vencido: number;
+            /** Ventas Con Saldo */
+            ventas_con_saldo: number;
         };
         /** ResumenEstado */
         ResumenEstado: {
@@ -3794,6 +4255,324 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_api_v1_pagos_get: {
+        parameters: {
+            query?: {
+                negocio_id?: number | null;
+                /** @description La bandeja de no identificados */
+                sin_asignar?: boolean;
+                desde?: string | null;
+                hasta?: string | null;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaPagos"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    registrar_api_v1_pagos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PagoCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asignar_api_v1_pagos__pago_id__asignar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pago_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AsignarPago"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cambiar_estado_api_v1_pagos__pago_id__estado_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pago_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CambiarEstadoPago"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PagoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_cuotas_api_v1_ventas__negocio_id__cuotas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                negocio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanCuotas"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CuotaSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    estado_financiero_api_v1_ventas__negocio_id__estado_financiero_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                negocio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstadoFinancieroSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ajustar_api_v1_ventas__negocio_id__ajustes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                negocio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AjusteCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AjusteSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_cartera_api_v1_cartera_get: {
+        parameters: {
+            query?: {
+                solo_vencida?: boolean;
+                vendedor_id?: number | null;
+                cliente_id?: number | null;
+                /** @description Vencida hace más de N días */
+                desde_dias?: number | null;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaCartera"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_cartera_api_v1_cartera_resumen_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumenCartera"];
+                };
+            };
+        };
+    };
+    cartera_por_estado_api_v1_cartera_por_estado_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PorEstado"][];
                 };
             };
         };
