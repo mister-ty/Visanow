@@ -32,8 +32,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.models.esquema import (Comisiones, ComisionesReglas, LiquidacionesComision, Negocios,
-                                Pagos, Servicios, Usuarios)
+from app.models.esquema import (AjustesNegocio, Comisiones, ComisionesReglas,
+                                LiquidacionesComision, Negocios, Pagos, Servicios, Usuarios)
 from app.services.auditoria import auditar, instantanea
 
 BOGOTA = ZoneInfo('America/Bogota')
@@ -237,26 +237,56 @@ def registrar(db: Session, actor: Usuarios, negocio_id: int, *,
     if c.posicion_en_la_meta is not None:
         reorden = reordenar_periodo(db, actor, negocio.vendedor_id, comision.periodo, ip=ip)
         _avisar_congeladas(db, actor, negocio.vendedor_id, reorden, ip=ip)
-        db.refresh(comision)
+
+    # Nace con el estado que le corresponde. Las ventas que trajo la migración
+    # llegaron pagadas y sin vendedora, así que cuando finanzas descubre de quién
+    # era y se registra la comisión, no va a haber otro pago que la cause: nacía
+    # provisional y se quedaba ahí para siempre.
+    revisar_causacion(db, actor, negocio_id, ip=ip)
+    db.refresh(comision)
     return comision
+
+
+def saldo_en_plata(db: Session, negocio_id: int) -> Decimal | None:
+    """Lo que el cliente todavía debe en plata, sin contar lo condonado.
+
+    El saldo de la vista baja con las condonaciones, y condonar no es pagar:
+    lleva el saldo a cero sin que entre un peso. La comisión se gana «cuando el
+    cliente termina de pagar toda la venta», así que para decidir si se ganó hay
+    que mirar la plata y no el saldo contable.
+
+    El descuento sí cuenta, porque ahí el precio bajó de verdad: el cliente que
+    paga el resto terminó de pagar lo que quedó acordado.
+    """
+    saldo = db.execute(text('select saldo from v_estado_financiero where negocio_id = :n'),
+                       {'n': negocio_id}).scalar()
+    if saldo is None:
+        return None
+    condonado = db.scalar(select(func.coalesce(func.sum(AjustesNegocio.monto), 0))
+                          .where(AjustesNegocio.negocio_id == negocio_id,
+                                 AjustesNegocio.tipo == 'condonacion')) or 0
+    # Las condonaciones se guardan en negativo: devolverlas vuelve a subir el saldo.
+    return Decimal(str(saldo)) - Decimal(str(condonado))
 
 
 def revisar_causacion(db: Session, actor: Usuarios, negocio_id: int,
                       ip: str | None = None) -> Comisiones | None:
     """La comisión se gana cuando el cliente termina de pagar (D-03).
 
-    Se llama después de registrar un pago: si el saldo llegó a cero, la comisión
-    pasa de provisional a causada. Si el saldo vuelve a subir —un pago reversado,
-    un cargo—, vuelve a provisional: no se puede pagar una comisión de plata que
-    no entró.
+    Se llama después de registrar un pago: si ya no debe plata, la comisión pasa
+    de provisional a causada. Si vuelve a deber —un pago reversado, un cargo—,
+    vuelve a provisional: no se puede pagar una comisión de plata que no entró.
+
+    Lo condonado no cuenta como pagado. Antes sí, porque se leía el saldo de la
+    vista: condonar la venta entera dejaba el saldo en cero y causaba la comisión
+    sobre una venta de la que no entró un peso, y esa comisión era liquidable.
     """
     comision = db.scalar(select(Comisiones).where(Comisiones.negocio_id == negocio_id))
     if comision is None or comision.estado not in MODIFICABLES:
         return comision
 
-    saldo = db.execute(text('select saldo from v_estado_financiero where negocio_id = :n'),
-                       {'n': negocio_id}).scalar()
-    pagada_entera = saldo is not None and Decimal(str(saldo)) <= 0
+    saldo = saldo_en_plata(db, negocio_id)
+    pagada_entera = saldo is not None and saldo <= 0
     nuevo = 'causada' if pagada_entera else 'provisional'
     if comision.estado == nuevo:
         return comision
@@ -303,7 +333,8 @@ def recalcular(db: Session, actor: Usuarios, negocio_id: int,
     if c.posicion_en_la_meta is not None:
         reorden = reordenar_periodo(db, actor, comision.vendedor_id, comision.periodo, ip=ip)
         _avisar_congeladas(db, actor, comision.vendedor_id, reorden, ip=ip)
-        db.refresh(comision)
+    revisar_causacion(db, actor, negocio_id, ip=ip)
+    db.refresh(comision)
     return comision
 
 
@@ -515,7 +546,10 @@ def anular(db: Session, actor: Usuarios, liquidacion_id: int, motivo: str,
     if not motivo or not motivo.strip():
         raise Invalido('Escriba por qué se anula la liquidación.', codigo='falta_motivo')
     antes = instantanea(liquidacion)
-    for c in db.scalars(select(Comisiones).where(Comisiones.liquidacion_id == liquidacion_id)):
+    devueltas = list(db.scalars(select(Comisiones)
+                                .where(Comisiones.liquidacion_id == liquidacion_id)))
+    ventas = [c.negocio_id for c in devueltas]
+    for c in devueltas:
         c.estado = 'causada'
         c.liquidacion_id = None
     liquidacion.estado = 'anulada'
@@ -524,7 +558,46 @@ def anular(db: Session, actor: Usuarios, liquidacion_id: int, motivo: str,
     auditar(db, operacion='update', entidad='liquidaciones_comision', usuario_id=actor.id,
             entidad_id=liquidacion.id, antes=antes, despues=instantanea(liquidacion), ip=ip)
     db.commit()
+
+    # Devolverlas a «causada» a ciegas dejaba listas para el próximo corte
+    # comisiones cuya venta se quedó sin pagar DESPUÉS del corte: un reverso del
+    # banco no las tocaba porque ya estaban liquidadas. Se vuelve a mirar el saldo.
+    for negocio_id in ventas:
+        revisar_causacion(db, actor, negocio_id, ip=ip)
+    db.refresh(liquidacion)
     return liquidacion
+
+
+def descuadres(db: Session, vendedor_id: int | None = None) -> list[dict]:
+    """Comisiones ganadas o ya pagadas sobre ventas que todavía deben plata.
+
+    Es el invariante del módulo: ninguna comisión causada o liquidada puede
+    pertenecer a una venta que no está pagada. Se rompe por el camino que el
+    estado no alcanza a cubrir —el banco reversa un pago **después** del corte, y
+    la comisión ya liquidada no se puede devolver a provisional porque esa plata
+    ya se giró—, y hasta ahora nada lo vigilaba.
+
+    No corrige nada a propósito: devuelve la lista para que alguien la mire. El
+    centro de alertas la va a mostrar; mientras tanto, al menos se puede
+    consultar.
+    """
+    filtro = 'and c.vendedor_id = :v' if vendedor_id else ''
+    filas = db.execute(text(f"""
+        select c.id, c.negocio_id, c.vendedor_id, c.monto, c.estado, c.periodo,
+               f.saldo - coalesce(cond.condonado, 0) as debe,
+               l.id as liquidacion_id, l.estado as corte
+          from comisiones c
+          join v_estado_financiero f on f.negocio_id = c.negocio_id
+          left join liquidaciones_comision l on l.id = c.liquidacion_id
+          left join lateral (
+                select sum(monto) as condonado from ajustes_negocio a
+                 where a.negocio_id = c.negocio_id and a.tipo = 'condonacion') cond on true
+         where c.estado in ('causada', 'liquidada')
+           and f.saldo - coalesce(cond.condonado, 0) > 0
+           {filtro}
+         order by c.periodo desc, c.id
+    """), {'v': vendedor_id} if vendedor_id else {}).mappings().all()
+    return [dict(f) for f in filas]
 
 
 def comisiones_de(db: Session, *, vendedor_id: int | None = None, periodo: dt.date | None = None,

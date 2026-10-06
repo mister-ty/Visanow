@@ -401,6 +401,162 @@ def test_un_cargo_posterior_vuelve_a_abrir_la_comision(cliente, vendedora, finan
     assert comision_de(cliente, finanzas, venta['id'])['estado'] == 'provisional'
 
 
+# ------------------------------------------- lo que no es "terminar de pagar"
+#
+# La regla dice que la comision se gana cuando el cliente TERMINA DE PAGAR toda
+# la venta. El codigo miraba el saldo de la vista, y el saldo baja por cosas que
+# no son pagos.
+
+def test_condonar_la_venta_entera_no_causa_la_comision(cliente, vendedora, finanzas, db):
+    """Condonar no es pagar: lleva el saldo a cero sin que entre un peso."""
+    cab, p = vendedora
+    venta = vender(cliente, cab, db, servicio='asesoria_usa',
+                   nombre='Condonado Entero Cliente', fecha='2027-07-10')
+
+    r = cliente.post(f'/api/v1/ventas/{venta["id"]}/ajustes', headers=finanzas, json={
+        'tipo': 'condonacion', 'monto': venta['valor_pactado'],
+        'motivo': 'El cliente no continuo y se le condono el saldo'})
+    assert r.status_code == 201, r.text
+
+    ef = cliente.get(f'/api/v1/ventas/{venta["id"]}/estado-financiero',
+                     headers=finanzas).json()
+    assert ef['total_pagado'] == 0 and ef['saldo'] == 0, ef
+
+    assert comision_de(cliente, finanzas, venta['id'])['estado'] == 'provisional', (
+        'no se gana una comision de una venta de la que no entro un peso')
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2027-07-01'})
+    assert r.status_code == 422 and r.json()['codigo'] == 'sin_comisiones'
+
+
+def test_un_descuento_posterior_si_deja_terminar_de_pagar(cliente, vendedora, finanzas, db):
+    """El descuento baja el precio de verdad: quien paga el resto ya pago todo."""
+    cab, _ = vendedora
+    venta = vender(cliente, cab, db, servicio='asesoria_usa',
+                   nombre='Descuento Posterior Cliente', fecha='2027-07-12')
+    mitad = venta['valor_pactado'] / 2
+
+    cliente.post(f'/api/v1/ventas/{venta["id"]}/ajustes', headers=finanzas, json={
+        'tipo': 'descuento', 'monto': mitad, 'motivo': 'Rebaja acordada con el cliente'})
+    cliente.post('/api/v1/pagos', headers=finanzas,
+                 json={'negocio_id': venta['id'], 'monto_bruto': mitad})
+
+    assert comision_de(cliente, finanzas, venta['id'])['estado'] == 'causada'
+
+
+def test_mover_el_pago_devuelve_a_provisional_la_venta_que_lo_pierde(cliente, vendedora,
+                                                                     finanzas, db):
+    """Un solo pago no puede causar dos comisiones."""
+    cab, p = vendedora
+    a = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Origen Delpago Cliente', fecha='2027-08-05')
+    b = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Destino Delpago Cliente', fecha='2027-08-06')
+
+    pago = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': a['id'], 'monto_bruto': a['valor_pactado'],
+        'fecha': '2027-08-07'}).json()
+    assert comision_de(cliente, finanzas, a['id'])['estado'] == 'causada'
+
+    r = cliente.post(f'/api/v1/pagos/{pago["id"]}/asignar', headers=finanzas,
+                     json={'negocio_id': b['id']})
+    assert r.status_code == 200, r.text
+
+    assert comision_de(cliente, finanzas, b['id'])['estado'] == 'causada', 'el destino se gana'
+    assert comision_de(cliente, finanzas, a['id'])['estado'] == 'provisional', (
+        'la venta que perdio el pago vuelve a deber, y su comision con ella')
+
+    liq = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                       json={'vendedor_id': p.u.id, 'periodo': '2027-08-01'}).json()
+    assert liq['cantidad'] == 1, f'un pago, una comision: el corte trajo {liq["cantidad"]}'
+
+
+def test_anular_el_corte_revisa_si_la_venta_sigue_pagada(cliente, vendedora, finanzas, db):
+    """Al deshacer un corte no se vuelve a «causada» a ciegas.
+
+    Si el banco reverso el pago despues de liquidar, la venta volvio a deber: la
+    comision tiene que quedar provisional y no lista para el proximo corte.
+    """
+    cab, p = vendedora
+    v = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Reversado Traselcorte Cliente', fecha='2027-09-10')
+    pago = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+        'fecha': '2027-09-11'}).json()
+    liq = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                       json={'vendedor_id': p.u.id, 'periodo': '2027-09-01'}).json()
+    assert comision_de(cliente, finanzas, v['id'])['estado'] == 'liquidada'
+
+    cliente.post(f'/api/v1/pagos/{pago["id"]}/estado', headers=finanzas,
+                 json={'estado': 'reversado', 'observacion': 'La devolvio el banco'})
+    r = cliente.post(f'/api/v1/liquidaciones/{liq["id"]}/anular', headers=finanzas,
+                     json={'motivo': 'Se deshace el corte porque el pago se reverso'})
+    assert r.status_code == 200, r.text
+
+    assert comision_de(cliente, finanzas, v['id'])['estado'] == 'provisional', (
+        'la venta volvio a deber: la comision no puede quedar lista para el otro corte')
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2027-09-01'})
+    assert r.status_code == 422, 'y no hay nada que liquidar'
+
+
+def test_una_venta_ya_pagada_nace_con_la_comision_causada(cliente, vendedora, finanzas, db):
+    """La forma exacta de las ventas que trajo la migracion: pagadas y sin
+    vendedora. Cuando finanzas descubre de quien era, no va a haber otro pago que
+    cause la comision, asi que tiene que nacer ya ganada."""
+    cab, p = vendedora
+    v = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Migrada Pagada Cliente', fecha='2027-10-05')
+
+    # Se la devolvemos al estado en que llega de la migracion.
+    db.execute(text('delete from comisiones where negocio_id = :n'), {'n': v['id']})
+    db.get(Negocios, v['id']).vendedor_id = None
+    db.commit()
+    cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'], 'fecha': '2027-10-06'})
+    assert comision_de(cliente, finanzas, v['id']) is None, 'sin vendedora no hay comision'
+
+    # Finanzas descubre de quien era la venta.
+    db.get(Negocios, v['id']).vendedor_id = p.u.id
+    db.commit()
+    r = cliente.post(f'/api/v1/ventas/{v["id"]}/comision/recalcular', headers=finanzas)
+    assert r.status_code == 200, r.text
+    assert r.json()['estado'] == 'causada', (
+        'la venta esta pagada completa: la comision nace ganada, no provisional')
+
+
+def test_descuadres_ve_la_comision_cobrada_sobre_una_venta_reversada(cliente, vendedora,
+                                                                     finanzas, db):
+    """El invariante que el estado no alcanza a cubrir.
+
+    Si el banco reversa el pago despues de que el corte se pago, esa comision no
+    se puede devolver a provisional: la plata ya se giro. Lo unico que se puede
+    hacer es que quede a la vista.
+    """
+    from app.services import comisiones as serv
+
+    cab, p = vendedora
+    v = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Descuadre Cliente Reversado', fecha='2028-02-05')
+    pago = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+        'fecha': '2028-02-06'}).json()
+    liq = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                       json={'vendedor_id': p.u.id, 'periodo': '2028-02-01'}).json()
+    cliente.post(f'/api/v1/liquidaciones/{liq["id"]}/pagada', headers=finanzas)
+    assert serv.descuadres(db, p.u.id) == [], 'antes del reverso no hay descuadre'
+
+    cliente.post(f'/api/v1/pagos/{pago["id"]}/estado', headers=finanzas,
+                 json={'estado': 'reversado', 'observacion': 'La devolvio el banco'})
+
+    visto = serv.descuadres(db, p.u.id)
+    assert len(visto) == 1, visto
+    assert visto[0]['negocio_id'] == v['id']
+    assert visto[0]['estado'] == 'liquidada'
+    assert visto[0]['corte'] == 'pagada'
+    assert float(visto[0]['debe']) == pytest.approx(v['valor_pactado'], abs=1)
+
+
 # --------------------------------------------------------- la regla congelada
 
 def test_la_regla_queda_congelada_en_la_comision(cliente, vendedora, finanzas, db):
