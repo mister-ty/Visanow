@@ -616,6 +616,49 @@ def test_la_liquidacion_junta_lo_causado_y_lo_bloquea(cliente, vendedora, finanz
     assert r.status_code == 409 and r.json()['codigo'] == 'periodo_ya_liquidado'
 
 
+def test_una_comision_que_se_causa_tarde_entra_en_el_corte_siguiente(cliente, vendedora,
+                                                                    finanzas, db):
+    """Plata ganada que no se podia pagar nunca.
+
+    La comision se causa cuando el cliente termina de pagar, y eso puede caer
+    despues de que el corte de su mes ya se cerro. El corte de ese mes no se
+    puede repetir y el del mes siguiente no la miraba: se quedaba causada para
+    siempre.
+    """
+    cab, p = vendedora
+    a = vender(cliente, cab, db, servicio='asesoria_usa', nombre='Pago Atiempo Cliente',
+               fecha='2029-05-05')
+    b = vender(cliente, cab, db, servicio='asesoria_usa', nombre='Pago Tardio Cliente',
+               fecha='2029-05-06')
+    cliente.post('/api/v1/pagos', headers=finanzas,
+                 json={'negocio_id': a['id'], 'monto_bruto': a['valor_pactado']})
+
+    mayo = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                        json={'vendedor_id': p.u.id, 'periodo': '2029-05-01'}).json()
+    assert mayo['cantidad'] == 1
+
+    # El segundo cliente termina de pagar despues del corte de mayo.
+    cliente.post('/api/v1/pagos', headers=finanzas,
+                 json={'negocio_id': b['id'], 'monto_bruto': b['valor_pactado']})
+    assert comision_de(cliente, finanzas, b['id'])['estado'] == 'causada'
+
+    # Mayo ya no se puede repetir...
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2029-05-01'})
+    assert r.status_code == 409 and r.json()['codigo'] == 'periodo_ya_liquidado'
+
+    # ...asi que la arrastra el corte de junio, diciendo que era de mayo.
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2029-06-01'})
+    assert r.status_code == 201, r.text
+    junio = r.json()
+    assert junio['cantidad'] == 1
+    assert junio['periodo'] == '2029-06-01'
+    assert junio['comisiones'][0]['periodo'] == '2029-05-01', (
+        'el corte de junio arrastra una de mayo y la fila lo dice')
+    assert junio['comisiones'][0]['negocio_id'] == b['id']
+
+
 def test_una_comision_provisional_no_entra_en_el_corte(cliente, vendedora, finanzas, db):
     """Solo se liquida lo que el cliente ya pagó."""
     cab, p = vendedora

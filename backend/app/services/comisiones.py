@@ -411,15 +411,26 @@ def reordenar_periodo(db: Session, actor: Usuarios, vendedor_id: int, periodo: d
 # ------------------------------------------------------------- liquidación
 
 def pendientes(db: Session, vendedor_id: int, periodo: dt.date) -> list[Comisiones]:
-    """Lo que entraría en el corte: causado, del periodo y sin liquidar."""
+    """Lo que entraría en el corte: causado, sin liquidar, de este periodo o de
+    uno anterior que se quedó por fuera.
+
+    Lo de «o anterior» hace falta. Una comisión se causa cuando el cliente
+    termina de pagar, y eso puede caer después de que el corte de su mes ya se
+    cerró. Antes esa comisión se quedaba causada para siempre: el corte de su mes
+    no se puede repetir y el del mes siguiente no la miraba, así que era plata que
+    la vendedora se había ganado y no se le iba a pagar nunca.
+
+    Cada comisión lleva su propio periodo, así que el corte de junio que arrastra
+    una de mayo lo dice en la fila y no esconde de cuándo era.
+    """
     return list(db.scalars(
         select(Comisiones)
         .where(Comisiones.vendedor_id == vendedor_id,
-               Comisiones.periodo == _periodo_de(periodo),
+               Comisiones.periodo <= _periodo_de(periodo),
                Comisiones.estado == 'causada',
                Comisiones.liquidacion_id.is_(None))
         .options(selectinload(Comisiones.negocio))
-        .order_by(Comisiones.id)))
+        .order_by(Comisiones.periodo, Comisiones.id)))
 
 
 def _puestos_repetidos(db: Session, vendedor_id: int, periodo: dt.date) -> list[int]:
@@ -480,20 +491,23 @@ def liquidar(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *
         raise Conflicto(f'Ya hay una liquidación de ese periodo (la #{abierta.id}). '
                         f'Anúlela antes de hacer otra.', codigo='periodo_ya_liquidado')
 
-    # Antes de cerrar la plata se reparte otra vez el cupo: si entró una venta
-    # con fecha atrasada, las posiciones del mes ya no son las mismas.
-    reordenar_periodo(db, actor, vendedor_id, primero, ip=ip)
-    repetidos = _puestos_repetidos(db, vendedor_id, primero)
-    if repetidos:
-        cuales = ', '.join('n.º %d' % n for n in repetidos)
-        raise Conflicto(
-            f'Dos ventas del mes reclaman el mismo puesto del cupo ({cuales}), así que '
-            f'el reparto del 10 % no cuadra y el corte pagaría de más. Recalcule las '
-            f'comisiones del periodo antes de cerrarlo.', codigo='cupo_inconsistente')
+    # Antes de cerrar la plata se reparte otra vez el cupo de cada mes que entra
+    # en el corte: si entró una venta con fecha atrasada, las posiciones de ese
+    # mes ya no son las mismas.
+    for mes in sorted({c.periodo for c in pendientes(db, vendedor_id, primero)}):
+        reordenar_periodo(db, actor, vendedor_id, mes, ip=ip)
+        repetidos = _puestos_repetidos(db, vendedor_id, mes)
+        if repetidos:
+            cuales = ', '.join('n.º %d' % n for n in repetidos)
+            raise Conflicto(
+                f'Dos ventas de {mes:%m/%Y} reclaman el mismo puesto del cupo ({cuales}), '
+                f'así que el reparto del 10 % no cuadra y el corte pagaría de más. '
+                f'Recalcule las comisiones de ese mes antes de cerrarlo.',
+                codigo='cupo_inconsistente')
 
     comisiones = pendientes(db, vendedor_id, primero)
     if not comisiones:
-        raise Invalido('No hay comisiones causadas sin liquidar en ese periodo. '
+        raise Invalido('No hay comisiones causadas sin liquidar hasta ese periodo. '
                        'Una comisión se causa cuando el cliente termina de pagar.',
                        codigo='sin_comisiones')
 
