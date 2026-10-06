@@ -225,7 +225,8 @@ def test_la_regla_de_comision_de_angie_quedo_sembrada_tal_como_la_dijo(db):
     la tasa consular es plata del consulado."""
     from app.models.esquema import ComisionesReglas
 
-    regla = db.scalar(select(ComisionesReglas).where(ComisionesReglas.activo.is_(True)))
+    regla = db.scalars(select(ComisionesReglas)
+                       .where(ComisionesReglas.nombre.like('Angie%'))).first()
     assert regla is not None, 'la regla de D-03 tiene que estar sembrada'
     assert float(regla.porcentaje) == 7.0
     assert regla.base == 'vendido', 'el 7 % es del valor de la venta'
@@ -238,6 +239,12 @@ def test_la_regla_de_comision_de_angie_quedo_sembrada_tal_como_la_dijo(db):
     assert 'recaudo_terceros' in d['excluye_de_la_base'], 'la tasa consular no comisiona'
     assert d['porcentaje_meta'] == 10.0
     assert 'renovacion' in d['servicios_excluidos_de_la_meta']
+
+    # En una base recién sembrada todavía no existe la usuaria dueña de la regla,
+    # así que entra inactiva a propósito (migración 0010): una regla sin dueña se
+    # vuelve la regla general y le regala el escalón del 10 % a cualquiera.
+    assert regla.vendedor_id is None and not regla.activo
+    assert 'inactiva_porque' in d, 'la regla tiene que decir por qué está apagada'
 
 
 def test_la_tasa_consular_no_entra_en_la_base_de_comision(db):
