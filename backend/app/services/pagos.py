@@ -163,6 +163,7 @@ def asignar(db: Session, actor: Usuarios, pago_id: int, negocio_id: int,
     if pago.negocio_id == negocio_id:
         return pago
     antes = instantanea(pago)
+    origen = pago.negocio_id
     pago.negocio_id = negocio_id
     if pago.estado == 'no_identificado':
         pago.estado = 'confirmado'
@@ -170,7 +171,12 @@ def asignar(db: Session, actor: Usuarios, pago_id: int, negocio_id: int,
     auditar(db, operacion='update', entidad='pagos', usuario_id=actor.id, entidad_id=pago.id,
             antes=antes, despues=instantanea(pago), ip=ip)
     db.commit()
+    # Se revisan las dos: la que recibe el pago y la que lo pierde. Antes solo se
+    # revisaba el destino, así que la venta de origen se quedaba con la comisión
+    # causada aunque el pago ya no fuera suyo y un solo pago causaba dos.
     comisiones.revisar_causacion(db, actor, negocio_id, ip=ip)
+    if origen is not None and origen != negocio_id:
+        comisiones.revisar_causacion(db, actor, origen, ip=ip)
     return pago
 
 
