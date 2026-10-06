@@ -226,6 +226,14 @@ def registrar(db: Session, actor: Usuarios, negocio_id: int, *,
     auditar(db, operacion='insert', entidad='comisiones', usuario_id=actor.id,
             entidad_id=comision.id, despues=instantanea(comision), ip=ip)
     db.commit()
+
+    # Una venta premium no solo toma su puesto en el cupo del 10 %: si entró con
+    # fecha anterior a otras del mismo mes, les corre un puesto a todas las de
+    # atrás, y la que sale del cupo tiene que volver al 7 %.
+    if c.posicion_en_la_meta is not None:
+        reorden = reordenar_periodo(db, actor, negocio.vendedor_id, comision.periodo, ip=ip)
+        _avisar_congeladas(db, actor, negocio.vendedor_id, reorden, ip=ip)
+        db.refresh(comision)
     return comision
 
 
@@ -285,7 +293,84 @@ def recalcular(db: Session, actor: Usuarios, negocio_id: int,
     auditar(db, operacion='update', entidad='comisiones', usuario_id=actor.id,
             entidad_id=comision.id, antes=antes, despues=instantanea(comision), ip=ip)
     db.commit()
+
+    # Corregir el valor pactado o la fecha de una venta premium cambia el reparto
+    # del cupo del mes, no solo esta comisión.
+    if c.posicion_en_la_meta is not None:
+        reorden = reordenar_periodo(db, actor, comision.vendedor_id, comision.periodo, ip=ip)
+        _avisar_congeladas(db, actor, comision.vendedor_id, reorden, ip=ip)
+        db.refresh(comision)
     return comision
+
+
+@dataclass
+class Reordenamiento:
+    """Lo que cambió al volver a numerar el cupo de un mes."""
+    corregidas: list[int]
+    congeladas_fuera_de_meta: list[int]
+
+
+def reordenar_periodo(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *,
+                      ip: str | None = None) -> Reordenamiento:
+    """Vuelve a numerar el cupo del 10 % de un mes, de la primera venta a la última.
+
+    El cupo se reparte por orden de fecha de venta, así que una venta que se
+    registra hoy con fecha de la semana pasada no solo toma su puesto: les corre
+    un puesto a todas las que venían detrás. Sin esto, la que salía del cupo se
+    quedaba con el 10 % congelado y el mes terminaba con once comisiones al 10 %
+    contra una meta de diez, y con dos filas afirmando ser la misma venta n.º 3.
+
+    No es reescribir la historia. RN-07 congela la regla, y la regla dice que las
+    primeras diez del mes van al 10 %; quién es «de las primeras diez» depende de
+    qué ventas existen, y eso cambia cuando aparece una atrasada.
+
+    Lo liquidado no se toca: esa plata ya salió. Pero si una comisión ya pagada
+    quedó al escalón de la meta sin cupo, se devuelve en
+    `congeladas_fuera_de_meta` para que el próximo corte no se cierre como si
+    nada hubiera pasado.
+    """
+    primero = _periodo_de(periodo)
+    corregidas: list[int] = []
+    congeladas: list[int] = []
+
+    del_mes = list(db.scalars(
+        select(Comisiones).join(Negocios, Negocios.id == Comisiones.negocio_id)
+        .where(Comisiones.vendedor_id == vendedor_id,
+               Comisiones.periodo == primero,
+               Comisiones.estado != 'anulada')
+        .order_by(Negocios.fecha_venta, Negocios.id)))
+
+    for comision in del_mes:
+        negocio = db.get(Negocios, comision.negocio_id)
+        regla = regla_para(db, vendedor_id, negocio.fecha_venta)
+        if regla is None:
+            continue
+        c = calcular(db, negocio, regla)
+        guardada = comision.regla_aplicada or {}
+
+        if comision.estado not in MODIFICABLES:
+            if guardada.get('escalon') == 'meta' and c.escalon != 'meta':
+                congeladas.append(comision.id)
+            continue
+        # Se compara también la posición: dos comisiones al mismo porcentaje pero
+        # con la misma posición congelada dejan el mes diciendo una mentira.
+        if (guardada.get('porcentaje_aplicado') == float(c.porcentaje)
+                and guardada.get('posicion_en_la_meta') == c.posicion_en_la_meta
+                and Decimal(str(comision.monto)) == c.monto):
+            continue
+
+        antes = instantanea(comision)
+        comision.regla_id, comision.regla_aplicada = regla.id, c.regla
+        comision.base_calculo, comision.monto = c.base, c.monto
+        db.flush()
+        auditar(db, operacion='update', entidad='comisiones', usuario_id=actor.id,
+                entidad_id=comision.id, antes=antes,
+                despues=instantanea(comision) | {'motivo': 'reparto del cupo del mes'}, ip=ip)
+        corregidas.append(comision.id)
+
+    if corregidas:
+        db.commit()
+    return Reordenamiento(corregidas=corregidas, congeladas_fuera_de_meta=congeladas)
 
 
 # ------------------------------------------------------------- liquidación
@@ -300,6 +385,43 @@ def pendientes(db: Session, vendedor_id: int, periodo: dt.date) -> list[Comision
                Comisiones.liquidacion_id.is_(None))
         .options(selectinload(Comisiones.negocio))
         .order_by(Comisiones.id)))
+
+
+def _puestos_repetidos(db: Session, vendedor_id: int, periodo: dt.date) -> list[int]:
+    """Los puestos del cupo que más de una comisión del mes dice ocupar.
+
+    Después de re-numerar no debería haber ninguno. Si hay, es un error de plata
+    —dos ventas cobrando el mismo cupo del 10 %— y el corte no se cierra a
+    ciegas: puede pasar si dos ventas del mismo día entran a la vez.
+    """
+    puestos: dict[int, int] = {}
+    for c in db.scalars(select(Comisiones)
+                        .where(Comisiones.vendedor_id == vendedor_id,
+                               Comisiones.periodo == _periodo_de(periodo),
+                               Comisiones.estado != 'anulada')):
+        n = (c.regla_aplicada or {}).get('posicion_en_la_meta')
+        if n is not None:
+            puestos[n] = puestos.get(n, 0) + 1
+    return sorted(n for n, cuantas in puestos.items() if cuantas > 1)
+
+
+def _avisar_congeladas(db: Session, actor: Usuarios, vendedor_id: int,
+                       reorden: 'Reordenamiento', ip: str | None = None) -> None:
+    """Deja rastro de la plata que se pagó al 10 % y hoy no tiene cupo.
+
+    Una venta con fecha atrasada puede sacar del cupo a una comisión que ya se
+    liquidó. Esa plata ya salió y no se puede recalcular, así que lo único
+    honesto es que quede anotado quién y por qué: sin esto, el sobrepago
+    desaparece sin que nadie se entere.
+    """
+    if not reorden.congeladas_fuera_de_meta:
+        return
+    auditar(db, operacion='alerta', entidad='comisiones', usuario_id=actor.id,
+            despues={'vendedor_id': vendedor_id,
+                     'comisiones': reorden.congeladas_fuera_de_meta,
+                     'motivo': 'una venta con fecha anterior las sacó del cupo del 10 %, '
+                               'pero ya estaban liquidadas: esa plata ya salió'}, ip=ip)
+    db.commit()
 
 
 def liquidar(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *,
@@ -322,6 +444,17 @@ def liquidar(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *
     if abierta is not None:
         raise Conflicto(f'Ya hay una liquidación de ese periodo (la #{abierta.id}). '
                         f'Anúlela antes de hacer otra.', codigo='periodo_ya_liquidado')
+
+    # Antes de cerrar la plata se reparte otra vez el cupo: si entró una venta
+    # con fecha atrasada, las posiciones del mes ya no son las mismas.
+    reordenar_periodo(db, actor, vendedor_id, primero, ip=ip)
+    repetidos = _puestos_repetidos(db, vendedor_id, primero)
+    if repetidos:
+        cuales = ', '.join('n.º %d' % n for n in repetidos)
+        raise Conflicto(
+            f'Dos ventas del mes reclaman el mismo puesto del cupo ({cuales}), así que '
+            f'el reparto del 10 % no cuadra y el corte pagaría de más. Recalcule las '
+            f'comisiones del periodo antes de cerrarlo.', codigo='cupo_inconsistente')
 
     comisiones = pendientes(db, vendedor_id, primero)
     if not comisiones:

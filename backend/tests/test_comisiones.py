@@ -15,7 +15,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select, text
 
-from app.models.esquema import CategoriasGasto, Negocios, Paises, Servicios
+from app.models.esquema import (Auditoria, CategoriasGasto, Comisiones,
+                                Negocios, Paises, Servicios)
 from tests.conftest import entrar
 
 
@@ -134,6 +135,136 @@ def test_la_tasa_consular_no_comisiona(cliente, vendedora, finanzas, db):
     venta = vender(cliente, cab, db, servicio='pago_visa', nombre='Tasa Consular Cliente')
     assert comision_de(cliente, finanzas, venta['id']) is None, \
         'el recaudo de terceros no genera comisión'
+
+
+# ------------------------------------------------- el cupo y las ventas atrasadas
+#
+# Lo encontro una auditoria del motor el 05/10/2026: el cupo del 10 % se reparte
+# por fecha de venta, asi que una venta registrada hoy con fecha de la semana
+# pasada no solo toma su puesto, les corre un puesto a todas las de atras. Antes
+# de arreglarlo, la que salia del cupo se quedaba con el 10 % y el mes terminaba
+# con once comisiones al 10 % contra una meta de diez.
+
+def _diez_premium_de_septiembre(cliente, cab, db, etiqueta):
+    """Diez ventas premium del 19 al 28 de septiembre, en orden."""
+    return [vender(cliente, cab, db, servicio='asesoria_adelanto',
+                   nombre=f'{etiqueta} Cliente{i:02d} Apellido{i:02d}',
+                   fecha=f'2026-09-{i + 19:02d}')
+            for i in range(10)]
+
+
+def test_una_venta_atrasada_no_deja_once_comisiones_al_diez_por_ciento(cliente, vendedora,
+                                                                       finanzas, db):
+    """La meta es de diez. Once al 10 % es plata pagada de mas."""
+    cab, p = vendedora
+    _diez_premium_de_septiembre(cliente, cab, db, 'Atrasada')
+
+    delmes = cliente.get(f'/api/v1/comisiones?vendedor_id={p.u.id}&periodo=2026-09-01',
+                         headers=finanzas).json()
+    assert [c['porcentaje_aplicado'] for c in delmes] == [10.0] * 10, 'los diez cupos usados'
+
+    # Llega la venta atrasada: fue el 22 de septiembre, se registra hoy.
+    vender(cliente, cab, db, servicio='asesoria_adelanto',
+           nombre='Atrasada Retro Cliente', fecha='2026-09-22')
+
+    despues = cliente.get(f'/api/v1/comisiones?vendedor_id={p.u.id}&periodo=2026-09-01',
+                          headers=finanzas).json()
+    al_diez = [c for c in despues if c['porcentaje_aplicado'] == 10.0]
+    al_siete = [c for c in despues if c['porcentaje_aplicado'] == 7.0]
+    assert len(despues) == 11
+    assert len(al_diez) == 10, f'once premium, diez cupos: {len(al_diez)} al 10 %'
+    assert len(al_siete) == 1, 'la que sale del cupo vuelve al 7 %'
+
+
+def test_la_venta_atrasada_toma_el_puesto_que_le_da_la_fecha(cliente, vendedora, finanzas, db):
+    """El puesto sale de la fecha de venta, no del dia en que se digito."""
+    cab, p = vendedora
+    diez = _diez_premium_de_septiembre(cliente, cab, db, 'Puesto')
+    ultima = diez[-1]              # la del 28, hasta ahora la n.º 10
+
+    nueva = vender(cliente, cab, db, servicio='asesoria_adelanto',
+                   nombre='Puesto Retro Cliente', fecha='2026-09-22')
+
+    # El 22 ya tenia una venta (la n.º 4), asi que la atrasada entra de quinta.
+    c_nueva = comision_de(cliente, finanzas, nueva['id'])
+    assert c_nueva['porcentaje_aplicado'] == 10.0
+    assert 'n.º 5' in c_nueva['explicacion'], c_nueva['explicacion']
+
+    # Y la del 28 pasa a ser la n.º 11: fuera del cupo.
+    c_ultima = comision_de(cliente, finanzas, ultima['id'])
+    assert c_ultima['porcentaje_aplicado'] == 7.0, c_ultima
+    assert c_ultima['escalon'] == 'base'
+    assert 'n.º 11' in c_ultima['explicacion'], c_ultima['explicacion']
+
+
+def test_ningun_puesto_del_cupo_queda_repetido(cliente, vendedora, finanzas, db):
+    """Dos comisiones diciendo ser la misma venta n.º 5 no se puede explicar."""
+    cab, p = vendedora
+    _diez_premium_de_septiembre(cliente, cab, db, 'Unico')
+    vender(cliente, cab, db, servicio='asesoria_adelanto',
+           nombre='Unico Retro Cliente', fecha='2026-09-22')
+
+    puestos = [c.regla_aplicada.get('posicion_en_la_meta') for c in db.scalars(
+        select(Comisiones).where(Comisiones.vendedor_id == p.u.id,
+                                 Comisiones.periodo == dt.date(2026, 9, 1)))]
+    assert sorted(puestos) == list(range(1, 12)), f'los puestos del mes: {sorted(puestos)}'
+
+
+def test_el_corte_del_mes_paga_diez_cupos_y_no_once(cliente, vendedora, finanzas, db):
+    """La prueba de la plata: lo anterior son campos, esto es lo que se gira."""
+    cab, p = vendedora
+    ventas = _diez_premium_de_septiembre(cliente, cab, db, 'Corte')
+    ventas.append(vender(cliente, cab, db, servicio='asesoria_adelanto',
+                         nombre='Corte Retro Cliente', fecha='2026-09-22'))
+    for v in ventas:
+        cliente.post('/api/v1/pagos', headers=finanzas,
+                     json={'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+                           'fecha': '2026-09-30'})
+
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2026-09-01'})
+    assert r.status_code == 201, r.text
+    liq = r.json()
+    assert liq['cantidad'] == 11
+
+    valores = sorted(v['valor_pactado'] for v in ventas)
+    debido = sum(valores[:-1]) * 0.10 + valores[-1] * 0.07
+    assert liq['total'] == pytest.approx(debido, abs=2), (
+        f'el corte gira {liq["total"]:,.0f} y la regla dice {debido:,.0f}')
+
+
+def test_una_atrasada_que_desplaza_una_comision_ya_pagada_queda_anotada(cliente, vendedora,
+                                                                        finanzas, db):
+    """Si el cupo ya se liquido, esa plata ya salio y no se puede recalcular.
+
+    Lo unico honesto es que quede escrito: sin esto el sobrepago desaparece sin
+    que nadie se entere.
+    """
+    cab, p = vendedora
+    diez = _diez_premium_de_septiembre(cliente, cab, db, 'Anotada')
+    for v in diez:
+        cliente.post('/api/v1/pagos', headers=finanzas,
+                     json={'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+                           'fecha': '2026-09-30'})
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2026-09-01'})
+    assert r.status_code == 201 and r.json()['cantidad'] == 10
+
+    vender(cliente, cab, db, servicio='asesoria_adelanto',
+           nombre='Anotada Retro Cliente', fecha='2026-09-22')
+
+    alerta = db.scalars(select(Auditoria)
+                        .where(Auditoria.operacion == 'alerta',
+                               Auditoria.entidad == 'comisiones')
+                        .order_by(Auditoria.id.desc())).first()
+    assert alerta is not None, 'el sobrepago tiene que quedar anotado'
+    assert alerta.despues['vendedor_id'] == p.u.id
+    assert len(alerta.despues['comisiones']) == 1, alerta.despues
+    assert 'ya salió' in alerta.despues['motivo']
+
+    # La liquidada no se tocó: esa plata ya se pagó (RN-07).
+    c = comision_de(cliente, finanzas, diez[-1]['id'])
+    assert c['estado'] == 'liquidada' and c['porcentaje_aplicado'] == 10.0
 
 
 # -------------------------------------------------------------- la causación
