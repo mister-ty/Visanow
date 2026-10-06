@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.admin import montar_admin
-from app.api.v1 import (auth, casos, catalogos, clientes, fichas, oportunidades,
+from app.api.v1 import (auth, casos, catalogos, clientes, fichas, oportunidades, pagos,
                         usuarios, ventas)
 from app.core.config import ajustes
 from app.core.errores import ErrorDominio
@@ -44,8 +44,8 @@ def _error_validacion(_: Request, e: RequestValidationError) -> JSONResponse:
                                                   'codigo': 'validacion', 'errores': errores})
 
 
-for modulo in (auth, casos, catalogos, clientes, fichas, oportunidades, usuarios,
-               ventas):
+for modulo in (auth, casos, catalogos, clientes, fichas, oportunidades, pagos,
+               usuarios, ventas):
     app.include_router(modulo.router, prefix='/api/v1')
 
 montar_admin(app)
