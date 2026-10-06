@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy import select, text
 
 from app.models.esquema import (Auditoria, CategoriasGasto, Comisiones,
-                                Negocios, Paises, Servicios)
+                                ComisionesReglas, Negocios, Paises, Servicios)
 from tests.conftest import entrar
 
 
@@ -27,9 +27,18 @@ def finanzas(cliente, usuario):
 
 @pytest.fixture
 def vendedora(cliente, db, usuario):
-    """Una comercial con la regla de Angie: el seed la empareja por nombre."""
+    """Una comercial con la regla de Angie, atada a ella por id.
+
+    La regla sembrada se le asigna a esta usuaria de prueba. Antes la fixture se
+    llamaba «Angie Lorena» para que el emparejamiento por nombre la encontrara;
+    eso probaba la suerte del seed, no el motor.
+    """
     p = usuario('comercial')
     p.u.nombre = 'Angie Lorena'
+    regla = db.scalars(select(ComisionesReglas)
+                       .where(ComisionesReglas.nombre.like('Angie%'))).first()
+    regla.vendedor_id = p.u.id
+    regla.activo = True
     db.commit()
     return entrar(cliente, p), p
 
@@ -135,6 +144,88 @@ def test_la_tasa_consular_no_comisiona(cliente, vendedora, finanzas, db):
     venta = vender(cliente, cab, db, servicio='pago_visa', nombre='Tasa Consular Cliente')
     assert comision_de(cliente, finanzas, venta['id']) is None, \
         'el recaudo de terceros no genera comisión'
+
+
+# ------------------------------------------------- de quien es cada regla
+#
+# La administradora fue explicita: «las comisiones solo son para angie y yas,
+# miriam no hace ventas». Antes las reglas se sembraban sin dueña y `regla_para`
+# adivinaba por el primer nombre; cuando no adivinaba —«Isa» contra la regla
+# «Yas — 7 %…»— repartia el escalon del 10 % de Angie a quien fuera.
+
+def _comercial_con_regla(cliente, db, usuario, patron):
+    """Una comercial a la que se le asigna la regla sembrada que se pida."""
+    p = usuario('comercial')
+    regla = db.scalars(select(ComisionesReglas)
+                       .where(ComisionesReglas.nombre.like(patron))).first()
+    regla.vendedor_id = p.u.id
+    regla.activo = True
+    db.commit()
+    return entrar(cliente, p), p
+
+
+def test_la_regla_de_yas_no_trae_el_escalon_del_diez_de_angie(cliente, db, usuario, finanzas):
+    """Yas comisiona el 7 % plano: su regla no tiene meta.
+
+    El porcentaje de Yas sigue por confirmar, pero lo que no puede pasar es que
+    herede el escalon de Angie por un emparejamiento de nombres.
+    """
+    cab, _ = _comercial_con_regla(cliente, db, usuario, 'Yas%')
+    venta = vender(cliente, cab, db, servicio='asesoria_adelanto',
+                   nombre='Regla Deyas Cliente', fecha='2026-11-05')
+    c = comision_de(cliente, finanzas, venta['id'])
+
+    assert c['porcentaje_aplicado'] == 7.0, c
+    assert c['escalon'] == 'base', 'el escalon del 10 % es de Angie, no de Yas'
+    assert 'Yas' in c['explicacion'] or 'n.º' not in c['explicacion'], c['explicacion']
+
+
+def test_dos_comerciales_de_nombre_parecido_no_comparten_la_regla(cliente, db, usuario,
+                                                                 finanzas):
+    """La regla es de quien dice el id, no de quien se llama parecido.
+
+    El emparejamiento viejo exigia que el nombre de la regla empezara por el
+    primer nombre de la usuaria, asi que «Angie Lorena» y «Angelica Ruiz» podian
+    cobrar las dos el escalon del 10 %.
+    """
+    cab_angie, _ = _comercial_con_regla(cliente, db, usuario, 'Angie%')
+    otra = usuario('comercial')
+    otra.u.nombre = 'Angelica Ruiz'
+    db.commit()
+    cab_otra = entrar(cliente, otra)
+
+    mia = vender(cliente, cab_angie, db, servicio='asesoria_adelanto',
+                 nombre='Parecido Angie Cliente', fecha='2026-11-05')
+    suya = vender(cliente, cab_otra, db, servicio='asesoria_adelanto',
+                  nombre='Parecido Angelica Cliente', fecha='2026-11-05')
+
+    assert comision_de(cliente, finanzas, mia['id'])['porcentaje_aplicado'] == 10.0
+    assert comision_de(cliente, finanzas, suya['id']) is None, (
+        'Angelica no es Angie: no hereda su regla por parecerse de nombre')
+
+
+def test_una_comercial_sin_regla_no_comisiona(cliente, db, usuario, finanzas):
+    """Miriam no vende: una comercial sin regla propia no cobra la de nadie."""
+    p = usuario('comercial')
+    p.u.nombre = 'Miriam Sin Regla'
+    db.commit()
+    cab = entrar(cliente, p)
+
+    venta = vender(cliente, cab, db, servicio='asesoria_adelanto',
+                   nombre='Sin Regla Cliente', fecha='2026-11-05')
+    assert comision_de(cliente, finanzas, venta['id']) is None, (
+        'una comercial sin regla no puede heredar el escalon del 10 % de Angie')
+
+
+def test_la_regla_congelada_dice_el_nombre_de_la_regla_que_se_aplico(cliente, db, usuario,
+                                                                     finanzas):
+    """RN-07: la comision guarda cual regla se le aplico, y tiene que ser la suya."""
+    cab, p = _comercial_con_regla(cliente, db, usuario, 'Yas%')
+    venta = vender(cliente, cab, db, servicio='asesoria_usa', nombre='Congelada Yas Cliente')
+
+    c = db.scalars(select(Comisiones).where(Comisiones.negocio_id == venta['id'])).first()
+    assert c.regla_aplicada['regla_nombre'].startswith('Yas'), c.regla_aplicada['regla_nombre']
+    assert 'porcentaje_meta' not in c.regla_aplicada, 'la regla de Yas no tiene meta'
 
 
 # ------------------------------------------------- el cupo y las ventas atrasadas

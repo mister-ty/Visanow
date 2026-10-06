@@ -51,27 +51,31 @@ def _periodo_de(fecha: dt.date) -> dt.date:
 def regla_para(db: Session, vendedor_id: int, fecha: dt.date) -> ComisionesReglas | None:
     """La regla que regía para esa vendedora ese día.
 
-    Se busca primero una regla suya y después una general, siempre por vigencia
-    y no «la última»: una venta de hace tres meses se comisiona con la regla de
-    hace tres meses.
+    Primero la suya —atada por id— y si no tiene, una general. Siempre por
+    vigencia y no «la última»: una venta de hace tres meses se comisiona con la
+    regla de hace tres meses.
+
+    Antes esto adivinaba: como las reglas sembradas no guardaban el id de su
+    dueña, se emparejaba exigiendo que el nombre de la regla empezara por el
+    primer nombre de la usuaria. Cuando no adivinaba —«Isa» contra la regla
+    «Yas — 7 %…»— devolvía la primera regla sin vendedora, que es la de Angie, y
+    le regalaba su escalón del 10 % a quien fuera. La regla ahora se amarra por
+    id en el seed y en la migración 0010, y una regla sin dueña queda inactiva:
+    tiene que pagarle a nadie, no a todas.
+
+    Devolver None es una respuesta válida y es la correcta para quien no
+    comisiona: la administradora dijo que las comisiones son solo de Angie y de
+    Yas, y que Miriam no vende.
     """
     base = (select(ComisionesReglas)
             .where(ComisionesReglas.activo.is_(True),
                    ComisionesReglas.vigente_desde <= fecha,
                    (ComisionesReglas.vigente_hasta.is_(None))
                    | (ComisionesReglas.vigente_hasta >= fecha))
-            .order_by(ComisionesReglas.vigente_desde.desc()))
+            .order_by(ComisionesReglas.vigente_desde.desc(), ComisionesReglas.id.desc()))
     propia = db.scalars(base.where(ComisionesReglas.vendedor_id == vendedor_id)).first()
     if propia:
         return propia
-    # La regla sembrada lleva el nombre de la vendedora pero no su id, porque los
-    # usuarios se crean después del catálogo. Se empareja por nombre.
-    vendedor = db.get(Usuarios, vendedor_id)
-    if vendedor:
-        primer_nombre = vendedor.nombre.split()[0].lower()
-        for r in db.scalars(base.where(ComisionesReglas.vendedor_id.is_(None))):
-            if r.nombre.lower().startswith(primer_nombre):
-                return r
     return db.scalars(base.where(ComisionesReglas.vendedor_id.is_(None))).first()
 
 
