@@ -569,6 +569,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/gastos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Gastos */
+        get: operations["listar_gastos_api_v1_gastos_get"];
+        put?: never;
+        /**
+         * Registrar Gasto
+         * @description Un gasto general o directo (RF-053).
+         *
+         *     Si lleva venta o trámite es directo y se le resta a esa venta; si no, es
+         *     gasto de la casa. La diferencia es la que decide si una venta fue buen
+         *     negocio.
+         */
+        post: operations["registrar_gasto_api_v1_gastos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gastos/por-categoria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gastos Por Categoria */
+        get: operations["gastos_por_categoria_api_v1_gastos_por_categoria_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gastos/{gasto_id}/anular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anular Gasto
+         * @description Anular, nunca borrar: un gasto borrado es plata que salió sin rastro.
+         */
+        post: operations["anular_gasto_api_v1_gastos__gasto_id__anular_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comisiones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Comisiones
+         * @description Las comisiones, con el porqué de cada una.
+         *
+         *     Cada fila lleva congelada la regla que se le aplicó (RN-07), así que el
+         *     cálculo se puede explicar meses después sin reconstruir qué decía la tabla
+         *     ese día.
+         */
+        get: operations["listar_comisiones_api_v1_comisiones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comisiones/pendientes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pendientes
+         * @description Lo que entraría en el corte: causado, del periodo y sin liquidar.
+         */
+        get: operations["pendientes_api_v1_comisiones_pendientes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ventas/{negocio_id}/comision/recalcular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recalcular
+         * @description Recalcula con la regla vigente a la fecha de la venta.
+         *
+         *     No toca las ya liquidadas: esa plata ya se pagó y cambiarla a posteriori es
+         *     reescribir la historia de un pago.
+         */
+        post: operations["recalcular_api_v1_ventas__negocio_id__comision_recalcular_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/liquidaciones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Liquidar
+         * @description El corte del periodo (RF-052).
+         *
+         *     Las comisiones que entran quedan bloqueadas y no pueden volver a entrar en
+         *     otro corte. Es la diferencia entre un reporte y el registro de un pago.
+         */
+        post: operations["liquidar_api_v1_liquidaciones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/liquidaciones/{liquidacion_id}/pagada": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Marcar Pagada */
+        post: operations["marcar_pagada_api_v1_liquidaciones__liquidacion_id__pagada_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/liquidaciones/{liquidacion_id}/anular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anular Liquidacion
+         * @description Deshace el corte y devuelve las comisiones a «causada».
+         *
+         *     No se borra: queda la liquidación anulada con su motivo, para que la
+         *     historia muestre que hubo un corte y por qué se deshizo.
+         */
+        post: operations["anular_liquidacion_api_v1_liquidaciones__liquidacion_id__anular_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/buscar": {
         parameters: {
             query?: never;
@@ -933,6 +1125,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/plantillas/catalogo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Catalogo
+         * @description Eventos y variables disponibles, para armar la plantilla sin adivinar nombres.
+         */
+        get: operations["catalogo_api_v1_plantillas_catalogo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plantillas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar */
+        get: operations["listar_api_v1_plantillas_get"];
+        put?: never;
+        /** Crear */
+        post: operations["crear_api_v1_plantillas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plantillas/{plantilla_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Editar */
+        patch: operations["editar_api_v1_plantillas__plantilla_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/plantillas/{plantilla_id}/generar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generar
+         * @description Llena la plantilla con los datos del trámite o la venta (RF-063).
+         *
+         *     No envía nada: devuelve el texto para copiarlo o abrirlo en WhatsApp o correo.
+         */
+        post: operations["generar_api_v1_plantillas__plantilla_id__generar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usuarios": {
         parameters: {
             query?: never;
@@ -1167,6 +1436,11 @@ export interface components {
             /** Autorizado Por */
             autorizado_por: number;
         };
+        /** AnularEntrada */
+        AnularEntrada: {
+            /** Motivo */
+            motivo: string;
+        };
         /** AsignarPago */
         AsignarPago: {
             /** Negocio Id */
@@ -1398,6 +1672,13 @@ export interface components {
              * Format: date-time
              */
             ultima_actividad_en: string;
+        };
+        /** CatalogoPlantillas */
+        CatalogoPlantillas: {
+            /** Eventos */
+            eventos: components["schemas"]["EventoSalida"][];
+            /** Variables */
+            variables: components["schemas"]["VariableSalida"][];
         };
         /** Catalogos */
         Catalogos: {
@@ -1655,6 +1936,47 @@ export interface components {
              */
             posible_familiar: boolean;
         };
+        /** ComisionSalida */
+        ComisionSalida: {
+            /** Id */
+            id: number;
+            /** Negocio Id */
+            negocio_id: number;
+            /** Vendedor Id */
+            vendedor_id: number;
+            /** Vendedor */
+            vendedor: string | null;
+            /** Base Calculo */
+            base_calculo: number;
+            /** Monto */
+            monto: number;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "provisional" | "causada" | "liquidada" | "anulada";
+            /** Periodo */
+            periodo: string | null;
+            /** Porcentaje Aplicado */
+            porcentaje_aplicado: number | null;
+            /**
+             * Escalon
+             * @description «base» o «meta»
+             */
+            escalon?: string | null;
+            /**
+             * Explicacion
+             * @description Por qué se calculó así
+             */
+            explicacion?: string | null;
+            /** Liquidacion Id */
+            liquidacion_id: number | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+        };
         /** ContactoOportunidad */
         ContactoOportunidad: {
             /** Proxima Accion */
@@ -1822,6 +2144,13 @@ export interface components {
             /** Nombre */
             nombre: string;
         };
+        /** EventoSalida */
+        EventoSalida: {
+            /** Clave */
+            clave: string;
+            /** Nombre */
+            nombre: string;
+        };
         /**
          * Ficha360
          * @description Todo lo que hoy está repartido entre tres archivos, en una sola respuesta.
@@ -1909,6 +2238,98 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** GastoCrear */
+        GastoCrear: {
+            /** Categoria Id */
+            categoria_id: number;
+            /** Concepto */
+            concepto: string;
+            /** Monto */
+            monto: number;
+            /** Fecha */
+            fecha?: string | null;
+            /**
+             * Moneda
+             * @default COP
+             */
+            moneda: string;
+            /**
+             * Negocio Id
+             * @description Lo vuelve un gasto directo de la venta
+             */
+            negocio_id?: number | null;
+            /**
+             * Caso Id
+             * @description Lo vuelve un gasto directo del trámite
+             */
+            caso_id?: number | null;
+            /** Proveedor Id */
+            proveedor_id?: number | null;
+            /** Medio Pago Id */
+            medio_pago_id?: number | null;
+            /** Banco Cuenta Id */
+            banco_cuenta_id?: number | null;
+            /** Comprobante Url */
+            comprobante_url?: string | null;
+            /** Observacion */
+            observacion?: string | null;
+            /**
+             * Estado
+             * @default pagado
+             * @enum {string}
+             */
+            estado: "pagado" | "pendiente" | "anulado";
+        };
+        /** GastoPorCategoria */
+        GastoPorCategoria: {
+            /** Categoria */
+            categoria: string;
+            /** Cuantos */
+            cuantos: number;
+            /** Total */
+            total: number;
+        };
+        /** GastoSalida */
+        GastoSalida: {
+            /** Id */
+            id: number;
+            /** Categoria Id */
+            categoria_id: number;
+            /** Categoria */
+            categoria: string;
+            /** Concepto */
+            concepto: string;
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /** Monto */
+            monto: number;
+            /** Moneda */
+            moneda: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "pagado" | "pendiente" | "anulado";
+            /** Negocio Id */
+            negocio_id: number | null;
+            /** Caso Id */
+            caso_id: number | null;
+            /**
+             * Es Directo
+             * @description Se le puede cargar a una venta o a un trámite
+             */
+            es_directo: boolean;
+            /** Observacion */
+            observacion: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+        };
         /** GrupoCrear */
         GrupoCrear: {
             /** Nombre */
@@ -1986,6 +2407,53 @@ export interface components {
             obligatorio: boolean;
             /** Cumplido */
             cumplido: boolean;
+        };
+        /** LiquidacionSalida */
+        LiquidacionSalida: {
+            /** Id */
+            id: number;
+            /** Vendedor Id */
+            vendedor_id: number;
+            /** Vendedor */
+            vendedor: string | null;
+            /**
+             * Periodo
+             * Format: date
+             */
+            periodo: string;
+            /** Total */
+            total: number;
+            /** Cantidad */
+            cantidad: number;
+            /** Estado */
+            estado: string;
+            /** Observaciones */
+            observaciones: string | null;
+            /**
+             * Creada En
+             * Format: date-time
+             */
+            creada_en: string;
+            /** Pagada En */
+            pagada_en: string | null;
+            /**
+             * Comisiones
+             * @default []
+             */
+            comisiones: components["schemas"]["ComisionSalida"][];
+        };
+        /** LiquidarEntrada */
+        LiquidarEntrada: {
+            /** Vendedor Id */
+            vendedor_id: number;
+            /**
+             * Periodo
+             * Format: date
+             * @description Cualquier día del mes a liquidar
+             */
+            periodo: string;
+            /** Observaciones */
+            observaciones?: string | null;
         };
         /** LoginEntrada */
         LoginEntrada: {
@@ -2220,6 +2688,19 @@ export interface components {
             /** Items */
             items: components["schemas"]["ClienteSalida"][];
         };
+        /** PaginaGastos */
+        PaginaGastos: {
+            /** Total */
+            total: number;
+            /** Suma */
+            suma: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["GastoSalida"][];
+        };
         /** PaginaOportunidades */
         PaginaOportunidades: {
             /** Total */
@@ -2369,6 +2850,67 @@ export interface components {
              */
             plazo_dias?: number | null;
         };
+        /** PlantillaCrear */
+        PlantillaCrear: {
+            /** Evento */
+            evento: string;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Canal
+             * @default whatsapp
+             * @enum {string}
+             */
+            canal: "whatsapp" | "correo" | "sms";
+            /**
+             * Asunto
+             * @description Solo para correo
+             */
+            asunto?: string | null;
+            /**
+             * Cuerpo
+             * @description Con variables como {{cliente_nombre}}
+             */
+            cuerpo: string;
+        };
+        /** PlantillaEditar */
+        PlantillaEditar: {
+            /** Nombre */
+            nombre?: string | null;
+            /** Asunto */
+            asunto?: string | null;
+            /** Cuerpo */
+            cuerpo?: string | null;
+            /** Activa */
+            activa?: boolean | null;
+        };
+        /** PlantillaSalida */
+        PlantillaSalida: {
+            /** Id */
+            id: number;
+            /** Evento */
+            evento: string;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Canal
+             * @enum {string}
+             */
+            canal: "whatsapp" | "correo" | "sms";
+            /** Asunto */
+            asunto: string | null;
+            /** Cuerpo */
+            cuerpo: string;
+            /** Activa */
+            activa: boolean;
+            /** Variables */
+            variables: string[];
+            /**
+             * Actualizada En
+             * Format: date-time
+             */
+            actualizada_en: string;
+        };
         /** PorEstado */
         PorEstado: {
             /** Estado */
@@ -2385,6 +2927,32 @@ export interface components {
              * Format: email
              */
             email: string;
+        };
+        /** RenderEntrada */
+        RenderEntrada: {
+            /** Caso Id */
+            caso_id?: number | null;
+            /**
+             * Negocio Id
+             * @description Para mensajes de saldo sin trámite
+             */
+            negocio_id?: number | null;
+        };
+        /** RenderSalida */
+        RenderSalida: {
+            /** Asunto */
+            asunto: string | null;
+            /** Mensaje */
+            mensaje: string;
+            /**
+             * Faltantes
+             * @description Variables sin dato: quedan visibles como {{x}}
+             */
+            faltantes: string[];
+            /** Telefono */
+            telefono: string | null;
+            /** Correo */
+            correo: string | null;
         };
         /** RestablecerEntrada */
         RestablecerEntrada: {
@@ -2682,6 +3250,13 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VariableSalida */
+        VariableSalida: {
+            /** Clave */
+            clave: string;
+            /** Descripcion */
+            descripcion: string;
         };
         /** VentaSalida */
         VentaSalida: {
@@ -3896,6 +4471,340 @@ export interface operations {
             };
         };
     };
+    listar_gastos_api_v1_gastos_get: {
+        parameters: {
+            query?: {
+                categoria_id?: number | null;
+                negocio_id?: number | null;
+                caso_id?: number | null;
+                solo_directos?: boolean;
+                desde?: string | null;
+                hasta?: string | null;
+                incluir_anulados?: boolean;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaGastos"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    registrar_gasto_api_v1_gastos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GastoCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GastoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gastos_por_categoria_api_v1_gastos_por_categoria_get: {
+        parameters: {
+            query?: {
+                desde?: string | null;
+                hasta?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GastoPorCategoria"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anular_gasto_api_v1_gastos__gasto_id__anular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gasto_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnularEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GastoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_comisiones_api_v1_comisiones_get: {
+        parameters: {
+            query?: {
+                vendedor_id?: number | null;
+                periodo?: string | null;
+                estado?: ("provisional" | "causada" | "liquidada" | "anulada") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComisionSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pendientes_api_v1_comisiones_pendientes_get: {
+        parameters: {
+            query: {
+                vendedor_id: number;
+                periodo: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComisionSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recalcular_api_v1_ventas__negocio_id__comision_recalcular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                negocio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComisionSalida"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    liquidar_api_v1_liquidaciones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiquidarEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiquidacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    marcar_pagada_api_v1_liquidaciones__liquidacion_id__pagada_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                liquidacion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiquidacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anular_liquidacion_api_v1_liquidaciones__liquidacion_id__anular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                liquidacion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnularEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiquidacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     buscar_api_v1_buscar_get: {
         parameters: {
             query: {
@@ -4573,6 +5482,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PorEstado"][];
+                };
+            };
+        };
+    };
+    catalogo_api_v1_plantillas_catalogo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogoPlantillas"];
+                };
+            };
+        };
+    };
+    listar_api_v1_plantillas_get: {
+        parameters: {
+            query?: {
+                evento?: string | null;
+                incluir_inactivas?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_api_v1_plantillas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editar_api_v1_plantillas__plantilla_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plantilla_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generar_api_v1_plantillas__plantilla_id__generar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plantilla_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -25,6 +25,7 @@ import { DobleFactor } from './paginas/DobleFactor'
 import { Inicio } from './paginas/Inicio'
 import { Ingreso } from './paginas/Ingreso'
 import { NoEncontrada } from './paginas/NoEncontrada'
+import { Plantillas } from './paginas/Plantillas'
 import { Recuperar, Restablecer } from './paginas/Recuperacion'
 import { Usuarios } from './paginas/Usuarios'
 
@@ -71,6 +72,7 @@ const enruta = createBrowserRouter([
               { path: '/embudo', element: <Embudo /> },
               { path: '/clientes', element: <Clientes /> },
               { path: '/clientes/:id', element: <ClienteFicha /> },
+              { path: '/mensajes', element: <Plantillas /> },
               { path: '/usuarios', element: <Usuarios /> },
               { path: '/configuracion', element: <Configuracion /> },
               ...SECCIONES.filter((s) => s.pendiente).map((s) => ({
