@@ -15,7 +15,8 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select, text
 
-from app.models.esquema import CategoriasGasto, Negocios, Paises, Servicios
+from app.models.esquema import (Auditoria, CategoriasGasto, Comisiones,
+                                ComisionesReglas, Negocios, Paises, Servicios)
 from tests.conftest import entrar
 
 
@@ -26,9 +27,18 @@ def finanzas(cliente, usuario):
 
 @pytest.fixture
 def vendedora(cliente, db, usuario):
-    """Una comercial con la regla de Angie: el seed la empareja por nombre."""
+    """Una comercial con la regla de Angie, atada a ella por id.
+
+    La regla sembrada se le asigna a esta usuaria de prueba. Antes la fixture se
+    llamaba «Angie Lorena» para que el emparejamiento por nombre la encontrara;
+    eso probaba la suerte del seed, no el motor.
+    """
     p = usuario('comercial')
     p.u.nombre = 'Angie Lorena'
+    regla = db.scalars(select(ComisionesReglas)
+                       .where(ComisionesReglas.nombre.like('Angie%'))).first()
+    regla.vendedor_id = p.u.id
+    regla.activo = True
     db.commit()
     return entrar(cliente, p), p
 
@@ -136,6 +146,218 @@ def test_la_tasa_consular_no_comisiona(cliente, vendedora, finanzas, db):
         'el recaudo de terceros no genera comisión'
 
 
+# ------------------------------------------------- de quien es cada regla
+#
+# La administradora fue explicita: «las comisiones solo son para angie y yas,
+# miriam no hace ventas». Antes las reglas se sembraban sin dueña y `regla_para`
+# adivinaba por el primer nombre; cuando no adivinaba —«Isa» contra la regla
+# «Yas — 7 %…»— repartia el escalon del 10 % de Angie a quien fuera.
+
+def _comercial_con_regla(cliente, db, usuario, patron):
+    """Una comercial a la que se le asigna la regla sembrada que se pida."""
+    p = usuario('comercial')
+    regla = db.scalars(select(ComisionesReglas)
+                       .where(ComisionesReglas.nombre.like(patron))).first()
+    regla.vendedor_id = p.u.id
+    regla.activo = True
+    db.commit()
+    return entrar(cliente, p), p
+
+
+def test_la_regla_de_yas_no_trae_el_escalon_del_diez_de_angie(cliente, db, usuario, finanzas):
+    """Yas comisiona el 7 % plano: su regla no tiene meta.
+
+    El porcentaje de Yas sigue por confirmar, pero lo que no puede pasar es que
+    herede el escalon de Angie por un emparejamiento de nombres.
+    """
+    cab, _ = _comercial_con_regla(cliente, db, usuario, 'Yas%')
+    venta = vender(cliente, cab, db, servicio='asesoria_adelanto',
+                   nombre='Regla Deyas Cliente', fecha='2026-11-05')
+    c = comision_de(cliente, finanzas, venta['id'])
+
+    assert c['porcentaje_aplicado'] == 7.0, c
+    assert c['escalon'] == 'base', 'el escalon del 10 % es de Angie, no de Yas'
+    assert 'Yas' in c['explicacion'] or 'n.º' not in c['explicacion'], c['explicacion']
+
+
+def test_dos_comerciales_de_nombre_parecido_no_comparten_la_regla(cliente, db, usuario,
+                                                                 finanzas):
+    """La regla es de quien dice el id, no de quien se llama parecido.
+
+    El emparejamiento viejo exigia que el nombre de la regla empezara por el
+    primer nombre de la usuaria, asi que «Angie Lorena» y «Angelica Ruiz» podian
+    cobrar las dos el escalon del 10 %.
+    """
+    cab_angie, _ = _comercial_con_regla(cliente, db, usuario, 'Angie%')
+    otra = usuario('comercial')
+    otra.u.nombre = 'Angelica Ruiz'
+    db.commit()
+    cab_otra = entrar(cliente, otra)
+
+    mia = vender(cliente, cab_angie, db, servicio='asesoria_adelanto',
+                 nombre='Parecido Angie Cliente', fecha='2026-11-05')
+    suya = vender(cliente, cab_otra, db, servicio='asesoria_adelanto',
+                  nombre='Parecido Angelica Cliente', fecha='2026-11-05')
+
+    assert comision_de(cliente, finanzas, mia['id'])['porcentaje_aplicado'] == 10.0
+    assert comision_de(cliente, finanzas, suya['id']) is None, (
+        'Angelica no es Angie: no hereda su regla por parecerse de nombre')
+
+
+def test_una_comercial_sin_regla_no_comisiona(cliente, db, usuario, finanzas):
+    """Miriam no vende: una comercial sin regla propia no cobra la de nadie."""
+    p = usuario('comercial')
+    p.u.nombre = 'Miriam Sin Regla'
+    db.commit()
+    cab = entrar(cliente, p)
+
+    venta = vender(cliente, cab, db, servicio='asesoria_adelanto',
+                   nombre='Sin Regla Cliente', fecha='2026-11-05')
+    assert comision_de(cliente, finanzas, venta['id']) is None, (
+        'una comercial sin regla no puede heredar el escalon del 10 % de Angie')
+
+
+def test_la_regla_congelada_dice_el_nombre_de_la_regla_que_se_aplico(cliente, db, usuario,
+                                                                     finanzas):
+    """RN-07: la comision guarda cual regla se le aplico, y tiene que ser la suya."""
+    cab, p = _comercial_con_regla(cliente, db, usuario, 'Yas%')
+    venta = vender(cliente, cab, db, servicio='asesoria_usa', nombre='Congelada Yas Cliente')
+
+    c = db.scalars(select(Comisiones).where(Comisiones.negocio_id == venta['id'])).first()
+    assert c.regla_aplicada['regla_nombre'].startswith('Yas'), c.regla_aplicada['regla_nombre']
+    assert 'porcentaje_meta' not in c.regla_aplicada, 'la regla de Yas no tiene meta'
+
+
+# ------------------------------------------------- el cupo y las ventas atrasadas
+#
+# Lo encontro una auditoria del motor el 05/10/2026: el cupo del 10 % se reparte
+# por fecha de venta, asi que una venta registrada hoy con fecha de la semana
+# pasada no solo toma su puesto, les corre un puesto a todas las de atras. Antes
+# de arreglarlo, la que salia del cupo se quedaba con el 10 % y el mes terminaba
+# con once comisiones al 10 % contra una meta de diez.
+
+def _diez_premium_de_septiembre(cliente, cab, db, etiqueta):
+    """Diez ventas premium del 19 al 28 de septiembre, en orden."""
+    return [vender(cliente, cab, db, servicio='asesoria_adelanto',
+                   nombre=f'{etiqueta} Cliente{i:02d} Apellido{i:02d}',
+                   fecha=f'2026-09-{i + 19:02d}')
+            for i in range(10)]
+
+
+def test_una_venta_atrasada_no_deja_once_comisiones_al_diez_por_ciento(cliente, vendedora,
+                                                                       finanzas, db):
+    """La meta es de diez. Once al 10 % es plata pagada de mas."""
+    cab, p = vendedora
+    _diez_premium_de_septiembre(cliente, cab, db, 'Atrasada')
+
+    delmes = cliente.get(f'/api/v1/comisiones?vendedor_id={p.u.id}&periodo=2026-09-01',
+                         headers=finanzas).json()
+    assert [c['porcentaje_aplicado'] for c in delmes] == [10.0] * 10, 'los diez cupos usados'
+
+    # Llega la venta atrasada: fue el 22 de septiembre, se registra hoy.
+    vender(cliente, cab, db, servicio='asesoria_adelanto',
+           nombre='Atrasada Retro Cliente', fecha='2026-09-22')
+
+    despues = cliente.get(f'/api/v1/comisiones?vendedor_id={p.u.id}&periodo=2026-09-01',
+                          headers=finanzas).json()
+    al_diez = [c for c in despues if c['porcentaje_aplicado'] == 10.0]
+    al_siete = [c for c in despues if c['porcentaje_aplicado'] == 7.0]
+    assert len(despues) == 11
+    assert len(al_diez) == 10, f'once premium, diez cupos: {len(al_diez)} al 10 %'
+    assert len(al_siete) == 1, 'la que sale del cupo vuelve al 7 %'
+
+
+def test_la_venta_atrasada_toma_el_puesto_que_le_da_la_fecha(cliente, vendedora, finanzas, db):
+    """El puesto sale de la fecha de venta, no del dia en que se digito."""
+    cab, p = vendedora
+    diez = _diez_premium_de_septiembre(cliente, cab, db, 'Puesto')
+    ultima = diez[-1]              # la del 28, hasta ahora la n.º 10
+
+    nueva = vender(cliente, cab, db, servicio='asesoria_adelanto',
+                   nombre='Puesto Retro Cliente', fecha='2026-09-22')
+
+    # El 22 ya tenia una venta (la n.º 4), asi que la atrasada entra de quinta.
+    c_nueva = comision_de(cliente, finanzas, nueva['id'])
+    assert c_nueva['porcentaje_aplicado'] == 10.0
+    assert 'n.º 5' in c_nueva['explicacion'], c_nueva['explicacion']
+
+    # Y la del 28 pasa a ser la n.º 11: fuera del cupo.
+    c_ultima = comision_de(cliente, finanzas, ultima['id'])
+    assert c_ultima['porcentaje_aplicado'] == 7.0, c_ultima
+    assert c_ultima['escalon'] == 'base'
+    assert 'n.º 11' in c_ultima['explicacion'], c_ultima['explicacion']
+
+
+def test_ningun_puesto_del_cupo_queda_repetido(cliente, vendedora, finanzas, db):
+    """Dos comisiones diciendo ser la misma venta n.º 5 no se puede explicar."""
+    cab, p = vendedora
+    _diez_premium_de_septiembre(cliente, cab, db, 'Unico')
+    vender(cliente, cab, db, servicio='asesoria_adelanto',
+           nombre='Unico Retro Cliente', fecha='2026-09-22')
+
+    puestos = [c.regla_aplicada.get('posicion_en_la_meta') for c in db.scalars(
+        select(Comisiones).where(Comisiones.vendedor_id == p.u.id,
+                                 Comisiones.periodo == dt.date(2026, 9, 1)))]
+    assert sorted(puestos) == list(range(1, 12)), f'los puestos del mes: {sorted(puestos)}'
+
+
+def test_el_corte_del_mes_paga_diez_cupos_y_no_once(cliente, vendedora, finanzas, db):
+    """La prueba de la plata: lo anterior son campos, esto es lo que se gira."""
+    cab, p = vendedora
+    ventas = _diez_premium_de_septiembre(cliente, cab, db, 'Corte')
+    ventas.append(vender(cliente, cab, db, servicio='asesoria_adelanto',
+                         nombre='Corte Retro Cliente', fecha='2026-09-22'))
+    for v in ventas:
+        cliente.post('/api/v1/pagos', headers=finanzas,
+                     json={'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+                           'fecha': '2026-09-30'})
+
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2026-09-01'})
+    assert r.status_code == 201, r.text
+    liq = r.json()
+    assert liq['cantidad'] == 11
+
+    valores = sorted(v['valor_pactado'] for v in ventas)
+    debido = sum(valores[:-1]) * 0.10 + valores[-1] * 0.07
+    assert liq['total'] == pytest.approx(debido, abs=2), (
+        f'el corte gira {liq["total"]:,.0f} y la regla dice {debido:,.0f}')
+
+
+def test_una_atrasada_que_desplaza_una_comision_ya_pagada_queda_anotada(cliente, vendedora,
+                                                                        finanzas, db):
+    """Si el cupo ya se liquido, esa plata ya salio y no se puede recalcular.
+
+    Lo unico honesto es que quede escrito: sin esto el sobrepago desaparece sin
+    que nadie se entere.
+    """
+    cab, p = vendedora
+    diez = _diez_premium_de_septiembre(cliente, cab, db, 'Anotada')
+    for v in diez:
+        cliente.post('/api/v1/pagos', headers=finanzas,
+                     json={'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+                           'fecha': '2026-09-30'})
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2026-09-01'})
+    assert r.status_code == 201 and r.json()['cantidad'] == 10
+
+    vender(cliente, cab, db, servicio='asesoria_adelanto',
+           nombre='Anotada Retro Cliente', fecha='2026-09-22')
+
+    alerta = db.scalars(select(Auditoria)
+                        .where(Auditoria.operacion == 'alerta',
+                               Auditoria.entidad == 'comisiones')
+                        .order_by(Auditoria.id.desc())).first()
+    assert alerta is not None, 'el sobrepago tiene que quedar anotado'
+    assert alerta.despues['vendedor_id'] == p.u.id
+    assert len(alerta.despues['comisiones']) == 1, alerta.despues
+    assert 'ya salió' in alerta.despues['motivo']
+
+    # La liquidada no se tocó: esa plata ya se pagó (RN-07).
+    c = comision_de(cliente, finanzas, diez[-1]['id'])
+    assert c['estado'] == 'liquidada' and c['porcentaje_aplicado'] == 10.0
+
+
 # -------------------------------------------------------------- la causación
 
 def test_la_comision_se_gana_cuando_el_cliente_termina_de_pagar(cliente, vendedora,
@@ -177,6 +399,162 @@ def test_un_cargo_posterior_vuelve_a_abrir_la_comision(cliente, vendedora, finan
     cliente.post(f'/api/v1/ventas/{venta["id"]}/ajustes', headers=finanzas, json={
         'tipo': 'cargo', 'monto': 50000, 'motivo': 'Envío urgente'})
     assert comision_de(cliente, finanzas, venta['id'])['estado'] == 'provisional'
+
+
+# ------------------------------------------- lo que no es "terminar de pagar"
+#
+# La regla dice que la comision se gana cuando el cliente TERMINA DE PAGAR toda
+# la venta. El codigo miraba el saldo de la vista, y el saldo baja por cosas que
+# no son pagos.
+
+def test_condonar_la_venta_entera_no_causa_la_comision(cliente, vendedora, finanzas, db):
+    """Condonar no es pagar: lleva el saldo a cero sin que entre un peso."""
+    cab, p = vendedora
+    venta = vender(cliente, cab, db, servicio='asesoria_usa',
+                   nombre='Condonado Entero Cliente', fecha='2027-07-10')
+
+    r = cliente.post(f'/api/v1/ventas/{venta["id"]}/ajustes', headers=finanzas, json={
+        'tipo': 'condonacion', 'monto': venta['valor_pactado'],
+        'motivo': 'El cliente no continuo y se le condono el saldo'})
+    assert r.status_code == 201, r.text
+
+    ef = cliente.get(f'/api/v1/ventas/{venta["id"]}/estado-financiero',
+                     headers=finanzas).json()
+    assert ef['total_pagado'] == 0 and ef['saldo'] == 0, ef
+
+    assert comision_de(cliente, finanzas, venta['id'])['estado'] == 'provisional', (
+        'no se gana una comision de una venta de la que no entro un peso')
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2027-07-01'})
+    assert r.status_code == 422 and r.json()['codigo'] == 'sin_comisiones'
+
+
+def test_un_descuento_posterior_si_deja_terminar_de_pagar(cliente, vendedora, finanzas, db):
+    """El descuento baja el precio de verdad: quien paga el resto ya pago todo."""
+    cab, _ = vendedora
+    venta = vender(cliente, cab, db, servicio='asesoria_usa',
+                   nombre='Descuento Posterior Cliente', fecha='2027-07-12')
+    mitad = venta['valor_pactado'] / 2
+
+    cliente.post(f'/api/v1/ventas/{venta["id"]}/ajustes', headers=finanzas, json={
+        'tipo': 'descuento', 'monto': mitad, 'motivo': 'Rebaja acordada con el cliente'})
+    cliente.post('/api/v1/pagos', headers=finanzas,
+                 json={'negocio_id': venta['id'], 'monto_bruto': mitad})
+
+    assert comision_de(cliente, finanzas, venta['id'])['estado'] == 'causada'
+
+
+def test_mover_el_pago_devuelve_a_provisional_la_venta_que_lo_pierde(cliente, vendedora,
+                                                                     finanzas, db):
+    """Un solo pago no puede causar dos comisiones."""
+    cab, p = vendedora
+    a = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Origen Delpago Cliente', fecha='2027-08-05')
+    b = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Destino Delpago Cliente', fecha='2027-08-06')
+
+    pago = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': a['id'], 'monto_bruto': a['valor_pactado'],
+        'fecha': '2027-08-07'}).json()
+    assert comision_de(cliente, finanzas, a['id'])['estado'] == 'causada'
+
+    r = cliente.post(f'/api/v1/pagos/{pago["id"]}/asignar', headers=finanzas,
+                     json={'negocio_id': b['id']})
+    assert r.status_code == 200, r.text
+
+    assert comision_de(cliente, finanzas, b['id'])['estado'] == 'causada', 'el destino se gana'
+    assert comision_de(cliente, finanzas, a['id'])['estado'] == 'provisional', (
+        'la venta que perdio el pago vuelve a deber, y su comision con ella')
+
+    liq = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                       json={'vendedor_id': p.u.id, 'periodo': '2027-08-01'}).json()
+    assert liq['cantidad'] == 1, f'un pago, una comision: el corte trajo {liq["cantidad"]}'
+
+
+def test_anular_el_corte_revisa_si_la_venta_sigue_pagada(cliente, vendedora, finanzas, db):
+    """Al deshacer un corte no se vuelve a «causada» a ciegas.
+
+    Si el banco reverso el pago despues de liquidar, la venta volvio a deber: la
+    comision tiene que quedar provisional y no lista para el proximo corte.
+    """
+    cab, p = vendedora
+    v = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Reversado Traselcorte Cliente', fecha='2027-09-10')
+    pago = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+        'fecha': '2027-09-11'}).json()
+    liq = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                       json={'vendedor_id': p.u.id, 'periodo': '2027-09-01'}).json()
+    assert comision_de(cliente, finanzas, v['id'])['estado'] == 'liquidada'
+
+    cliente.post(f'/api/v1/pagos/{pago["id"]}/estado', headers=finanzas,
+                 json={'estado': 'reversado', 'observacion': 'La devolvio el banco'})
+    r = cliente.post(f'/api/v1/liquidaciones/{liq["id"]}/anular', headers=finanzas,
+                     json={'motivo': 'Se deshace el corte porque el pago se reverso'})
+    assert r.status_code == 200, r.text
+
+    assert comision_de(cliente, finanzas, v['id'])['estado'] == 'provisional', (
+        'la venta volvio a deber: la comision no puede quedar lista para el otro corte')
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2027-09-01'})
+    assert r.status_code == 422, 'y no hay nada que liquidar'
+
+
+def test_una_venta_ya_pagada_nace_con_la_comision_causada(cliente, vendedora, finanzas, db):
+    """La forma exacta de las ventas que trajo la migracion: pagadas y sin
+    vendedora. Cuando finanzas descubre de quien era, no va a haber otro pago que
+    cause la comision, asi que tiene que nacer ya ganada."""
+    cab, p = vendedora
+    v = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Migrada Pagada Cliente', fecha='2027-10-05')
+
+    # Se la devolvemos al estado en que llega de la migracion.
+    db.execute(text('delete from comisiones where negocio_id = :n'), {'n': v['id']})
+    db.get(Negocios, v['id']).vendedor_id = None
+    db.commit()
+    cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'], 'fecha': '2027-10-06'})
+    assert comision_de(cliente, finanzas, v['id']) is None, 'sin vendedora no hay comision'
+
+    # Finanzas descubre de quien era la venta.
+    db.get(Negocios, v['id']).vendedor_id = p.u.id
+    db.commit()
+    r = cliente.post(f'/api/v1/ventas/{v["id"]}/comision/recalcular', headers=finanzas)
+    assert r.status_code == 200, r.text
+    assert r.json()['estado'] == 'causada', (
+        'la venta esta pagada completa: la comision nace ganada, no provisional')
+
+
+def test_descuadres_ve_la_comision_cobrada_sobre_una_venta_reversada(cliente, vendedora,
+                                                                     finanzas, db):
+    """El invariante que el estado no alcanza a cubrir.
+
+    Si el banco reversa el pago despues de que el corte se pago, esa comision no
+    se puede devolver a provisional: la plata ya se giro. Lo unico que se puede
+    hacer es que quede a la vista.
+    """
+    from app.services import comisiones as serv
+
+    cab, p = vendedora
+    v = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Descuadre Cliente Reversado', fecha='2028-02-05')
+    pago = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+        'fecha': '2028-02-06'}).json()
+    liq = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                       json={'vendedor_id': p.u.id, 'periodo': '2028-02-01'}).json()
+    cliente.post(f'/api/v1/liquidaciones/{liq["id"]}/pagada', headers=finanzas)
+    assert serv.descuadres(db, p.u.id) == [], 'antes del reverso no hay descuadre'
+
+    cliente.post(f'/api/v1/pagos/{pago["id"]}/estado', headers=finanzas,
+                 json={'estado': 'reversado', 'observacion': 'La devolvio el banco'})
+
+    visto = serv.descuadres(db, p.u.id)
+    assert len(visto) == 1, visto
+    assert visto[0]['negocio_id'] == v['id']
+    assert visto[0]['estado'] == 'liquidada'
+    assert visto[0]['corte'] == 'pagada'
+    assert float(visto[0]['debe']) == pytest.approx(v['valor_pactado'], abs=1)
 
 
 # --------------------------------------------------------- la regla congelada
@@ -236,6 +614,49 @@ def test_la_liquidacion_junta_lo_causado_y_lo_bloquea(cliente, vendedora, finanz
     r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
                      json={'vendedor_id': p.u.id, 'periodo': '2027-03-01'})
     assert r.status_code == 409 and r.json()['codigo'] == 'periodo_ya_liquidado'
+
+
+def test_una_comision_que_se_causa_tarde_entra_en_el_corte_siguiente(cliente, vendedora,
+                                                                    finanzas, db):
+    """Plata ganada que no se podia pagar nunca.
+
+    La comision se causa cuando el cliente termina de pagar, y eso puede caer
+    despues de que el corte de su mes ya se cerro. El corte de ese mes no se
+    puede repetir y el del mes siguiente no la miraba: se quedaba causada para
+    siempre.
+    """
+    cab, p = vendedora
+    a = vender(cliente, cab, db, servicio='asesoria_usa', nombre='Pago Atiempo Cliente',
+               fecha='2029-05-05')
+    b = vender(cliente, cab, db, servicio='asesoria_usa', nombre='Pago Tardio Cliente',
+               fecha='2029-05-06')
+    cliente.post('/api/v1/pagos', headers=finanzas,
+                 json={'negocio_id': a['id'], 'monto_bruto': a['valor_pactado']})
+
+    mayo = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                        json={'vendedor_id': p.u.id, 'periodo': '2029-05-01'}).json()
+    assert mayo['cantidad'] == 1
+
+    # El segundo cliente termina de pagar despues del corte de mayo.
+    cliente.post('/api/v1/pagos', headers=finanzas,
+                 json={'negocio_id': b['id'], 'monto_bruto': b['valor_pactado']})
+    assert comision_de(cliente, finanzas, b['id'])['estado'] == 'causada'
+
+    # Mayo ya no se puede repetir...
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2029-05-01'})
+    assert r.status_code == 409 and r.json()['codigo'] == 'periodo_ya_liquidado'
+
+    # ...asi que la arrastra el corte de junio, diciendo que era de mayo.
+    r = cliente.post('/api/v1/liquidaciones', headers=finanzas,
+                     json={'vendedor_id': p.u.id, 'periodo': '2029-06-01'})
+    assert r.status_code == 201, r.text
+    junio = r.json()
+    assert junio['cantidad'] == 1
+    assert junio['periodo'] == '2029-06-01'
+    assert junio['comisiones'][0]['periodo'] == '2029-05-01', (
+        'el corte de junio arrastra una de mayo y la fila lo dice')
+    assert junio['comisiones'][0]['negocio_id'] == b['id']
 
 
 def test_una_comision_provisional_no_entra_en_el_corte(cliente, vendedora, finanzas, db):
