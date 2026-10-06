@@ -1,0 +1,403 @@
+"""Comisiones: cálculo, causación y liquidación (RF-050, RF-051, RF-052).
+
+La regla la dio la administradora el 03/10/2026 y está sembrada en
+`comisiones_reglas`, no escrita acá:
+
+> Angie comisiona el 7 % del valor de la venta. Sobre sus primeras diez ventas
+> de servicio premium del periodo se le paga el 10 %, y de la once en adelante
+> vuelve al 7 %. La renovación no cuenta para esas diez. La comisión se gana
+> cuando el cliente termina de pagar toda la venta, no al cerrarla. Y la base es
+> solo el valor del servicio: la tasa consular es plata del consulado.
+
+**Por qué la regla vive en una fila y no en el código.** RN-07 exige que cada
+venta conserve la regla que tenía el día que se hizo. Si en enero cambia el
+porcentaje, las comisiones de octubre no se mueven. Por eso la comisión guarda
+una copia íntegra de la regla en `regla_aplicada`, incluido el escalón que le
+tocó y por qué: el cálculo se puede explicar meses después sin tener que
+reconstruir qué decía la tabla ese día.
+
+**Los tres estados.** `provisional` al cerrar la venta, `causada` cuando el
+cliente termina de pagar —que es cuando se gana de verdad— y `liquidada` cuando
+entra en un corte. Una comisión liquidada no vuelve a entrar en otro: ahí está
+la diferencia entre un reporte y un registro de pago.
+"""
+from __future__ import annotations
+
+import datetime as dt
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session, selectinload
+
+from app.core.errores import Conflicto, Invalido, NoEncontrado
+from app.models.esquema import (Comisiones, ComisionesReglas, LiquidacionesComision, Negocios,
+                                Pagos, Servicios, Usuarios)
+from app.services.auditoria import auditar, instantanea
+
+BOGOTA = ZoneInfo('America/Bogota')
+CENTAVO = Decimal('1')
+
+# Las comisiones ya pagadas no se tocan; las demás se pueden recalcular.
+MODIFICABLES = ('provisional', 'causada')
+
+
+def _periodo_de(fecha: dt.date) -> dt.date:
+    """El primer día del mes. Es la llave del corte."""
+    return fecha.replace(day=1)
+
+
+def regla_para(db: Session, vendedor_id: int, fecha: dt.date) -> ComisionesReglas | None:
+    """La regla que regía para esa vendedora ese día.
+
+    Se busca primero una regla suya y después una general, siempre por vigencia
+    y no «la última»: una venta de hace tres meses se comisiona con la regla de
+    hace tres meses.
+    """
+    base = (select(ComisionesReglas)
+            .where(ComisionesReglas.activo.is_(True),
+                   ComisionesReglas.vigente_desde <= fecha,
+                   (ComisionesReglas.vigente_hasta.is_(None))
+                   | (ComisionesReglas.vigente_hasta >= fecha))
+            .order_by(ComisionesReglas.vigente_desde.desc()))
+    propia = db.scalars(base.where(ComisionesReglas.vendedor_id == vendedor_id)).first()
+    if propia:
+        return propia
+    # La regla sembrada lleva el nombre de la vendedora pero no su id, porque los
+    # usuarios se crean después del catálogo. Se empareja por nombre.
+    vendedor = db.get(Usuarios, vendedor_id)
+    if vendedor:
+        primer_nombre = vendedor.nombre.split()[0].lower()
+        for r in db.scalars(base.where(ComisionesReglas.vendedor_id.is_(None))):
+            if r.nombre.lower().startswith(primer_nombre):
+                return r
+    return db.scalars(base.where(ComisionesReglas.vendedor_id.is_(None))).first()
+
+
+@dataclass
+class Calculo:
+    base: Decimal
+    porcentaje: Decimal
+    monto: Decimal
+    escalon: str
+    posicion_en_la_meta: int | None
+    explicacion: str
+    regla: dict
+
+
+def _es_premium(definicion: dict, codigo_servicio: str | None) -> bool:
+    cuentan = definicion.get('servicios_que_cuentan_para_la_meta') or []
+    excluidos = definicion.get('servicios_excluidos_de_la_meta') or []
+    if not codigo_servicio or codigo_servicio in excluidos:
+        return False
+    return codigo_servicio in cuentan
+
+
+def _base_de_calculo(db: Session, negocio: Negocios, regla: ComisionesReglas) -> Decimal:
+    """Sobre cuánto se comisiona.
+
+    La tasa consular no entra: son dólares que el cliente le paga directamente
+    al consulado, así que nunca pasan por las cuentas de VisaNow. Como el
+    servicio de tasa es de tipo `recaudo_terceros`, basta con mirar el tipo.
+    """
+    servicio = db.get(Servicios, negocio.servicio_id)
+    excluidos = (regla.definicion or {}).get('excluye_de_la_base') or []
+    if servicio is not None and servicio.tipo in excluidos:
+        return Decimal('0')
+
+    if regla.base == 'vendido':
+        return Decimal(str(negocio.valor_pactado))
+    # Las otras dos bases miran lo que de verdad entró: «cobrado» es el bruto y
+    # «neto_recibido» descuenta lo que se llevó la pasarela o el banco.
+    columna = Pagos.monto_neto if regla.base == 'neto_recibido' else Pagos.monto_bruto
+    cobrado = db.scalar(select(func.coalesce(func.sum(columna), 0))
+                        .where(Pagos.negocio_id == negocio.id,
+                               Pagos.estado == 'confirmado'))
+    return Decimal(str(cobrado or 0))
+
+
+def _posicion_en_la_meta(db: Session, negocio: Negocios, definicion: dict) -> int | None:
+    """Qué número de venta premium es ésta, para esa vendedora, en ese periodo.
+
+    Si es la primera, devuelve 1. Se cuenta por fecha de venta y, cuando dos
+    caen el mismo día, por el orden en que se registraron: tiene que ser
+    determinista, porque de ahí sale si le pagan el 10 % o el 7 %.
+    """
+    cuentan = definicion.get('servicios_que_cuentan_para_la_meta') or []
+    if not cuentan:
+        return None
+    periodo = _periodo_de(negocio.fecha_venta)
+    siguiente_mes = (periodo + dt.timedelta(days=32)).replace(day=1)
+
+    anteriores = db.execute(
+        select(func.count())
+        .select_from(Negocios)
+        .join(Servicios, Servicios.id == Negocios.servicio_id)
+        .where(Negocios.vendedor_id == negocio.vendedor_id,
+               Negocios.fecha_venta >= periodo,
+               Negocios.fecha_venta < siguiente_mes,
+               Servicios.codigo.in_(cuentan),
+               (Negocios.fecha_venta < negocio.fecha_venta)
+               | ((Negocios.fecha_venta == negocio.fecha_venta) & (Negocios.id < negocio.id)))
+    ).scalar() or 0
+    return anteriores + 1
+
+
+def calcular(db: Session, negocio: Negocios, regla: ComisionesReglas) -> Calculo:
+    """Cuánto le corresponde a la vendedora por esta venta, y por qué."""
+    definicion = regla.definicion or {}
+    base = _base_de_calculo(db, negocio, regla)
+    servicio = db.get(Servicios, negocio.servicio_id)
+    codigo = servicio.codigo if servicio else None
+
+    porcentaje_base = Decimal(str(definicion.get('porcentaje_base', regla.porcentaje or 0)))
+    porcentaje = porcentaje_base
+    escalon = 'base'
+    posicion = None
+    explicacion = f'{porcentaje_base} % del valor de la venta.'
+
+    if base == 0:
+        explicacion = (f'El servicio «{codigo}» es recaudo de terceros: la tasa consular la paga '
+                       f'el cliente directamente al consulado, así que no comisiona.')
+    elif _es_premium(definicion, codigo):
+        posicion = _posicion_en_la_meta(db, negocio, definicion)
+        meta = definicion.get('meta_cantidad') or regla.meta_cantidad
+        porcentaje_meta = definicion.get('porcentaje_meta')
+        if meta and porcentaje_meta and posicion and posicion <= int(meta):
+            porcentaje = Decimal(str(porcentaje_meta))
+            escalon = 'meta'
+            explicacion = (f'Venta premium n.º {posicion} del periodo: entra en las primeras '
+                           f'{meta}, así que se paga al {porcentaje} % en vez del '
+                           f'{porcentaje_base} %.')
+        elif posicion:
+            explicacion = (f'Venta premium n.º {posicion} del periodo: pasa de las primeras '
+                           f'{meta}, así que vuelve al {porcentaje_base} %.')
+
+    monto = (base * porcentaje / 100).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+    return Calculo(
+        base=base, porcentaje=porcentaje, monto=monto, escalon=escalon,
+        posicion_en_la_meta=posicion, explicacion=explicacion,
+        # La copia íntegra de la regla más lo que se decidió: es lo que permite
+        # explicar el cálculo meses después sin reconstruir la tabla (RN-07).
+        regla=dict(definicion) | {
+            'regla_id': regla.id, 'regla_nombre': regla.nombre, 'base': regla.base,
+            'porcentaje_aplicado': float(porcentaje), 'escalon': escalon,
+            'posicion_en_la_meta': posicion, 'explicacion': explicacion,
+            'congelada_en': dt.datetime.now(BOGOTA).isoformat(),
+        })
+
+
+# ------------------------------------------------------------- ciclo de vida
+
+def registrar(db: Session, actor: Usuarios, negocio_id: int, *,
+              ip: str | None = None) -> Comisiones | None:
+    """Crea la comisión provisional de una venta (RF-051).
+
+    Devuelve None cuando no hay a quién comisionarle o cuando el servicio no
+    comisiona: una venta sin vendedor no es un error, es una venta que nadie
+    cerró a nombre propio.
+    """
+    negocio = db.get(Negocios, negocio_id)
+    if negocio is None:
+        raise NoEncontrado('La venta no existe.')
+    if not negocio.vendedor_id:
+        return None
+
+    regla = regla_para(db, negocio.vendedor_id, negocio.fecha_venta)
+    if regla is None:
+        return None
+
+    existente = db.scalar(select(Comisiones).where(Comisiones.negocio_id == negocio_id,
+                                                   Comisiones.vendedor_id == negocio.vendedor_id))
+    if existente is not None:
+        return existente
+
+    c = calcular(db, negocio, regla)
+    if c.monto <= 0:
+        return None
+
+    comision = Comisiones(negocio_id=negocio_id, vendedor_id=negocio.vendedor_id,
+                          regla_id=regla.id, regla_aplicada=c.regla,
+                          base_calculo=c.base, monto=c.monto, estado='provisional',
+                          periodo=_periodo_de(negocio.fecha_venta))
+    db.add(comision)
+    db.flush()
+    auditar(db, operacion='insert', entidad='comisiones', usuario_id=actor.id,
+            entidad_id=comision.id, despues=instantanea(comision), ip=ip)
+    db.commit()
+    return comision
+
+
+def revisar_causacion(db: Session, actor: Usuarios, negocio_id: int,
+                      ip: str | None = None) -> Comisiones | None:
+    """La comisión se gana cuando el cliente termina de pagar (D-03).
+
+    Se llama después de registrar un pago: si el saldo llegó a cero, la comisión
+    pasa de provisional a causada. Si el saldo vuelve a subir —un pago reversado,
+    un cargo—, vuelve a provisional: no se puede pagar una comisión de plata que
+    no entró.
+    """
+    comision = db.scalar(select(Comisiones).where(Comisiones.negocio_id == negocio_id))
+    if comision is None or comision.estado not in MODIFICABLES:
+        return comision
+
+    saldo = db.execute(text('select saldo from v_estado_financiero where negocio_id = :n'),
+                       {'n': negocio_id}).scalar()
+    pagada_entera = saldo is not None and Decimal(str(saldo)) <= 0
+    nuevo = 'causada' if pagada_entera else 'provisional'
+    if comision.estado == nuevo:
+        return comision
+
+    antes = instantanea(comision)
+    comision.estado = nuevo
+    db.flush()
+    auditar(db, operacion='update', entidad='comisiones', usuario_id=actor.id,
+            entidad_id=comision.id, antes=antes, despues=instantanea(comision), ip=ip)
+    db.commit()
+    return comision
+
+
+def recalcular(db: Session, actor: Usuarios, negocio_id: int,
+               ip: str | None = None) -> Comisiones | None:
+    """Vuelve a calcular con la regla vigente a la fecha de la venta.
+
+    Sirve cuando se corrige el valor pactado o la vendedora. No toca las
+    liquidadas: esa plata ya se pagó y cambiarla a posteriori es reescribir la
+    historia de un pago.
+    """
+    comision = db.scalar(select(Comisiones).where(Comisiones.negocio_id == negocio_id))
+    if comision is None:
+        return registrar(db, actor, negocio_id, ip=ip)
+    if comision.estado not in MODIFICABLES:
+        raise Conflicto('Esa comisión ya se liquidó: no se puede recalcular.',
+                        codigo='comision_liquidada')
+
+    negocio = db.get(Negocios, negocio_id)
+    regla = regla_para(db, comision.vendedor_id, negocio.fecha_venta)
+    if regla is None:
+        return comision
+    c = calcular(db, negocio, regla)
+    antes = instantanea(comision)
+    comision.regla_id, comision.regla_aplicada = regla.id, c.regla
+    comision.base_calculo, comision.monto = c.base, c.monto
+    db.flush()
+    auditar(db, operacion='update', entidad='comisiones', usuario_id=actor.id,
+            entidad_id=comision.id, antes=antes, despues=instantanea(comision), ip=ip)
+    db.commit()
+    return comision
+
+
+# ------------------------------------------------------------- liquidación
+
+def pendientes(db: Session, vendedor_id: int, periodo: dt.date) -> list[Comisiones]:
+    """Lo que entraría en el corte: causado, del periodo y sin liquidar."""
+    return list(db.scalars(
+        select(Comisiones)
+        .where(Comisiones.vendedor_id == vendedor_id,
+               Comisiones.periodo == _periodo_de(periodo),
+               Comisiones.estado == 'causada',
+               Comisiones.liquidacion_id.is_(None))
+        .options(selectinload(Comisiones.negocio))
+        .order_by(Comisiones.id)))
+
+
+def liquidar(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *,
+             observaciones: str | None = None,
+             ip: str | None = None) -> LiquidacionesComision:
+    """El corte del periodo (RF-052).
+
+    Las comisiones que entran quedan en estado `liquidada` y apuntan al corte,
+    así que no pueden volver a entrar en otro. Es la diferencia entre un reporte
+    y el registro de que esa plata ya se pagó.
+    """
+    if db.get(Usuarios, vendedor_id) is None:
+        raise NoEncontrado('La vendedora no existe.')
+    primero = _periodo_de(periodo)
+
+    abierta = db.scalar(select(LiquidacionesComision)
+                        .where(LiquidacionesComision.vendedor_id == vendedor_id,
+                               LiquidacionesComision.periodo == primero,
+                               LiquidacionesComision.estado != 'anulada'))
+    if abierta is not None:
+        raise Conflicto(f'Ya hay una liquidación de ese periodo (la #{abierta.id}). '
+                        f'Anúlela antes de hacer otra.', codigo='periodo_ya_liquidado')
+
+    comisiones = pendientes(db, vendedor_id, primero)
+    if not comisiones:
+        raise Invalido('No hay comisiones causadas sin liquidar en ese periodo. '
+                       'Una comisión se causa cuando el cliente termina de pagar.',
+                       codigo='sin_comisiones')
+
+    total = sum((Decimal(str(c.monto)) for c in comisiones), Decimal('0'))
+    liquidacion = LiquidacionesComision(
+        vendedor_id=vendedor_id, periodo=primero, total=total, cantidad=len(comisiones),
+        estado='abierta', observaciones=observaciones, liquidada_por=actor.id)
+    db.add(liquidacion)
+    db.flush()
+
+    for c in comisiones:
+        c.estado = 'liquidada'
+        c.liquidacion_id = liquidacion.id
+    db.flush()
+    auditar(db, operacion='insert', entidad='liquidaciones_comision', usuario_id=actor.id,
+            entidad_id=liquidacion.id,
+            despues={'periodo': primero.isoformat(), 'total': str(total),
+                     'comisiones': [c.id for c in comisiones]}, ip=ip)
+    db.commit()
+    return liquidacion
+
+
+def marcar_pagada(db: Session, actor: Usuarios, liquidacion_id: int,
+                  ip: str | None = None) -> LiquidacionesComision:
+    liquidacion = db.get(LiquidacionesComision, liquidacion_id)
+    if liquidacion is None:
+        raise NoEncontrado('La liquidación no existe.')
+    if liquidacion.estado != 'abierta':
+        raise Conflicto(f'La liquidación está «{liquidacion.estado}».', codigo='estado_invalido')
+    antes = instantanea(liquidacion)
+    liquidacion.estado = 'pagada'
+    liquidacion.pagada_en = dt.datetime.now(BOGOTA)
+    db.flush()
+    auditar(db, operacion='update', entidad='liquidaciones_comision', usuario_id=actor.id,
+            entidad_id=liquidacion.id, antes=antes, despues=instantanea(liquidacion), ip=ip)
+    db.commit()
+    return liquidacion
+
+
+def anular(db: Session, actor: Usuarios, liquidacion_id: int, motivo: str,
+           ip: str | None = None) -> LiquidacionesComision:
+    """Deshace el corte y devuelve las comisiones a «causada».
+
+    No se borra: queda la liquidación anulada con su motivo, para que la
+    historia muestre que hubo un corte y por qué se deshizo.
+    """
+    liquidacion = db.get(LiquidacionesComision, liquidacion_id)
+    if liquidacion is None:
+        raise NoEncontrado('La liquidación no existe.')
+    if not motivo or not motivo.strip():
+        raise Invalido('Escriba por qué se anula la liquidación.', codigo='falta_motivo')
+    antes = instantanea(liquidacion)
+    for c in db.scalars(select(Comisiones).where(Comisiones.liquidacion_id == liquidacion_id)):
+        c.estado = 'causada'
+        c.liquidacion_id = None
+    liquidacion.estado = 'anulada'
+    liquidacion.observaciones = f'{liquidacion.observaciones or ""}\nAnulada: {motivo}'.strip()
+    db.flush()
+    auditar(db, operacion='update', entidad='liquidaciones_comision', usuario_id=actor.id,
+            entidad_id=liquidacion.id, antes=antes, despues=instantanea(liquidacion), ip=ip)
+    db.commit()
+    return liquidacion
+
+
+def comisiones_de(db: Session, *, vendedor_id: int | None = None, periodo: dt.date | None = None,
+                  estado: str | None = None) -> list[Comisiones]:
+    consulta = select(Comisiones).options(selectinload(Comisiones.negocio),
+                                          selectinload(Comisiones.vendedor))
+    if vendedor_id:
+        consulta = consulta.where(Comisiones.vendedor_id == vendedor_id)
+    if periodo:
+        consulta = consulta.where(Comisiones.periodo == _periodo_de(periodo))
+    if estado:
+        consulta = consulta.where(Comisiones.estado == estado)
+    return list(db.scalars(consulta.order_by(Comisiones.periodo.desc(), Comisiones.id)))

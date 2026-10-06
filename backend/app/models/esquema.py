@@ -448,6 +448,8 @@ class Usuarios(Base):
     exportaciones: Mapped[list['Exportaciones']] = relationship('Exportaciones', back_populates='usuario')
     fusiones: Mapped[list['Fusiones']] = relationship('Fusiones', back_populates='usuarios')
     importaciones: Mapped[list['Importaciones']] = relationship('Importaciones', back_populates='usuarios')
+    liquidaciones_comision_liquidada_por: Mapped[list['LiquidacionesComision']] = relationship('LiquidacionesComision', foreign_keys='[LiquidacionesComision.liquidada_por]', back_populates='usuarios')
+    liquidaciones_comision_vendedor: Mapped[list['LiquidacionesComision']] = relationship('LiquidacionesComision', foreign_keys='[LiquidacionesComision.vendedor_id]', back_populates='vendedor')
     migracion_corridas: Mapped[list['MigracionCorridas']] = relationship('MigracionCorridas', back_populates='usuarios')
     parametros: Mapped[list['Parametros']] = relationship('Parametros', back_populates='usuarios')
     actividades: Mapped[list['Actividades']] = relationship('Actividades', back_populates='usuario')
@@ -530,10 +532,10 @@ class Clientes(Base):
         Index('ix_clientes_migrado', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)'),
         Index('ix_clientes_nombre', 'nombre', postgresql_using='gin'),
         Index('ix_clientes_nombre_busqueda', 'nombre_busqueda', postgresql_using='gin'),
+        Index('ix_clientes_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)'),
         Index('ix_clientes_telefono', 'telefono'),
         Index('ix_clientes_telefono_norm', 'telefono_normalizado', postgresql_where='(telefono_normalizado IS NOT NULL)'),
-        Index('ux_clientes_documento', 'numero_documento', postgresql_where='(numero_documento IS NOT NULL)', unique=True),
-        Index('ux_clientes_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
+        Index('ux_clientes_documento', 'numero_documento', postgresql_where='(numero_documento IS NOT NULL)', unique=True)
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -711,6 +713,36 @@ class Importaciones(Base):
     importaciones_filas: Mapped[list['ImportacionesFilas']] = relationship('ImportacionesFilas', back_populates='importacion')
 
 
+class LiquidacionesComision(Base):
+    __tablename__ = 'liquidaciones_comision'
+    __table_args__ = (
+        CheckConstraint("estado::text = ANY (ARRAY['abierta'::character varying, 'pagada'::character varying, 'anulada'::character varying]::text[])", name='ck_liquidacion_estado'),
+        CheckConstraint('total >= 0::numeric AND cantidad >= 0', name='ck_liquidacion_total'),
+        ForeignKeyConstraint(['liquidada_por'], ['usuarios.id'], name='liquidaciones_comision_liquidada_por_fkey'),
+        ForeignKeyConstraint(['vendedor_id'], ['usuarios.id'], name='liquidaciones_comision_vendedor_id_fkey'),
+        PrimaryKeyConstraint('id', name='liquidaciones_comision_pkey'),
+        Index('ux_liquidacion_vendedor_periodo', 'vendedor_id', 'periodo', postgresql_where="((estado)::text <> 'anulada'::text)", unique=True),
+        {'comment': 'Corte de comisiones de una vendedora en un periodo. Las '
+                'comisiones que entran quedan en estado liquidada y apuntan aquí, '
+                'para que no se paguen dos veces.'}
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    vendedor_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    periodo: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    total: Mapped[decimal.Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
+    estado: Mapped[str] = mapped_column(String(12), nullable=False, server_default=text("'abierta'::character varying"))
+    creada_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    observaciones: Mapped[Optional[str]] = mapped_column(Text)
+    liquidada_por: Mapped[Optional[int]] = mapped_column(BigInteger)
+    pagada_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
+
+    usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', foreign_keys=[liquidada_por], back_populates='liquidaciones_comision_liquidada_por')
+    vendedor: Mapped['Usuarios'] = relationship('Usuarios', foreign_keys=[vendedor_id], back_populates='liquidaciones_comision_vendedor')
+    comisiones: Mapped[list['Comisiones']] = relationship('Comisiones', back_populates='liquidacion')
+
+
 class MigracionCorridas(Base):
     __tablename__ = 'migracion_corridas'
     __table_args__ = (
@@ -785,8 +817,8 @@ class Actividades(Base):
         ForeignKeyConstraint(['usuario_id'], ['usuarios.id'], name='actividades_usuario_id_fkey'),
         PrimaryKeyConstraint('id', name='actividades_pkey'),
         Index('ix_actividades_entidad', 'entidad', 'entidad_id', 'ocurrido_en'),
-        Index('ix_actividades_usuario', 'usuario_id', 'ocurrido_en'),
-        Index('ux_actividades_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
+        Index('ix_actividades_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)'),
+        Index('ix_actividades_usuario', 'usuario_id', 'ocurrido_en')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -833,7 +865,7 @@ class Grupos(Base):
         ForeignKeyConstraint(['cliente_contacto_id'], ['clientes.id'], name='grupos_cliente_contacto_id_fkey'),
         PrimaryKeyConstraint('id', name='grupos_pkey'),
         Index('ix_grupos_contacto', 'cliente_contacto_id'),
-        Index('ux_grupos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
+        Index('ix_grupos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -968,8 +1000,8 @@ class Solicitantes(Base):
         Index('ix_solicitantes_email', 'email', postgresql_where='(email IS NOT NULL)'),
         Index('ix_solicitantes_grupo', 'grupo_id', postgresql_where='(grupo_id IS NOT NULL)'),
         Index('ix_solicitantes_nombre_busqueda', 'nombre_busqueda', postgresql_using='gin'),
+        Index('ix_solicitantes_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)'),
         Index('ix_solicitantes_telefono_norm', 'telefono_normalizado', postgresql_where='(telefono_normalizado IS NOT NULL)'),
-        Index('ux_solicitantes_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True),
         Index('ux_solicitantes_pasaporte', 'pasaporte_indice', postgresql_where='(pasaporte_indice IS NOT NULL)', unique=True)
     )
 
@@ -1104,11 +1136,13 @@ class Comisiones(Base):
     __tablename__ = 'comisiones'
     __table_args__ = (
         CheckConstraint("estado::text = ANY (ARRAY['provisional'::character varying, 'causada'::character varying, 'liquidada'::character varying, 'anulada'::character varying]::text[])", name='comisiones_estado_check'),
+        ForeignKeyConstraint(['liquidacion_id'], ['liquidaciones_comision.id'], name='comisiones_liquidacion_id_fkey'),
         ForeignKeyConstraint(['negocio_id'], ['negocios.id'], name='comisiones_negocio_id_fkey'),
         ForeignKeyConstraint(['regla_id'], ['comisiones_reglas.id'], name='comisiones_regla_id_fkey'),
         ForeignKeyConstraint(['vendedor_id'], ['usuarios.id'], name='comisiones_vendedor_id_fkey'),
         PrimaryKeyConstraint('id', name='comisiones_pkey'),
         UniqueConstraint('negocio_id', 'vendedor_id', 'regla_id', name='comisiones_negocio_id_vendedor_id_regla_id_key'),
+        Index('ix_comisiones_liquidacion', 'liquidacion_id', postgresql_where='(liquidacion_id IS NOT NULL)'),
         Index('ix_comisiones_vendedor', 'vendedor_id', 'periodo', 'estado')
     )
 
@@ -1122,7 +1156,9 @@ class Comisiones(Base):
     creado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
     regla_id: Mapped[Optional[int]] = mapped_column(Integer)
     periodo: Mapped[Optional[datetime.date]] = mapped_column(Date)
+    liquidacion_id: Mapped[Optional[int]] = mapped_column(BigInteger, comment='En qué corte se pagó. Mientras sea nulo, la comisión no se ha pagado.')
 
+    liquidacion: Mapped[Optional['LiquidacionesComision']] = relationship('LiquidacionesComision', back_populates='comisiones')
     negocio: Mapped['Negocios'] = relationship('Negocios', back_populates='comisiones')
     regla: Mapped[Optional['ComisionesReglas']] = relationship('ComisionesReglas', back_populates='comisiones')
     vendedor: Mapped['Usuarios'] = relationship('Usuarios', back_populates='comisiones')
@@ -1136,7 +1172,7 @@ class CuotasNegocio(Base):
         PrimaryKeyConstraint('id', name='cuotas_negocio_pkey'),
         UniqueConstraint('negocio_id', 'numero', name='cuotas_negocio_negocio_id_numero_key'),
         Index('ix_cuotas_fecha', 'fecha_pactada'),
-        Index('ux_cuotas_negocio_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
+        Index('ix_cuotas_negocio_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1163,7 +1199,7 @@ class Pagos(Base):
         ForeignKeyConstraint(['negocio_id'], ['negocios.id'], name='pagos_negocio_id_fkey'),
         ForeignKeyConstraint(['registrado_por'], ['usuarios.id'], name='pagos_registrado_por_fkey'),
         PrimaryKeyConstraint('id', name='pagos_pkey'),
-        Index('ux_pagos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
+        Index('ix_pagos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1248,8 +1284,8 @@ class Citas(Base):
         ForeignKeyConstraint(['sede_id'], ['sedes.id'], name='citas_sede_id_fkey'),
         PrimaryKeyConstraint('id', name='citas_pkey'),
         Index('ix_citas_caso', 'caso_id', 'inicia_en'),
-        Index('ix_citas_proximas', 'inicia_en', postgresql_where="((estado)::text = ANY ((ARRAY['pendiente'::character varying, 'programada'::character varying, 'confirmada'::character varying])::text[]))"),
-        Index('ux_citas_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
+        Index('ix_citas_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)'),
+        Index('ix_citas_proximas', 'inicia_en', postgresql_where="((estado)::text = ANY ((ARRAY['pendiente'::character varying, 'programada'::character varying, 'confirmada'::character varying])::text[]))")
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

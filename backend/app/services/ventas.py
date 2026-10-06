@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.errores import Conflicto, Invalido, NoEncontrado
 from app.models.esquema import (Casos, EstadosOperativos, Grupos, Negocios, Oportunidades,
                                 Servicios, Solicitantes, Tarifas, Usuarios)
+from app.services import comisiones
 from app.services import oportunidades as serv_oportunidades
 from app.services.auditoria import auditar, instantanea
 
@@ -214,6 +215,9 @@ def convertir(db: Session, actor: Usuarios, oportunidad_id: int, *, servicio_id:
     # Se gana después de crear la venta: si algo falla arriba, la oportunidad
     # sigue abierta y se puede reintentar sin quedar en un estado a medias.
     serv_oportunidades.mover(db, actor, oportunidad_id, codigo_destino='ganado', ip=ip)
+    # La comisión nace provisional: se gana de verdad cuando el cliente termina
+    # de pagar (D-03, 03/10/2026). Si la venta no tiene vendedor, no pasa nada.
+    comisiones.registrar(db, actor, negocio.id, ip=ip)
     db.refresh(negocio)
     return negocio
 

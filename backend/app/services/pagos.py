@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.errores import Conflicto, Invalido, NoEncontrado
 from app.models.esquema import (AjustesNegocio, CuotasNegocio, Negocios, Pagos, Parametros,
                                 Usuarios)
+from app.services import comisiones
 from app.services.auditoria import auditar, instantanea
 
 BOGOTA = ZoneInfo('America/Bogota')
@@ -145,6 +146,9 @@ def registrar(db: Session, actor: Usuarios, datos: dict, ip: str | None = None) 
     auditar(db, operacion='insert', entidad='pagos', usuario_id=actor.id, entidad_id=pago.id,
             despues=instantanea(pago), ip=ip)
     db.commit()
+    # Si este pago cerró la venta, la comisión pasa a causada (D-03)
+    if pago.negocio_id:
+        comisiones.revisar_causacion(db, actor, pago.negocio_id, ip=ip)
     return pago
 
 
@@ -166,6 +170,7 @@ def asignar(db: Session, actor: Usuarios, pago_id: int, negocio_id: int,
     auditar(db, operacion='update', entidad='pagos', usuario_id=actor.id, entidad_id=pago.id,
             antes=antes, despues=instantanea(pago), ip=ip)
     db.commit()
+    comisiones.revisar_causacion(db, actor, negocio_id, ip=ip)
     return pago
 
 
@@ -189,6 +194,10 @@ def cambiar_estado(db: Session, actor: Usuarios, pago_id: int, estado: str,
     auditar(db, operacion='update', entidad='pagos', usuario_id=actor.id, entidad_id=pago.id,
             antes=antes, despues=instantanea(pago), ip=ip)
     db.commit()
+    # Reversar un pago puede devolver la comisión a provisional: no se paga
+    # comisión de plata que no entró.
+    if pago.negocio_id:
+        comisiones.revisar_causacion(db, actor, pago.negocio_id, ip=ip)
     return pago
 
 
@@ -249,6 +258,8 @@ def ajustar(db: Session, actor: Usuarios, negocio_id: int, *, tipo: str, monto: 
     auditar(db, operacion='insert', entidad='ajustes_negocio', usuario_id=actor.id,
             entidad_id=ajuste.id, despues=instantanea(ajuste), ip=ip)
     db.commit()
+    # Un cargo o un reembolso cambian el saldo, y con él si la comisión se ganó
+    comisiones.revisar_causacion(db, actor, negocio_id, ip=ip)
     return ajuste
 
 
