@@ -504,7 +504,8 @@ COMISIONES = [
     # se GANE cuando el cliente termina de pagar es el disparador, no la base, y
     # va en `se_causa_con`. Que la tasa consular quede fuera tampoco cabe en la
     # columna: va en `excluye_de_la_base`.
-    ('Angie — 7 % con escalón del 10 % en las primeras 10 premium', 'angie', 'vendido', 7.0, 10, {
+    ('Angie — 7 % con escalón del 10 % en las primeras 10 premium',
+     'angielorena221003@gmail.com', 'vendido', 7.0, 10, {
         'se_causa_con': 'pago_total',
         'porcentaje_base': 7.0,
         'porcentaje_meta': 10.0,
@@ -517,7 +518,8 @@ COMISIONES = [
     }),
     # La respuesta dice que comisionan Angie y Yas, pero solo dio el porcentaje
     # de Angie. Se deja el 7 % para Yas y queda por confirmar antes del 09/10.
-    ('Yas — 7 % (porcentaje por confirmar)', 'yasmin', 'vendido', 7.0, None, {
+    ('Yas — 7 % (porcentaje por confirmar)',
+     'yasvic1212@gmail.com', 'vendido', 7.0, None, {
         'se_causa_con': 'pago_total',
         'porcentaje_base': 7.0,
         'excluye_de_la_base': ['recaudo_terceros'],
@@ -529,14 +531,29 @@ COMISIONES = [
 
 
 def sembrar_comisiones(cur) -> int:
+    """Siembra las reglas amarradas a su vendedora por correo.
+
+    El correo lo dio la administradora el 03/10 y es único, así que identifica a
+    la dueña sin adivinar. Una regla cuya dueña todavía no existe en `usuarios`
+    entra **inactiva**: una regla sin dueña se volvería la regla general de todo
+    el mundo y le pagaría a cualquiera el escalón del 10 % de Angie.
+    """
     n = 0
-    for nombre, vendedor, base, porcentaje, meta, definicion in COMISIONES:
+    for nombre, correo, base, porcentaje, meta, definicion in COMISIONES:
+        cur.execute('select id from usuarios where lower(email) = %s', (correo,))
+        fila = cur.fetchone()
+        duena = fila[0] if fila else None
+        if duena is None:
+            definicion = dict(definicion, inactiva_porque=(
+                f'Todavía no hay usuaria con el correo {correo}. Créela, asígnele esta '
+                f'regla y actívela: mientras tanto no comisiona nadie con ella.'))
         cur.execute("""insert into comisiones_reglas
-                           (nombre, base, porcentaje, meta_cantidad, vigente_desde,
-                            definicion, activo)
-                       values (%s, %s, %s, %s, date '2026-01-01', %s::jsonb, true)
+                           (nombre, vendedor_id, base, porcentaje, meta_cantidad,
+                            vigente_desde, definicion, activo)
+                       values (%s, %s, %s, %s, %s, date '2026-01-01', %s::jsonb, %s)
                        on conflict do nothing""",
-                    (nombre, base, porcentaje, meta, json.dumps(definicion)))
+                    (nombre, duena, base, porcentaje, meta, json.dumps(definicion),
+                     duena is not None))
         n += cur.rowcount
     return n
 

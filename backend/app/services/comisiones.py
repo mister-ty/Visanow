@@ -32,8 +32,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.models.esquema import (Comisiones, ComisionesReglas, LiquidacionesComision, Negocios,
-                                Pagos, Servicios, Usuarios)
+from app.models.esquema import (AjustesNegocio, Comisiones, ComisionesReglas,
+                                LiquidacionesComision, Negocios, Pagos, Servicios, Usuarios)
 from app.services.auditoria import auditar, instantanea
 
 BOGOTA = ZoneInfo('America/Bogota')
@@ -51,27 +51,31 @@ def _periodo_de(fecha: dt.date) -> dt.date:
 def regla_para(db: Session, vendedor_id: int, fecha: dt.date) -> ComisionesReglas | None:
     """La regla que regía para esa vendedora ese día.
 
-    Se busca primero una regla suya y después una general, siempre por vigencia
-    y no «la última»: una venta de hace tres meses se comisiona con la regla de
-    hace tres meses.
+    Primero la suya —atada por id— y si no tiene, una general. Siempre por
+    vigencia y no «la última»: una venta de hace tres meses se comisiona con la
+    regla de hace tres meses.
+
+    Antes esto adivinaba: como las reglas sembradas no guardaban el id de su
+    dueña, se emparejaba exigiendo que el nombre de la regla empezara por el
+    primer nombre de la usuaria. Cuando no adivinaba —«Isa» contra la regla
+    «Yas — 7 %…»— devolvía la primera regla sin vendedora, que es la de Angie, y
+    le regalaba su escalón del 10 % a quien fuera. La regla ahora se amarra por
+    id en el seed y en la migración 0010, y una regla sin dueña queda inactiva:
+    tiene que pagarle a nadie, no a todas.
+
+    Devolver None es una respuesta válida y es la correcta para quien no
+    comisiona: la administradora dijo que las comisiones son solo de Angie y de
+    Yas, y que Miriam no vende.
     """
     base = (select(ComisionesReglas)
             .where(ComisionesReglas.activo.is_(True),
                    ComisionesReglas.vigente_desde <= fecha,
                    (ComisionesReglas.vigente_hasta.is_(None))
                    | (ComisionesReglas.vigente_hasta >= fecha))
-            .order_by(ComisionesReglas.vigente_desde.desc()))
+            .order_by(ComisionesReglas.vigente_desde.desc(), ComisionesReglas.id.desc()))
     propia = db.scalars(base.where(ComisionesReglas.vendedor_id == vendedor_id)).first()
     if propia:
         return propia
-    # La regla sembrada lleva el nombre de la vendedora pero no su id, porque los
-    # usuarios se crean después del catálogo. Se empareja por nombre.
-    vendedor = db.get(Usuarios, vendedor_id)
-    if vendedor:
-        primer_nombre = vendedor.nombre.split()[0].lower()
-        for r in db.scalars(base.where(ComisionesReglas.vendedor_id.is_(None))):
-            if r.nombre.lower().startswith(primer_nombre):
-                return r
     return db.scalars(base.where(ComisionesReglas.vendedor_id.is_(None))).first()
 
 
@@ -226,25 +230,63 @@ def registrar(db: Session, actor: Usuarios, negocio_id: int, *,
     auditar(db, operacion='insert', entidad='comisiones', usuario_id=actor.id,
             entidad_id=comision.id, despues=instantanea(comision), ip=ip)
     db.commit()
+
+    # Una venta premium no solo toma su puesto en el cupo del 10 %: si entró con
+    # fecha anterior a otras del mismo mes, les corre un puesto a todas las de
+    # atrás, y la que sale del cupo tiene que volver al 7 %.
+    if c.posicion_en_la_meta is not None:
+        reorden = reordenar_periodo(db, actor, negocio.vendedor_id, comision.periodo, ip=ip)
+        _avisar_congeladas(db, actor, negocio.vendedor_id, reorden, ip=ip)
+
+    # Nace con el estado que le corresponde. Las ventas que trajo la migración
+    # llegaron pagadas y sin vendedora, así que cuando finanzas descubre de quién
+    # era y se registra la comisión, no va a haber otro pago que la cause: nacía
+    # provisional y se quedaba ahí para siempre.
+    revisar_causacion(db, actor, negocio_id, ip=ip)
+    db.refresh(comision)
     return comision
+
+
+def saldo_en_plata(db: Session, negocio_id: int) -> Decimal | None:
+    """Lo que el cliente todavía debe en plata, sin contar lo condonado.
+
+    El saldo de la vista baja con las condonaciones, y condonar no es pagar:
+    lleva el saldo a cero sin que entre un peso. La comisión se gana «cuando el
+    cliente termina de pagar toda la venta», así que para decidir si se ganó hay
+    que mirar la plata y no el saldo contable.
+
+    El descuento sí cuenta, porque ahí el precio bajó de verdad: el cliente que
+    paga el resto terminó de pagar lo que quedó acordado.
+    """
+    saldo = db.execute(text('select saldo from v_estado_financiero where negocio_id = :n'),
+                       {'n': negocio_id}).scalar()
+    if saldo is None:
+        return None
+    condonado = db.scalar(select(func.coalesce(func.sum(AjustesNegocio.monto), 0))
+                          .where(AjustesNegocio.negocio_id == negocio_id,
+                                 AjustesNegocio.tipo == 'condonacion')) or 0
+    # Las condonaciones se guardan en negativo: devolverlas vuelve a subir el saldo.
+    return Decimal(str(saldo)) - Decimal(str(condonado))
 
 
 def revisar_causacion(db: Session, actor: Usuarios, negocio_id: int,
                       ip: str | None = None) -> Comisiones | None:
     """La comisión se gana cuando el cliente termina de pagar (D-03).
 
-    Se llama después de registrar un pago: si el saldo llegó a cero, la comisión
-    pasa de provisional a causada. Si el saldo vuelve a subir —un pago reversado,
-    un cargo—, vuelve a provisional: no se puede pagar una comisión de plata que
-    no entró.
+    Se llama después de registrar un pago: si ya no debe plata, la comisión pasa
+    de provisional a causada. Si vuelve a deber —un pago reversado, un cargo—,
+    vuelve a provisional: no se puede pagar una comisión de plata que no entró.
+
+    Lo condonado no cuenta como pagado. Antes sí, porque se leía el saldo de la
+    vista: condonar la venta entera dejaba el saldo en cero y causaba la comisión
+    sobre una venta de la que no entró un peso, y esa comisión era liquidable.
     """
     comision = db.scalar(select(Comisiones).where(Comisiones.negocio_id == negocio_id))
     if comision is None or comision.estado not in MODIFICABLES:
         return comision
 
-    saldo = db.execute(text('select saldo from v_estado_financiero where negocio_id = :n'),
-                       {'n': negocio_id}).scalar()
-    pagada_entera = saldo is not None and Decimal(str(saldo)) <= 0
+    saldo = saldo_en_plata(db, negocio_id)
+    pagada_entera = saldo is not None and saldo <= 0
     nuevo = 'causada' if pagada_entera else 'provisional'
     if comision.estado == nuevo:
         return comision
@@ -285,21 +327,147 @@ def recalcular(db: Session, actor: Usuarios, negocio_id: int,
     auditar(db, operacion='update', entidad='comisiones', usuario_id=actor.id,
             entidad_id=comision.id, antes=antes, despues=instantanea(comision), ip=ip)
     db.commit()
+
+    # Corregir el valor pactado o la fecha de una venta premium cambia el reparto
+    # del cupo del mes, no solo esta comisión.
+    if c.posicion_en_la_meta is not None:
+        reorden = reordenar_periodo(db, actor, comision.vendedor_id, comision.periodo, ip=ip)
+        _avisar_congeladas(db, actor, comision.vendedor_id, reorden, ip=ip)
+    revisar_causacion(db, actor, negocio_id, ip=ip)
+    db.refresh(comision)
     return comision
+
+
+@dataclass
+class Reordenamiento:
+    """Lo que cambió al volver a numerar el cupo de un mes."""
+    corregidas: list[int]
+    congeladas_fuera_de_meta: list[int]
+
+
+def reordenar_periodo(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *,
+                      ip: str | None = None) -> Reordenamiento:
+    """Vuelve a numerar el cupo del 10 % de un mes, de la primera venta a la última.
+
+    El cupo se reparte por orden de fecha de venta, así que una venta que se
+    registra hoy con fecha de la semana pasada no solo toma su puesto: les corre
+    un puesto a todas las que venían detrás. Sin esto, la que salía del cupo se
+    quedaba con el 10 % congelado y el mes terminaba con once comisiones al 10 %
+    contra una meta de diez, y con dos filas afirmando ser la misma venta n.º 3.
+
+    No es reescribir la historia. RN-07 congela la regla, y la regla dice que las
+    primeras diez del mes van al 10 %; quién es «de las primeras diez» depende de
+    qué ventas existen, y eso cambia cuando aparece una atrasada.
+
+    Lo liquidado no se toca: esa plata ya salió. Pero si una comisión ya pagada
+    quedó al escalón de la meta sin cupo, se devuelve en
+    `congeladas_fuera_de_meta` para que el próximo corte no se cierre como si
+    nada hubiera pasado.
+    """
+    primero = _periodo_de(periodo)
+    corregidas: list[int] = []
+    congeladas: list[int] = []
+
+    del_mes = list(db.scalars(
+        select(Comisiones).join(Negocios, Negocios.id == Comisiones.negocio_id)
+        .where(Comisiones.vendedor_id == vendedor_id,
+               Comisiones.periodo == primero,
+               Comisiones.estado != 'anulada')
+        .order_by(Negocios.fecha_venta, Negocios.id)))
+
+    for comision in del_mes:
+        negocio = db.get(Negocios, comision.negocio_id)
+        regla = regla_para(db, vendedor_id, negocio.fecha_venta)
+        if regla is None:
+            continue
+        c = calcular(db, negocio, regla)
+        guardada = comision.regla_aplicada or {}
+
+        if comision.estado not in MODIFICABLES:
+            if guardada.get('escalon') == 'meta' and c.escalon != 'meta':
+                congeladas.append(comision.id)
+            continue
+        # Se compara también la posición: dos comisiones al mismo porcentaje pero
+        # con la misma posición congelada dejan el mes diciendo una mentira.
+        if (guardada.get('porcentaje_aplicado') == float(c.porcentaje)
+                and guardada.get('posicion_en_la_meta') == c.posicion_en_la_meta
+                and Decimal(str(comision.monto)) == c.monto):
+            continue
+
+        antes = instantanea(comision)
+        comision.regla_id, comision.regla_aplicada = regla.id, c.regla
+        comision.base_calculo, comision.monto = c.base, c.monto
+        db.flush()
+        auditar(db, operacion='update', entidad='comisiones', usuario_id=actor.id,
+                entidad_id=comision.id, antes=antes,
+                despues=instantanea(comision) | {'motivo': 'reparto del cupo del mes'}, ip=ip)
+        corregidas.append(comision.id)
+
+    if corregidas:
+        db.commit()
+    return Reordenamiento(corregidas=corregidas, congeladas_fuera_de_meta=congeladas)
 
 
 # ------------------------------------------------------------- liquidación
 
 def pendientes(db: Session, vendedor_id: int, periodo: dt.date) -> list[Comisiones]:
-    """Lo que entraría en el corte: causado, del periodo y sin liquidar."""
+    """Lo que entraría en el corte: causado, sin liquidar, de este periodo o de
+    uno anterior que se quedó por fuera.
+
+    Lo de «o anterior» hace falta. Una comisión se causa cuando el cliente
+    termina de pagar, y eso puede caer después de que el corte de su mes ya se
+    cerró. Antes esa comisión se quedaba causada para siempre: el corte de su mes
+    no se puede repetir y el del mes siguiente no la miraba, así que era plata que
+    la vendedora se había ganado y no se le iba a pagar nunca.
+
+    Cada comisión lleva su propio periodo, así que el corte de junio que arrastra
+    una de mayo lo dice en la fila y no esconde de cuándo era.
+    """
     return list(db.scalars(
         select(Comisiones)
         .where(Comisiones.vendedor_id == vendedor_id,
-               Comisiones.periodo == _periodo_de(periodo),
+               Comisiones.periodo <= _periodo_de(periodo),
                Comisiones.estado == 'causada',
                Comisiones.liquidacion_id.is_(None))
         .options(selectinload(Comisiones.negocio))
-        .order_by(Comisiones.id)))
+        .order_by(Comisiones.periodo, Comisiones.id)))
+
+
+def _puestos_repetidos(db: Session, vendedor_id: int, periodo: dt.date) -> list[int]:
+    """Los puestos del cupo que más de una comisión del mes dice ocupar.
+
+    Después de re-numerar no debería haber ninguno. Si hay, es un error de plata
+    —dos ventas cobrando el mismo cupo del 10 %— y el corte no se cierra a
+    ciegas: puede pasar si dos ventas del mismo día entran a la vez.
+    """
+    puestos: dict[int, int] = {}
+    for c in db.scalars(select(Comisiones)
+                        .where(Comisiones.vendedor_id == vendedor_id,
+                               Comisiones.periodo == _periodo_de(periodo),
+                               Comisiones.estado != 'anulada')):
+        n = (c.regla_aplicada or {}).get('posicion_en_la_meta')
+        if n is not None:
+            puestos[n] = puestos.get(n, 0) + 1
+    return sorted(n for n, cuantas in puestos.items() if cuantas > 1)
+
+
+def _avisar_congeladas(db: Session, actor: Usuarios, vendedor_id: int,
+                       reorden: 'Reordenamiento', ip: str | None = None) -> None:
+    """Deja rastro de la plata que se pagó al 10 % y hoy no tiene cupo.
+
+    Una venta con fecha atrasada puede sacar del cupo a una comisión que ya se
+    liquidó. Esa plata ya salió y no se puede recalcular, así que lo único
+    honesto es que quede anotado quién y por qué: sin esto, el sobrepago
+    desaparece sin que nadie se entere.
+    """
+    if not reorden.congeladas_fuera_de_meta:
+        return
+    auditar(db, operacion='alerta', entidad='comisiones', usuario_id=actor.id,
+            despues={'vendedor_id': vendedor_id,
+                     'comisiones': reorden.congeladas_fuera_de_meta,
+                     'motivo': 'una venta con fecha anterior las sacó del cupo del 10 %, '
+                               'pero ya estaban liquidadas: esa plata ya salió'}, ip=ip)
+    db.commit()
 
 
 def liquidar(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *,
@@ -323,9 +491,23 @@ def liquidar(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *
         raise Conflicto(f'Ya hay una liquidación de ese periodo (la #{abierta.id}). '
                         f'Anúlela antes de hacer otra.', codigo='periodo_ya_liquidado')
 
+    # Antes de cerrar la plata se reparte otra vez el cupo de cada mes que entra
+    # en el corte: si entró una venta con fecha atrasada, las posiciones de ese
+    # mes ya no son las mismas.
+    for mes in sorted({c.periodo for c in pendientes(db, vendedor_id, primero)}):
+        reordenar_periodo(db, actor, vendedor_id, mes, ip=ip)
+        repetidos = _puestos_repetidos(db, vendedor_id, mes)
+        if repetidos:
+            cuales = ', '.join('n.º %d' % n for n in repetidos)
+            raise Conflicto(
+                f'Dos ventas de {mes:%m/%Y} reclaman el mismo puesto del cupo ({cuales}), '
+                f'así que el reparto del 10 % no cuadra y el corte pagaría de más. '
+                f'Recalcule las comisiones de ese mes antes de cerrarlo.',
+                codigo='cupo_inconsistente')
+
     comisiones = pendientes(db, vendedor_id, primero)
     if not comisiones:
-        raise Invalido('No hay comisiones causadas sin liquidar en ese periodo. '
+        raise Invalido('No hay comisiones causadas sin liquidar hasta ese periodo. '
                        'Una comisión se causa cuando el cliente termina de pagar.',
                        codigo='sin_comisiones')
 
@@ -378,7 +560,10 @@ def anular(db: Session, actor: Usuarios, liquidacion_id: int, motivo: str,
     if not motivo or not motivo.strip():
         raise Invalido('Escriba por qué se anula la liquidación.', codigo='falta_motivo')
     antes = instantanea(liquidacion)
-    for c in db.scalars(select(Comisiones).where(Comisiones.liquidacion_id == liquidacion_id)):
+    devueltas = list(db.scalars(select(Comisiones)
+                                .where(Comisiones.liquidacion_id == liquidacion_id)))
+    ventas = [c.negocio_id for c in devueltas]
+    for c in devueltas:
         c.estado = 'causada'
         c.liquidacion_id = None
     liquidacion.estado = 'anulada'
@@ -387,7 +572,46 @@ def anular(db: Session, actor: Usuarios, liquidacion_id: int, motivo: str,
     auditar(db, operacion='update', entidad='liquidaciones_comision', usuario_id=actor.id,
             entidad_id=liquidacion.id, antes=antes, despues=instantanea(liquidacion), ip=ip)
     db.commit()
+
+    # Devolverlas a «causada» a ciegas dejaba listas para el próximo corte
+    # comisiones cuya venta se quedó sin pagar DESPUÉS del corte: un reverso del
+    # banco no las tocaba porque ya estaban liquidadas. Se vuelve a mirar el saldo.
+    for negocio_id in ventas:
+        revisar_causacion(db, actor, negocio_id, ip=ip)
+    db.refresh(liquidacion)
     return liquidacion
+
+
+def descuadres(db: Session, vendedor_id: int | None = None) -> list[dict]:
+    """Comisiones ganadas o ya pagadas sobre ventas que todavía deben plata.
+
+    Es el invariante del módulo: ninguna comisión causada o liquidada puede
+    pertenecer a una venta que no está pagada. Se rompe por el camino que el
+    estado no alcanza a cubrir —el banco reversa un pago **después** del corte, y
+    la comisión ya liquidada no se puede devolver a provisional porque esa plata
+    ya se giró—, y hasta ahora nada lo vigilaba.
+
+    No corrige nada a propósito: devuelve la lista para que alguien la mire. El
+    centro de alertas la va a mostrar; mientras tanto, al menos se puede
+    consultar.
+    """
+    filtro = 'and c.vendedor_id = :v' if vendedor_id else ''
+    filas = db.execute(text(f"""
+        select c.id, c.negocio_id, c.vendedor_id, c.monto, c.estado, c.periodo,
+               f.saldo - coalesce(cond.condonado, 0) as debe,
+               l.id as liquidacion_id, l.estado as corte
+          from comisiones c
+          join v_estado_financiero f on f.negocio_id = c.negocio_id
+          left join liquidaciones_comision l on l.id = c.liquidacion_id
+          left join lateral (
+                select sum(monto) as condonado from ajustes_negocio a
+                 where a.negocio_id = c.negocio_id and a.tipo = 'condonacion') cond on true
+         where c.estado in ('causada', 'liquidada')
+           and f.saldo - coalesce(cond.condonado, 0) > 0
+           {filtro}
+         order by c.periodo desc, c.id
+    """), {'v': vendedor_id} if vendedor_id else {}).mappings().all()
+    return [dict(f) for f in filas]
 
 
 def comisiones_de(db: Session, *, vendedor_id: int | None = None, periodo: dt.date | None = None,
