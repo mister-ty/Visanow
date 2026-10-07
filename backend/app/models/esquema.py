@@ -29,6 +29,7 @@ class BancosCuentas(Base):
 
     pagos: Mapped[list['Pagos']] = relationship('Pagos', back_populates='banco_cuenta')
     gastos: Mapped[list['Gastos']] = relationship('Gastos', back_populates='banco_cuenta')
+    movimientos_banco: Mapped[list['MovimientosBanco']] = relationship('MovimientosBanco', back_populates='banco_cuenta')
 
 
 class Canales(Base):
@@ -463,6 +464,7 @@ class Usuarios(Base):
     casos_historial: Mapped[list['CasosHistorial']] = relationship('CasosHistorial', back_populates='usuario')
     conflictos_sincronizacion: Mapped[list['ConflictosSincronizacion']] = relationship('ConflictosSincronizacion', back_populates='usuarios')
     gastos: Mapped[list['Gastos']] = relationship('Gastos', back_populates='usuarios')
+    movimientos_banco: Mapped[list['MovimientosBanco']] = relationship('MovimientosBanco', back_populates='usuarios')
     tareas_creado_por: Mapped[list['Tareas']] = relationship('Tareas', foreign_keys='[Tareas.creado_por]', back_populates='usuarios')
     tareas_responsable: Mapped[list['Tareas']] = relationship('Tareas', foreign_keys='[Tareas.responsable_id]', back_populates='responsable')
     alertas_destinatario: Mapped[list['Alertas']] = relationship('Alertas', foreign_keys='[Alertas.destinatario_id]', back_populates='destinatario')
@@ -1227,6 +1229,7 @@ class Pagos(Base):
     medio_pago: Mapped[Optional['MediosPago']] = relationship('MediosPago', back_populates='pagos')
     negocio: Mapped[Optional['Negocios']] = relationship('Negocios', back_populates='pagos')
     usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='pagos')
+    movimientos_banco: Mapped[list['MovimientosBanco']] = relationship('MovimientosBanco', back_populates='pago')
 
 
 class CasosChecklist(Base):
@@ -1435,6 +1438,55 @@ class MigracionFilas(Base):
     corrida: Mapped['MigracionCorridas'] = relationship('MigracionCorridas', back_populates='migracion_filas')
     negocio: Mapped[Optional['Negocios']] = relationship('Negocios', back_populates='migracion_filas')
     solicitante: Mapped[Optional['Solicitantes']] = relationship('Solicitantes', back_populates='migracion_filas')
+
+
+class MovimientosBanco(Base):
+    __tablename__ = 'movimientos_banco'
+    __table_args__ = (
+        CheckConstraint("(estado::text <> ALL (ARRAY['conciliado'::character varying, 'parcial'::character varying]::text[])) OR pago_id IS NOT NULL", name='movimientos_banco_conciliado_check'),
+        CheckConstraint("(estado::text <> ALL (ARRAY['descartado'::character varying, 'reversado'::character varying]::text[])) OR motivo_descarte IS NOT NULL AND btrim(motivo_descarte::text) <> ''::text", name='movimientos_banco_motivo_check'),
+        CheckConstraint('duplicado_de_id IS NULL OR duplicado_de_id <> id', name='movimientos_banco_no_se_duplica_a_si_mismo'),
+        CheckConstraint("estado::text <> 'duplicado'::text OR duplicado_de_id IS NOT NULL", name='movimientos_banco_duplicado_check'),
+        CheckConstraint("estado::text = ANY (ARRAY['sin_conciliar'::character varying, 'conciliado'::character varying, 'parcial'::character varying, 'duplicado'::character varying, 'reversado'::character varying, 'descartado'::character varying]::text[])", name='movimientos_banco_estado_check'),
+        ForeignKeyConstraint(['banco_cuenta_id'], ['bancos_cuentas.id'], name='movimientos_banco_banco_cuenta_id_fkey'),
+        ForeignKeyConstraint(['conciliado_por'], ['usuarios.id'], name='movimientos_banco_conciliado_por_fkey'),
+        ForeignKeyConstraint(['duplicado_de_id'], ['movimientos_banco.id'], name='movimientos_banco_duplicado_de_id_fkey'),
+        ForeignKeyConstraint(['pago_id'], ['pagos.id'], name='movimientos_banco_pago_id_fkey'),
+        PrimaryKeyConstraint('id', name='movimientos_banco_pkey'),
+        Index('ix_movimientos_banco_bandeja', 'estado', 'fecha'),
+        Index('ix_movimientos_banco_cruce', 'valor', 'fecha', postgresql_where="((estado)::text = 'sin_conciliar'::text)"),
+        Index('ux_movimientos_banco_huella', 'huella', unique=True),
+        Index('ux_movimientos_banco_pago', 'pago_id', postgresql_where="((pago_id IS NOT NULL) AND ((estado)::text = 'conciliado'::text))", unique=True)
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    banco: Mapped[str] = mapped_column(String(60), nullable=False)
+    fecha: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    valor: Mapped[decimal.Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    moneda: Mapped[str] = mapped_column(CHAR(3), nullable=False, server_default=text("'COP'::bpchar"))
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'sin_conciliar'::character varying"))
+    huella: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    creado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    banco_cuenta_id: Mapped[Optional[int]] = mapped_column(SmallInteger)
+    descripcion: Mapped[Optional[str]] = mapped_column(String(300))
+    referencia: Mapped[Optional[str]] = mapped_column(String(120))
+    pago_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    motivo_descarte: Mapped[Optional[str]] = mapped_column(String(300))
+    duplicado_de_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    nota_cliente: Mapped[Optional[str]] = mapped_column(String(200))
+    nota_abono: Mapped[Optional[str]] = mapped_column(String(60))
+    observacion: Mapped[Optional[str]] = mapped_column(Text)
+    origen_archivo: Mapped[Optional[str]] = mapped_column(String(120))
+    origen_hoja: Mapped[Optional[str]] = mapped_column(String(60))
+    origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
+    conciliado_por: Mapped[Optional[int]] = mapped_column(BigInteger)
+    conciliado_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
+
+    banco_cuenta: Mapped[Optional['BancosCuentas']] = relationship('BancosCuentas', back_populates='movimientos_banco')
+    usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='movimientos_banco')
+    duplicado_de: Mapped[Optional['MovimientosBanco']] = relationship('MovimientosBanco', remote_side=[id], back_populates='duplicado_de_reverse')
+    duplicado_de_reverse: Mapped[list['MovimientosBanco']] = relationship('MovimientosBanco', remote_side=[duplicado_de_id], back_populates='duplicado_de')
+    pago: Mapped[Optional['Pagos']] = relationship('Pagos', back_populates='movimientos_banco')
 
 
 class Tareas(Base):
