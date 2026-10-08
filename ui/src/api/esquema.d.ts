@@ -569,6 +569,441 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conciliacion/importar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Importar
+         * @description Carga las líneas del extracto del banco (RF-044).
+         *
+         *     Se puede correr dos veces el mismo archivo sin duplicar nada: cada línea
+         *     lleva una huella. Lo que entra no queda cuadrado contra nada todavía.
+         */
+        post: operations["importar_api_v1_conciliacion_importar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/movimientos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bandeja
+         * @description El extracto, por estado. Por defecto, lo que falta por cuadrar.
+         */
+        get: operations["bandeja_api_v1_conciliacion_movimientos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/movimientos/{movimiento_id}/candidatos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Candidatos
+         * @description Los pagos que calzan por valor y fecha.
+         *
+         *     Nunca por nombre: quien consigna muchas veces no es el cliente, así que el
+         *     nombre produciría cruces falsos, y un cruce falso deja una venta marcada
+         *     como pagada con plata de otro.
+         */
+        get: operations["candidatos_api_v1_conciliacion_movimientos__movimiento_id__candidatos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/cruzar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cruzar
+         * @description Cuadra solas las que no tienen duda y deja el resto a la vista.
+         *
+         *     «Sin duda» es estricto: un solo pago candidato y del mismo día. Si hay dos
+         *     pagos del mismo valor esa semana, los dos se quedan sin cuadrar.
+         */
+        post: operations["cruzar_api_v1_conciliacion_cruzar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/movimientos/{movimiento_id}/conciliar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Conciliar
+         * @description Cuadra el movimiento contra un pago, o contra una venta creando el pago.
+         *
+         *     Lo segundo es el caso de todos los días: el cliente avisa por WhatsApp que
+         *     consignó y el pago todavía no está registrado, así que nace del movimiento
+         *     del banco, con su fecha y su valor.
+         */
+        post: operations["conciliar_api_v1_conciliacion_movimientos__movimiento_id__conciliar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/movimientos/{movimiento_id}/parcial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parcial
+         * @description El movimiento cubre solo una parte de un pago, o al reves.
+         *
+         *     El cliente paga una venta con dos transferencias, o manda una sola que cubre
+         *     dos ventas. Queda a medias y dicho, en vez de darse por cerrado.
+         */
+        post: operations["parcial_api_v1_conciliacion_movimientos__movimiento_id__parcial_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/movimientos/{movimiento_id}/duplicado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicado
+         * @description El banco reporto dos veces la misma transferencia.
+         *
+         *     Se marca la repetida apuntando a la buena. No se borra: el extracto tiene
+         *     que seguir cuadrando linea por linea contra lo que mando el banco.
+         */
+        post: operations["duplicado_api_v1_conciliacion_movimientos__movimiento_id__duplicado_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/movimientos/{movimiento_id}/reversado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reversado
+         * @description La plata entro y se devolvio: no es ingreso aunque aparezca como tal.
+         */
+        post: operations["reversado_api_v1_conciliacion_movimientos__movimiento_id__reversado_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/movimientos/{movimiento_id}/descartar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Descartar
+         * @description Marca el movimiento como que no es plata de un cliente, con su razón.
+         *
+         *     No se borra: la línea sigue ahí con el motivo, porque el extracto tiene que
+         *     seguir cuadrando contra el banco.
+         */
+        post: operations["descartar_api_v1_conciliacion_movimientos__movimiento_id__descartar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/movimientos/{movimiento_id}/deshacer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deshacer
+         * @description Devuelve el movimiento a la bandeja. El pago que se le creó no se borra.
+         */
+        post: operations["deshacer_api_v1_conciliacion_movimientos__movimiento_id__deshacer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conciliacion/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resumen
+         * @description Cuánto del extracto está cuadrado y cuánto no: el número del cierre.
+         */
+        get: operations["resumen_api_v1_conciliacion_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gastos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Gastos */
+        get: operations["listar_gastos_api_v1_gastos_get"];
+        put?: never;
+        /**
+         * Registrar Gasto
+         * @description Un gasto general o directo (RF-053).
+         *
+         *     Si lleva venta o trámite es directo y se le resta a esa venta; si no, es
+         *     gasto de la casa. La diferencia es la que decide si una venta fue buen
+         *     negocio.
+         */
+        post: operations["registrar_gasto_api_v1_gastos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gastos/por-categoria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gastos Por Categoria */
+        get: operations["gastos_por_categoria_api_v1_gastos_por_categoria_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/gastos/{gasto_id}/anular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anular Gasto
+         * @description Anular, nunca borrar: un gasto borrado es plata que salió sin rastro.
+         */
+        post: operations["anular_gasto_api_v1_gastos__gasto_id__anular_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comisiones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Comisiones
+         * @description Las comisiones, con el porqué de cada una.
+         *
+         *     Cada fila lleva congelada la regla que se le aplicó (RN-07), así que el
+         *     cálculo se puede explicar meses después sin reconstruir qué decía la tabla
+         *     ese día.
+         */
+        get: operations["listar_comisiones_api_v1_comisiones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/comisiones/pendientes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pendientes
+         * @description Lo que entraría en el corte: causado, del periodo y sin liquidar.
+         */
+        get: operations["pendientes_api_v1_comisiones_pendientes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ventas/{negocio_id}/comision/recalcular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recalcular
+         * @description Recalcula con la regla vigente a la fecha de la venta.
+         *
+         *     No toca las ya liquidadas: esa plata ya se pagó y cambiarla a posteriori es
+         *     reescribir la historia de un pago.
+         */
+        post: operations["recalcular_api_v1_ventas__negocio_id__comision_recalcular_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/liquidaciones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Liquidar
+         * @description El corte del periodo (RF-052).
+         *
+         *     Las comisiones que entran quedan bloqueadas y no pueden volver a entrar en
+         *     otro corte. Es la diferencia entre un reporte y el registro de un pago.
+         */
+        post: operations["liquidar_api_v1_liquidaciones_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/liquidaciones/{liquidacion_id}/pagada": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Marcar Pagada */
+        post: operations["marcar_pagada_api_v1_liquidaciones__liquidacion_id__pagada_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/liquidaciones/{liquidacion_id}/anular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anular Liquidacion
+         * @description Deshace el corte y devuelve las comisiones a «causada».
+         *
+         *     No se borra: queda la liquidación anulada con su motivo, para que la
+         *     historia muestre que hubo un corte y por qué se deshizo.
+         */
+        post: operations["anular_liquidacion_api_v1_liquidaciones__liquidacion_id__anular_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/buscar": {
         parameters: {
             query?: never;
@@ -1167,6 +1602,11 @@ export interface components {
             /** Autorizado Por */
             autorizado_por: number;
         };
+        /** AnularEntrada */
+        AnularEntrada: {
+            /** Motivo */
+            motivo: string;
+        };
         /** AsignarPago */
         AsignarPago: {
             /** Negocio Id */
@@ -1207,6 +1647,29 @@ export interface components {
             actual: string;
             /** Nueva */
             nueva: string;
+        };
+        /** CandidatoSalida */
+        CandidatoSalida: {
+            /** Pago Id */
+            pago_id: number;
+            /** Negocio Id */
+            negocio_id: number | null;
+            /** Cliente */
+            cliente: string | null;
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /** Monto */
+            monto: number;
+            /** Dias De Diferencia */
+            dias_de_diferencia: number;
+            /**
+             * Exacto
+             * @description Mismo día que el movimiento del banco
+             */
+            exacto: boolean;
         };
         /** CasoCrear */
         CasoCrear: {
@@ -1655,6 +2118,58 @@ export interface components {
              */
             posible_familiar: boolean;
         };
+        /** ComisionSalida */
+        ComisionSalida: {
+            /** Id */
+            id: number;
+            /** Negocio Id */
+            negocio_id: number;
+            /** Vendedor Id */
+            vendedor_id: number;
+            /** Vendedor */
+            vendedor: string | null;
+            /** Base Calculo */
+            base_calculo: number;
+            /** Monto */
+            monto: number;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "provisional" | "causada" | "liquidada" | "anulada";
+            /** Periodo */
+            periodo: string | null;
+            /** Porcentaje Aplicado */
+            porcentaje_aplicado: number | null;
+            /**
+             * Escalon
+             * @description «base» o «meta»
+             */
+            escalon?: string | null;
+            /**
+             * Explicacion
+             * @description Por qué se calculó así
+             */
+            explicacion?: string | null;
+            /** Liquidacion Id */
+            liquidacion_id: number | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+        };
+        /**
+         * ConciliarEntrada
+         * @description Contra qué se cuadra: un pago que ya existe, o la venta a la que hay que
+         *     abonarle, y entonces el pago nace del movimiento del banco.
+         */
+        ConciliarEntrada: {
+            /** Pago Id */
+            pago_id?: number | null;
+            /** Negocio Id */
+            negocio_id?: number | null;
+        };
         /** ContactoOportunidad */
         ContactoOportunidad: {
             /** Proxima Accion */
@@ -1756,6 +2271,25 @@ export interface components {
              */
             fecha?: string | null;
         };
+        /** CruceAutomaticoEntrada */
+        CruceAutomaticoEntrada: {
+            /** Desde */
+            desde?: string | null;
+            /** Hasta */
+            hasta?: string | null;
+        };
+        /** CruceAutomaticoSalida */
+        CruceAutomaticoSalida: {
+            /** Cuadrados */
+            cuadrados: number;
+            /**
+             * Ambiguos
+             * @description Calzan con más de un pago: decide una persona
+             */
+            ambiguos: number;
+            /** Sin Candidato */
+            sin_candidato: number;
+        };
         /** CuotaSalida */
         CuotaSalida: {
             /** Numero */
@@ -1780,6 +2314,22 @@ export interface components {
             requiere_mfa: true;
             /** Token Mfa */
             token_mfa: string;
+        };
+        /** DescartarEntrada */
+        DescartarEntrada: {
+            /**
+             * Motivo
+             * @description Por qué este movimiento no es plata de un cliente
+             */
+            motivo: string;
+        };
+        /** DuplicadoEntrada */
+        DuplicadoEntrada: {
+            /**
+             * Duplicado De Id
+             * @description El movimiento bueno, del que este es repetido
+             */
+            duplicado_de_id: number;
         };
         /** EstadoFinancieroSalida */
         EstadoFinancieroSalida: {
@@ -1821,6 +2371,13 @@ export interface components {
             codigo: string;
             /** Nombre */
             nombre: string;
+        };
+        /** EstadoResumen */
+        EstadoResumen: {
+            /** Cuantos */
+            cuantos: number;
+            /** Total */
+            total: number;
         };
         /**
          * Ficha360
@@ -1909,6 +2466,98 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** GastoCrear */
+        GastoCrear: {
+            /** Categoria Id */
+            categoria_id: number;
+            /** Concepto */
+            concepto: string;
+            /** Monto */
+            monto: number;
+            /** Fecha */
+            fecha?: string | null;
+            /**
+             * Moneda
+             * @default COP
+             */
+            moneda: string;
+            /**
+             * Negocio Id
+             * @description Lo vuelve un gasto directo de la venta
+             */
+            negocio_id?: number | null;
+            /**
+             * Caso Id
+             * @description Lo vuelve un gasto directo del trámite
+             */
+            caso_id?: number | null;
+            /** Proveedor Id */
+            proveedor_id?: number | null;
+            /** Medio Pago Id */
+            medio_pago_id?: number | null;
+            /** Banco Cuenta Id */
+            banco_cuenta_id?: number | null;
+            /** Comprobante Url */
+            comprobante_url?: string | null;
+            /** Observacion */
+            observacion?: string | null;
+            /**
+             * Estado
+             * @default pagado
+             * @enum {string}
+             */
+            estado: "pagado" | "pendiente" | "anulado";
+        };
+        /** GastoPorCategoria */
+        GastoPorCategoria: {
+            /** Categoria */
+            categoria: string;
+            /** Cuantos */
+            cuantos: number;
+            /** Total */
+            total: number;
+        };
+        /** GastoSalida */
+        GastoSalida: {
+            /** Id */
+            id: number;
+            /** Categoria Id */
+            categoria_id: number;
+            /** Categoria */
+            categoria: string;
+            /** Concepto */
+            concepto: string;
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /** Monto */
+            monto: number;
+            /** Moneda */
+            moneda: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "pagado" | "pendiente" | "anulado";
+            /** Negocio Id */
+            negocio_id: number | null;
+            /** Caso Id */
+            caso_id: number | null;
+            /**
+             * Es Directo
+             * @description Se le puede cargar a una venta o a un trámite
+             */
+            es_directo: boolean;
+            /** Observacion */
+            observacion: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+        };
         /** GrupoCrear */
         GrupoCrear: {
             /** Nombre */
@@ -1974,6 +2623,31 @@ export interface components {
              */
             ocurrido_en: string;
         };
+        /** ImportarEntrada */
+        ImportarEntrada: {
+            /** Movimientos */
+            movimientos: components["schemas"]["MovimientoEntrada"][];
+            /** Archivo */
+            archivo?: string | null;
+            /** Hoja */
+            hoja?: string | null;
+        };
+        /** ImportarSalida */
+        ImportarSalida: {
+            /** Leidos */
+            leidos: number;
+            /** Nuevos */
+            nuevos: number;
+            /**
+             * Repetidos
+             * @description Ya estaban: importar dos veces no duplica
+             */
+            repetidos: number;
+            /** Sin Fecha */
+            sin_fecha: number;
+            /** Sin Valor */
+            sin_valor: number;
+        };
         /** ItemChecklist */
         ItemChecklist: {
             /** Item Id */
@@ -1986,6 +2660,53 @@ export interface components {
             obligatorio: boolean;
             /** Cumplido */
             cumplido: boolean;
+        };
+        /** LiquidacionSalida */
+        LiquidacionSalida: {
+            /** Id */
+            id: number;
+            /** Vendedor Id */
+            vendedor_id: number;
+            /** Vendedor */
+            vendedor: string | null;
+            /**
+             * Periodo
+             * Format: date
+             */
+            periodo: string;
+            /** Total */
+            total: number;
+            /** Cantidad */
+            cantidad: number;
+            /** Estado */
+            estado: string;
+            /** Observaciones */
+            observaciones: string | null;
+            /**
+             * Creada En
+             * Format: date-time
+             */
+            creada_en: string;
+            /** Pagada En */
+            pagada_en: string | null;
+            /**
+             * Comisiones
+             * @default []
+             */
+            comisiones: components["schemas"]["ComisionSalida"][];
+        };
+        /** LiquidarEntrada */
+        LiquidarEntrada: {
+            /** Vendedor Id */
+            vendedor_id: number;
+            /**
+             * Periodo
+             * Format: date
+             * @description Cualquier día del mes a liquidar
+             */
+            periodo: string;
+            /** Observaciones */
+            observaciones?: string | null;
         };
         /** LoginEntrada */
         LoginEntrada: {
@@ -2033,6 +2754,96 @@ export interface components {
              * @description Obligatoria mientras siga abierta
              */
             proxima_accion?: string | null;
+        };
+        /**
+         * MovimientoEntrada
+         * @description Una línea del extracto. El nombre de quien consigna no se pide para
+         *     cruzar: se guarda como pista, porque muchas veces no es el del cliente.
+         */
+        MovimientoEntrada: {
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /**
+             * Valor
+             * @description Positivo: es plata que entró
+             */
+            valor: number;
+            /** Banco */
+            banco: string;
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Referencia */
+            referencia?: string | null;
+            /**
+             * Moneda
+             * @default COP
+             */
+            moneda: string;
+            /** Banco Cuenta Id */
+            banco_cuenta_id?: number | null;
+            /**
+             * Nota Cliente
+             * @description Lo que se anotaba a mano en la columna CLIENTE del Excel
+             */
+            nota_cliente?: string | null;
+            /** Nota Abono */
+            nota_abono?: string | null;
+            /** Observacion */
+            observacion?: string | null;
+            /**
+             * Fila
+             * @description Fila del archivo de origen
+             */
+            fila?: number | null;
+        };
+        /** MovimientoSalida */
+        MovimientoSalida: {
+            /** Id */
+            id: number;
+            /** Banco */
+            banco: string;
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /** Valor */
+            valor: number;
+            /** Moneda */
+            moneda: string;
+            /** Descripcion */
+            descripcion: string | null;
+            /** Referencia */
+            referencia: string | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "sin_conciliar" | "conciliado" | "parcial" | "duplicado" | "reversado" | "descartado";
+            /** Pago Id */
+            pago_id: number | null;
+            /** Duplicado De Id */
+            duplicado_de_id?: number | null;
+            /** Negocio Id */
+            negocio_id?: number | null;
+            /** Cliente */
+            cliente?: string | null;
+            /** Motivo Descarte */
+            motivo_descarte: string | null;
+            /** Nota Cliente */
+            nota_cliente: string | null;
+            /** Nota Abono */
+            nota_abono: string | null;
+            /** Conciliado En */
+            conciliado_en: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
         };
         /** NotaCrear */
         NotaCrear: {
@@ -2220,6 +3031,32 @@ export interface components {
             /** Items */
             items: components["schemas"]["ClienteSalida"][];
         };
+        /** PaginaGastos */
+        PaginaGastos: {
+            /** Total */
+            total: number;
+            /** Suma */
+            suma: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["GastoSalida"][];
+        };
+        /** PaginaMovimientos */
+        PaginaMovimientos: {
+            /** Total */
+            total: number;
+            /** Suma */
+            suma: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["MovimientoSalida"][];
+        };
         /** PaginaOportunidades */
         PaginaOportunidades: {
             /** Total */
@@ -2321,6 +3158,14 @@ export interface components {
              * Format: date-time
              */
             creado_en: string;
+        };
+        /** ParcialEntrada */
+        ParcialEntrada: {
+            /**
+             * Pago Id
+             * @description El pago que este movimiento cubre solo en parte
+             */
+            pago_id: number;
         };
         /** PasaporteSalida */
         PasaporteSalida: {
@@ -2460,6 +3305,20 @@ export interface components {
             /** Dias Sin Contacto */
             dias_sin_contacto: number | null;
         };
+        /** ResumenSalida */
+        ResumenSalida: {
+            sin_conciliar: components["schemas"]["EstadoResumen"];
+            conciliado: components["schemas"]["EstadoResumen"];
+            parcial: components["schemas"]["EstadoResumen"];
+            duplicado: components["schemas"]["EstadoResumen"];
+            reversado: components["schemas"]["EstadoResumen"];
+            descartado: components["schemas"]["EstadoResumen"];
+        };
+        /** ReversadoEntrada */
+        ReversadoEntrada: {
+            /** Motivo */
+            motivo: string;
+        };
         /** RolSalida */
         RolSalida: {
             /** Codigo */
@@ -2594,6 +3453,17 @@ export interface components {
             usuario: string | null;
             /** Caso Id */
             caso_id: number | null;
+        };
+        /** SugerenciasSalida */
+        SugerenciasSalida: {
+            movimiento: components["schemas"]["MovimientoSalida"];
+            /** Candidatos */
+            candidatos: components["schemas"]["CandidatoSalida"][];
+            /**
+             * Sin Duda
+             * @description Un solo candidato y del mismo día: se puede cuadrar sin preguntar
+             */
+            sin_duda: boolean;
         };
         /** TokenSalida */
         TokenSalida: {
@@ -3883,6 +4753,713 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PasaporteSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    importar_api_v1_conciliacion_importar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportarEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportarSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bandeja_api_v1_conciliacion_movimientos_get: {
+        parameters: {
+            query?: {
+                estado?: ("sin_conciliar" | "conciliado" | "parcial" | "duplicado" | "reversado" | "descartado") | null;
+                desde?: string | null;
+                hasta?: string | null;
+                banco?: string | null;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaMovimientos"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidatos_api_v1_conciliacion_movimientos__movimiento_id__candidatos_get: {
+        parameters: {
+            query?: {
+                dias?: number;
+            };
+            header?: never;
+            path: {
+                movimiento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SugerenciasSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cruzar_api_v1_conciliacion_cruzar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CruceAutomaticoEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CruceAutomaticoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    conciliar_api_v1_conciliacion_movimientos__movimiento_id__conciliar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movimiento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConciliarEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovimientoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parcial_api_v1_conciliacion_movimientos__movimiento_id__parcial_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movimiento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParcialEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovimientoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicado_api_v1_conciliacion_movimientos__movimiento_id__duplicado_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movimiento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuplicadoEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovimientoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reversado_api_v1_conciliacion_movimientos__movimiento_id__reversado_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movimiento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReversadoEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovimientoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    descartar_api_v1_conciliacion_movimientos__movimiento_id__descartar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movimiento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescartarEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovimientoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deshacer_api_v1_conciliacion_movimientos__movimiento_id__deshacer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movimiento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovimientoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_api_v1_conciliacion_resumen_get: {
+        parameters: {
+            query?: {
+                desde?: string | null;
+                hasta?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumenSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_gastos_api_v1_gastos_get: {
+        parameters: {
+            query?: {
+                categoria_id?: number | null;
+                negocio_id?: number | null;
+                caso_id?: number | null;
+                solo_directos?: boolean;
+                desde?: string | null;
+                hasta?: string | null;
+                incluir_anulados?: boolean;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaGastos"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    registrar_gasto_api_v1_gastos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GastoCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GastoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gastos_por_categoria_api_v1_gastos_por_categoria_get: {
+        parameters: {
+            query?: {
+                desde?: string | null;
+                hasta?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GastoPorCategoria"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anular_gasto_api_v1_gastos__gasto_id__anular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gasto_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnularEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GastoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_comisiones_api_v1_comisiones_get: {
+        parameters: {
+            query?: {
+                vendedor_id?: number | null;
+                periodo?: string | null;
+                estado?: ("provisional" | "causada" | "liquidada" | "anulada") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComisionSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pendientes_api_v1_comisiones_pendientes_get: {
+        parameters: {
+            query: {
+                vendedor_id: number;
+                periodo: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComisionSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recalcular_api_v1_ventas__negocio_id__comision_recalcular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                negocio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComisionSalida"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    liquidar_api_v1_liquidaciones_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiquidarEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiquidacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    marcar_pagada_api_v1_liquidaciones__liquidacion_id__pagada_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                liquidacion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiquidacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anular_liquidacion_api_v1_liquidaciones__liquidacion_id__anular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                liquidacion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnularEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiquidacionSalida"];
                 };
             };
             /** @description Validation Error */

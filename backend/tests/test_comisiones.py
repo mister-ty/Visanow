@@ -123,6 +123,39 @@ def test_la_renovacion_no_cuenta_para_las_diez_premium(cliente, vendedora, finan
     assert 'n.º 1' in c['explicacion'], 'las renovaciones no gastaron cupo'
 
 
+def test_ni_la_renovacion_premium_ni_la_china_premium_gastan_cupo(cliente, vendedora,
+                                                                  finanzas, db):
+    """«El servicio de usa premium, solo ese es el que aplica para las 10 (no
+    aplica renovacion premium o china premium)» — 07/10.
+
+    Importa porque la renovacion premium vale lo mismo que la USA premium (misma
+    tarifa, de 1.200.000 a 4.400.000). Si contara, se comeria un cupo del 10 %
+    que ella no quiso darle, y la cuenta del mes saldria mal sin que se note.
+    """
+    cab, _ = vendedora
+    caras = [
+        vender(cliente, cab, db, servicio='renovacion_premium',
+               nombre='Renovapremium Unocliente Apellidouno', fecha='2027-01-04'),
+        vender(cliente, cab, db, servicio='renovacion_premium',
+               nombre='Renovapremium Doscliente Apellidodos', fecha='2027-01-05'),
+        vender(cliente, cab, db, servicio='visa_china_premium',
+               nombre='Chinapremium Trescliente Apellidotres', fecha='2027-01-06'),
+    ]
+    # Comisionan al 7 % de Angie, pero sin escalon y sin ocupar puesto.
+    for v in caras:
+        c = comision_de(cliente, finanzas, v['id'])
+        assert c['porcentaje_aplicado'] == 7.0, c
+        assert c['escalon'] == 'base', c
+        assert 'n.º' not in c['explicacion'], f'no deberia tener puesto en el cupo: {c}'
+
+    premium = vender(cliente, cab, db, servicio='asesoria_adelanto',
+                     nombre='Usapremium Primera Delmes', fecha='2027-01-10')
+    c = comision_de(cliente, finanzas, premium['id'])
+    assert c['porcentaje_aplicado'] == 10.0
+    assert 'n.º 1' in c['explicacion'], (
+        f'las tres ventas caras anteriores no podian gastar cupo: {c["explicacion"]}')
+
+
 def test_el_contador_de_las_diez_arranca_de_cero_cada_mes(cliente, vendedora, finanzas, db):
     cab, _ = vendedora
     ultima_de_enero = None
@@ -164,20 +197,17 @@ def _comercial_con_regla(cliente, db, usuario, patron):
     return entrar(cliente, p), p
 
 
-def test_la_regla_de_yas_no_trae_el_escalon_del_diez_de_angie(cliente, db, usuario, finanzas):
-    """Yas comisiona el 7 % plano: su regla no tiene meta.
-
-    El porcentaje de Yas sigue por confirmar, pero lo que no puede pasar es que
-    herede el escalon de Angie por un emparejamiento de nombres.
-    """
+def test_la_regla_de_yas_es_el_cuatro_por_ciento_sin_escalon(cliente, db, usuario, finanzas):
+    """«yas ponle el 4 % de la venta» (07/10). Y sin escalon: el del 10 %
+    «solo aplica para angie»."""
     cab, _ = _comercial_con_regla(cliente, db, usuario, 'Yas%')
     venta = vender(cliente, cab, db, servicio='asesoria_adelanto',
                    nombre='Regla Deyas Cliente', fecha='2026-11-05')
     c = comision_de(cliente, finanzas, venta['id'])
 
-    assert c['porcentaje_aplicado'] == 7.0, c
+    assert c['porcentaje_aplicado'] == 4.0, c
     assert c['escalon'] == 'base', 'el escalon del 10 % es de Angie, no de Yas'
-    assert 'Yas' in c['explicacion'] or 'n.º' not in c['explicacion'], c['explicacion']
+    assert c['monto'] == pytest.approx(venta['valor_pactado'] * 0.04, abs=1)
 
 
 def test_dos_comerciales_de_nombre_parecido_no_comparten_la_regla(cliente, db, usuario,
@@ -200,12 +230,18 @@ def test_dos_comerciales_de_nombre_parecido_no_comparten_la_regla(cliente, db, u
                   nombre='Parecido Angelica Cliente', fecha='2026-11-05')
 
     assert comision_de(cliente, finanzas, mia['id'])['porcentaje_aplicado'] == 10.0
-    assert comision_de(cliente, finanzas, suya['id']) is None, (
-        'Angelica no es Angie: no hereda su regla por parecerse de nombre')
+    suya_c = comision_de(cliente, finanzas, suya['id'])
+    assert suya_c['porcentaje_aplicado'] == 4.0, (
+        'Angelica no es Angie: le toca la general del 4 %, no el escalon del 10 %')
+    assert suya_c['escalon'] == 'base', suya_c
 
 
-def test_una_comercial_sin_regla_no_comisiona(cliente, db, usuario, finanzas):
-    """Miriam no vende: una comercial sin regla propia no cobra la de nadie."""
+def test_una_comercial_sin_regla_propia_comisiona_al_cuatro(cliente, db, usuario, finanzas):
+    """«yas ponle el 4 % de la venta **y a los demas**» (07/10).
+
+    Quien venda y no tenga regla propia cae en la regla general del 4 %. Lo que
+    no puede es heredar el escalon del 10 %, que es solo de Angie.
+    """
     p = usuario('comercial')
     p.u.nombre = 'Miriam Sin Regla'
     db.commit()
@@ -213,8 +249,11 @@ def test_una_comercial_sin_regla_no_comisiona(cliente, db, usuario, finanzas):
 
     venta = vender(cliente, cab, db, servicio='asesoria_adelanto',
                    nombre='Sin Regla Cliente', fecha='2026-11-05')
-    assert comision_de(cliente, finanzas, venta['id']) is None, (
-        'una comercial sin regla no puede heredar el escalon del 10 % de Angie')
+    c = comision_de(cliente, finanzas, venta['id'])
+    assert c is not None, 'el resto del equipo tambien comisiona'
+    assert c['porcentaje_aplicado'] == 4.0, c
+    assert c['escalon'] == 'base', 'el escalon del 10 % solo aplica para Angie'
+    assert c['monto'] == pytest.approx(venta['valor_pactado'] * 0.04, abs=1)
 
 
 def test_la_regla_congelada_dice_el_nombre_de_la_regla_que_se_aplico(cliente, db, usuario,

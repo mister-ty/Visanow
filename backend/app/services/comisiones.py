@@ -63,9 +63,9 @@ def regla_para(db: Session, vendedor_id: int, fecha: dt.date) -> ComisionesRegla
     id en el seed y en la migración 0010, y una regla sin dueña queda inactiva:
     tiene que pagarle a nadie, no a todas.
 
-    Devolver None es una respuesta válida y es la correcta para quien no
-    comisiona: la administradora dijo que las comisiones son solo de Angie y de
-    Yas, y que Miriam no vende.
+    La regla general existe y es la del 4 %: «yas ponle el 4 % de la venta y a
+    los demás» (07/10). Quien venda y no tenga regla propia cae ahí. Devolver
+    None solo pasa si ni siquiera hay regla general, y entonces no se comisiona.
     """
     base = (select(ComisionesReglas)
             .where(ComisionesReglas.activo.is_(True),
@@ -374,6 +374,11 @@ def reordenar_periodo(db: Session, actor: Usuarios, vendedor_id: int, periodo: d
                Comisiones.periodo == primero,
                Comisiones.estado != 'anulada')
         .order_by(Negocios.fecha_venta, Negocios.id)))
+
+    # Con una sola comisión en el mes no hay a quién correrle el puesto, y quien
+    # llama acaba de calcularla. Es el caso corriente y se sale temprano.
+    if len(del_mes) <= 1:
+        return Reordenamiento(corregidas=[], congeladas_fuera_de_meta=[])
 
     for comision in del_mes:
         negocio = db.get(Negocios, comision.negocio_id)
