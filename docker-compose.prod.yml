@@ -1,0 +1,53 @@
+# Produccion: base + API + proxy con HTTPS automatico. El frontend va en Vercel.
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NOMBRE:-visanow}
+      POSTGRES_USER: ${DB_USUARIO:-visanow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?define DB_PASSWORD en .env.prod}
+    # Sin "ports": la base solo es alcanzable desde la red interna de compose
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USUARIO:-visanow} -d ${DB_NOMBRE:-visanow}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    restart: always
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      APP_ENV: produccion
+      APP_SECRET: ${APP_SECRET:?define APP_SECRET en .env.prod}
+      CIFRADO_LLAVE: ${CIFRADO_LLAVE:?define CIFRADO_LLAVE en .env.prod}
+      DATABASE_URL: postgresql+psycopg://${DB_USUARIO:-visanow}:${DB_PASSWORD}@db:5432/${DB_NOMBRE:-visanow}
+      CORS_ORIGINS: ${URL_UI:?define URL_UI en .env.prod}
+      URL_UI: ${URL_UI}
+      ZONA_HORARIA: America/Bogota
+      MFA_ROLES_OBLIGATORIO: ${MFA_ROLES_OBLIGATORIO:-administradora,finanzas}
+    volumes:
+      - archivos:/app/almacenamiento
+    expose: ["8000"]
+
+  proxy:
+    image: caddy:2-alpine
+    restart: always
+    depends_on: [api]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMINIO_API: ${DOMINIO_API:?define DOMINIO_API en .env.prod}
+    # Certificado de Let's Encrypt y renovacion automaticos
+    command: caddy reverse-proxy --from ${DOMINIO_API} --to api:8000
+    volumes:
+      - caddy_datos:/data
+
+volumes:
+  pgdata:
+  archivos:
+  caddy_datos:
