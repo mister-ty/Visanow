@@ -1368,6 +1368,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/plantillas/catalogo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Catalogo
+         * @description Eventos y variables disponibles, para armar la plantilla sin adivinar nombres.
+         */
+        get: operations["catalogo_api_v1_plantillas_catalogo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plantillas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar */
+        get: operations["listar_api_v1_plantillas_get"];
+        put?: never;
+        /** Crear */
+        post: operations["crear_api_v1_plantillas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plantillas/{plantilla_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Editar */
+        patch: operations["editar_api_v1_plantillas__plantilla_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/plantillas/{plantilla_id}/generar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generar
+         * @description Llena la plantilla con los datos del trámite o la venta (RF-063).
+         *
+         *     No envía nada: devuelve el texto para copiarlo o abrirlo en WhatsApp o correo.
+         */
+        post: operations["generar_api_v1_plantillas__plantilla_id__generar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usuarios": {
         parameters: {
             query?: never;
@@ -1861,6 +1938,13 @@ export interface components {
              * Format: date-time
              */
             ultima_actividad_en: string;
+        };
+        /** CatalogoPlantillas */
+        CatalogoPlantillas: {
+            /** Eventos */
+            eventos: components["schemas"]["EventoSalida"][];
+            /** Variables */
+            variables: components["schemas"]["VariableSalida"][];
         };
         /** Catalogos */
         Catalogos: {
@@ -2378,6 +2462,13 @@ export interface components {
             cuantos: number;
             /** Total */
             total: number;
+        };
+        /** EventoSalida */
+        EventoSalida: {
+            /** Clave */
+            clave: string;
+            /** Nombre */
+            nombre: string;
         };
         /**
          * Ficha360
@@ -3214,6 +3305,67 @@ export interface components {
              */
             plazo_dias?: number | null;
         };
+        /** PlantillaCrear */
+        PlantillaCrear: {
+            /** Evento */
+            evento: string;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Canal
+             * @default whatsapp
+             * @enum {string}
+             */
+            canal: "whatsapp" | "correo" | "sms";
+            /**
+             * Asunto
+             * @description Solo para correo
+             */
+            asunto?: string | null;
+            /**
+             * Cuerpo
+             * @description Con variables como {{cliente_nombre}}
+             */
+            cuerpo: string;
+        };
+        /** PlantillaEditar */
+        PlantillaEditar: {
+            /** Nombre */
+            nombre?: string | null;
+            /** Asunto */
+            asunto?: string | null;
+            /** Cuerpo */
+            cuerpo?: string | null;
+            /** Activa */
+            activa?: boolean | null;
+        };
+        /** PlantillaSalida */
+        PlantillaSalida: {
+            /** Id */
+            id: number;
+            /** Evento */
+            evento: string;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Canal
+             * @enum {string}
+             */
+            canal: "whatsapp" | "correo" | "sms";
+            /** Asunto */
+            asunto: string | null;
+            /** Cuerpo */
+            cuerpo: string;
+            /** Activa */
+            activa: boolean;
+            /** Variables */
+            variables: string[];
+            /**
+             * Actualizada En
+             * Format: date-time
+             */
+            actualizada_en: string;
+        };
         /** PorEstado */
         PorEstado: {
             /** Estado */
@@ -3230,6 +3382,32 @@ export interface components {
              * Format: email
              */
             email: string;
+        };
+        /** RenderEntrada */
+        RenderEntrada: {
+            /** Caso Id */
+            caso_id?: number | null;
+            /**
+             * Negocio Id
+             * @description Para mensajes de saldo sin trámite
+             */
+            negocio_id?: number | null;
+        };
+        /** RenderSalida */
+        RenderSalida: {
+            /** Asunto */
+            asunto: string | null;
+            /** Mensaje */
+            mensaje: string;
+            /**
+             * Faltantes
+             * @description Variables sin dato: quedan visibles como {{x}}
+             */
+            faltantes: string[];
+            /** Telefono */
+            telefono: string | null;
+            /** Correo */
+            correo: string | null;
         };
         /** RestablecerEntrada */
         RestablecerEntrada: {
@@ -3552,6 +3730,13 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VariableSalida */
+        VariableSalida: {
+            /** Clave */
+            clave: string;
+            /** Descripcion */
+            descripcion: string;
         };
         /** VentaSalida */
         VentaSalida: {
@@ -6150,6 +6335,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PorEstado"][];
+                };
+            };
+        };
+    };
+    catalogo_api_v1_plantillas_catalogo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogoPlantillas"];
+                };
+            };
+        };
+    };
+    listar_api_v1_plantillas_get: {
+        parameters: {
+            query?: {
+                evento?: string | null;
+                incluir_inactivas?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_api_v1_plantillas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editar_api_v1_plantillas__plantilla_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plantilla_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlantillaEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlantillaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generar_api_v1_plantillas__plantilla_id__generar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plantilla_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenderSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

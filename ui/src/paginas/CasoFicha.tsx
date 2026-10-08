@@ -10,6 +10,7 @@ import {
   IconPencil, IconX,
 } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { ModalMensaje } from '../componentes/ModalMensaje'
 import { useParams } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
@@ -38,6 +39,7 @@ export function CasoFicha() {
   const clienteQuery = useQueryClient()
   const [moviendo, setMoviendo] = useState(false)
   const [agendando, setAgendando] = useState(false)
+  const [escribiendo, setEscribiendo] = useState(false)
   const [registrando, setRegistrando] = useState(false)
   const [reprogramando, setReprogramando] = useState<Esquemas['CitaSalida'] | null>(null)
 
@@ -112,12 +114,16 @@ export function CasoFicha() {
             {c.sin_venta && ' · sin venta registrada'}
           </Text>
         </div>
-        {puedeEditar && !c.es_final && (
-          <Group>
-            <Button variant="default" onClick={() => setRegistrando(true)}>Registrar resultado</Button>
-            <Button rightSection={<IconArrowRight size={16} />} onClick={() => setMoviendo(true)}>Mover</Button>
-          </Group>)}
+        <Group>
+          <Button variant="default" onClick={() => setEscribiendo(true)}>Mensaje al cliente</Button>
+          {puedeEditar && !c.es_final && (
+            <>
+              <Button variant="default" onClick={() => setRegistrando(true)}>Registrar resultado</Button>
+              <Button rightSection={<IconArrowRight size={16} />} onClick={() => setMoviendo(true)}>Mover</Button>
+            </>)}
+        </Group>
       </Group>
+      {escribiendo && <ModalMensaje casoId={casoId} cerrar={() => setEscribiendo(false)} />}
 
       {c.resultado && (
         <Alert color={c.resultado === 'aprobada' ? 'teal' : c.resultado === 'negada' ? 'red' : 'yellow'}
