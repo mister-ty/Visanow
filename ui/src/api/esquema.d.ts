@@ -1368,6 +1368,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tableros/{tablero}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ver
+         * @description Los cuatro tableros (RF-070 a RF-073) con los mismos filtros (RF-074).
+         */
+        get: operations["ver_api_v1_tableros__tablero__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tableros/{tablero}/exportar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Exportar
+         * @description Exporta con los mismos filtros de la pantalla (RF-075): lo que se ve es lo que se baja.
+         */
+        get: operations["exportar_api_v1_tableros__tablero__exportar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usuarios": {
         parameters: {
             query?: never;
@@ -2648,6 +2688,20 @@ export interface components {
             /** Sin Valor */
             sin_valor: number;
         };
+        /** IndicadorSalida */
+        IndicadorSalida: {
+            /** Clave */
+            clave: string;
+            /** Nombre */
+            nombre: string;
+            /** Valor */
+            valor: number;
+            /**
+             * Formato
+             * @enum {string}
+             */
+            formato: "numero" | "pesos" | "porcentaje";
+        };
         /** ItemChecklist */
         ItemChecklist: {
             /** Item Id */
@@ -3464,6 +3518,28 @@ export interface components {
              * @description Un solo candidato y del mismo día: se puede cuadrar sin preguntar
              */
             sin_duda: boolean;
+        };
+        /** TablaSalida */
+        TablaSalida: {
+            /** Clave */
+            clave: string;
+            /** Titulo */
+            titulo: string;
+            /** Columnas */
+            columnas: string[];
+            /** Filas */
+            filas: (string | number | null)[][];
+        };
+        /** TableroSalida */
+        TableroSalida: {
+            /** Tablero */
+            tablero: string;
+            /** Titulo */
+            titulo: string;
+            /** Indicadores */
+            indicadores: components["schemas"]["IndicadorSalida"][];
+            /** Tablas */
+            tablas: components["schemas"]["TablaSalida"][];
         };
         /** TokenSalida */
         TokenSalida: {
@@ -6150,6 +6226,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PorEstado"][];
+                };
+            };
+        };
+    };
+    ver_api_v1_tableros__tablero__get: {
+        parameters: {
+            query?: {
+                /** @description Día de Bogotá, inclusivo */
+                desde?: string | null;
+                /** @description Día de Bogotá, inclusivo */
+                hasta?: string | null;
+                vendedor_id?: number | null;
+                servicio_id?: number | null;
+                /** @description Código de estado del tablero */
+                estado?: string | null;
+            };
+            header?: never;
+            path: {
+                tablero: "comercial" | "operativo" | "financiero" | "ejecutivo";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableroSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportar_api_v1_tableros__tablero__exportar_get: {
+        parameters: {
+            query?: {
+                formato?: "xlsx" | "csv";
+                desde?: string | null;
+                hasta?: string | null;
+                vendedor_id?: number | null;
+                servicio_id?: number | null;
+                estado?: string | null;
+            };
+            header?: never;
+            path: {
+                tablero: "comercial" | "operativo" | "financiero" | "ejecutivo";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
