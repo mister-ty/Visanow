@@ -499,61 +499,84 @@ def sembrar_parametros(cur) -> int:
 # La regla vive en una fila y no en el código porque RN-07 exige que cada venta
 # congele la regla que tenía ese día: si en enero cambia el porcentaje, las
 # comisiones de octubre no se mueven.
+# El correo identifica a la dueña. `None` significa que la regla es general a
+# propósito —«y a los demás»— y no que le falte dueña.
 COMISIONES = [
     # base='vendido' porque dijo «el 7 % del valor de la venta». Que la comisión
     # se GANE cuando el cliente termina de pagar es el disparador, no la base, y
     # va en `se_causa_con`. Que la tasa consular quede fuera tampoco cabe en la
     # columna: va en `excluye_de_la_base`.
-    ('Angie — 7 % con escalón del 10 % en las primeras 10 premium',
+    #
+    # El escalón del 10 % es solo de Angie y solo sobre un servicio: «el servicio
+    # de usa premium, solo ese es el que aplica para las 10 (no aplica renovación
+    # premium o china premium)». Ese servicio es `asesoria_adelanto` —«Asesoría
+    # USA + adelanto (Premium)»—, que es el más vendido del catálogo. La fila
+    # `usa_premium` del catálogo viejo no es: no tiene ni una venta ni una tarifa.
+    ('Angie — 7 % con escalón del 10 % en las primeras 10 USA premium',
      'angielorena221003@gmail.com', 'vendido', 7.0, 10, {
         'se_causa_con': 'pago_total',
         'porcentaje_base': 7.0,
         'porcentaje_meta': 10.0,
         'meta_cantidad': 10,
         'meta_periodo': 'mes',
-        'servicios_que_cuentan_para_la_meta': ['asesoria_adelanto', 'renovacion_premium'],
-        'servicios_excluidos_de_la_meta': ['renovacion'],
+        'servicios_que_cuentan_para_la_meta': ['asesoria_adelanto'],
+        'servicios_excluidos_de_la_meta': ['renovacion', 'renovacion_premium',
+                                           'visa_china_premium', 'visa_premium_ninos'],
         'excluye_de_la_base': ['recaudo_terceros'],
-        'dicho_por': 'Administradora VisaNow, WhatsApp del 03/10/2026 (decisión D-03)',
+        'dicho_por': 'Administradora VisaNow, WhatsApp del 03/10 y del 07/10/2026 (D-03)',
     }),
-    # La respuesta dice que comisionan Angie y Yas, pero solo dio el porcentaje
-    # de Angie. Se deja el 7 % para Yas y queda por confirmar antes del 09/10.
-    ('Yas — 7 % (porcentaje por confirmar)',
-     'yasvic1212@gmail.com', 'vendido', 7.0, None, {
+    # «yas ponle el 4 % de la venta y a los demás» (07/10). Sin escalón: el del
+    # 10 % «solo aplica para angie».
+    ('Yas — 4 % del valor de la venta',
+     'yasvic1212@gmail.com', 'vendido', 4.0, None, {
         'se_causa_con': 'pago_total',
-        'porcentaje_base': 7.0,
+        'porcentaje_base': 4.0,
         'excluye_de_la_base': ['recaudo_terceros'],
-        'por_confirmar': 'La administradora dijo que Yas comisiona, pero no dio su porcentaje. '
-                         'Se asume el mismo 7 % de Angie hasta que lo confirme.',
-        'dicho_por': 'Administradora VisaNow, WhatsApp del 03/10/2026 (decisión D-03)',
+        'dicho_por': 'Administradora VisaNow, WhatsApp del 07/10/2026 (decisión D-03)',
+    }),
+    # «y a los demás»: quien venda y no tenga regla propia comisiona al 4 %. Es
+    # la única regla sin dueña, y lo es a propósito.
+    ('General — 4 % del valor de la venta para el resto del equipo',
+     None, 'vendido', 4.0, None, {
+        'se_causa_con': 'pago_total',
+        'porcentaje_base': 4.0,
+        'excluye_de_la_base': ['recaudo_terceros'],
+        'es_la_general': True,
+        'dicho_por': 'Administradora VisaNow, WhatsApp del 07/10/2026 (decisión D-03)',
     }),
 ]
 
 
 def sembrar_comisiones(cur) -> int:
-    """Siembra las reglas amarradas a su vendedora por correo.
+    """Siembra las reglas, cada una amarrada a su vendedora por correo.
 
-    El correo lo dio la administradora el 03/10 y es único, así que identifica a
-    la dueña sin adivinar. Una regla cuya dueña todavía no existe en `usuarios`
-    entra **inactiva**: una regla sin dueña se volvería la regla general de todo
-    el mundo y le pagaría a cualquiera el escalón del 10 % de Angie.
+    El correo lo dio la administradora y es único, así que identifica a la dueña
+    sin adivinar. Hay dos casos distintos que no se pueden confundir:
+
+    - **Regla de una persona** cuya usuaria todavía no existe: entra inactiva.
+      Si quedara activa y sin dueña se volvería la regla general de todo el
+      mundo, y le pagaría a cualquiera el escalón del 10 % de Angie.
+    - **Regla general** (`correo = None`): no tiene dueña a propósito. Es la del
+      4 % para «los demás», y tiene que quedar activa.
     """
     n = 0
     for nombre, correo, base, porcentaje, meta, definicion in COMISIONES:
-        cur.execute('select id from usuarios where lower(email) = %s', (correo,))
-        fila = cur.fetchone()
-        duena = fila[0] if fila else None
-        if duena is None:
-            definicion = dict(definicion, inactiva_porque=(
-                f'Todavía no hay usuaria con el correo {correo}. Créela, asígnele esta '
-                f'regla y actívela: mientras tanto no comisiona nadie con ella.'))
+        duena, activo = None, True
+        if correo is not None:
+            cur.execute('select id from usuarios where lower(email) = %s', (correo,))
+            fila = cur.fetchone()
+            duena = fila[0] if fila else None
+            activo = duena is not None
+            if duena is None:
+                definicion = dict(definicion, inactiva_porque=(
+                    f'Todavía no hay usuaria con el correo {correo}. Créela, asígnele '
+                    f'esta regla y actívela: mientras tanto no comisiona nadie con ella.'))
         cur.execute("""insert into comisiones_reglas
                            (nombre, vendedor_id, base, porcentaje, meta_cantidad,
                             vigente_desde, definicion, activo)
                        values (%s, %s, %s, %s, %s, date '2026-01-01', %s::jsonb, %s)
                        on conflict do nothing""",
-                    (nombre, duena, base, porcentaje, meta, json.dumps(definicion),
-                     duena is not None))
+                    (nombre, duena, base, porcentaje, meta, json.dumps(definicion), activo))
         n += cur.rowcount
     return n
 

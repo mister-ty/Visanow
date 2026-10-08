@@ -116,6 +116,28 @@ def correr(db: Session) -> list[Comprobacion]:
     anotar('Ningún cliente quedó cargado dos veces', clientes_dobles == 0,
            f'{clientes_dobles} nombres repetidos entre los clientes migrados')
 
+    # El mismo pago llegando desde dos hojas distintas. Las de dinero se solapan:
+    # PAGOS RECIBIDOS se incluyó porque «en su mayoría» no está en PAGOS, y ese
+    # «en su mayoría» es justo lo que hay que medir. No lo detectan las dos
+    # comprobaciones de arriba: no es la misma fila de Excel ni el mismo cliente
+    # cargado dos veces, es el mismo cliente con la misma plata en dos libros.
+    cruzados = _uno(db, """select count(*) from (
+                               select p.fecha, p.monto_bruto, n.cliente_id
+                                 from pagos p join negocios n on n.id = p.negocio_id
+                                where p.origen_hoja is not null and p.estado = 'confirmado'
+                                group by 1, 2, 3
+                               having count(distinct p.origen_hoja) > 1) x""")
+    plata_cruzada = _uno(db, """select coalesce(sum(exceso), 0) from (
+                                    select sum(p.monto_bruto) - min(p.monto_bruto) as exceso
+                                      from pagos p join negocios n on n.id = p.negocio_id
+                                     where p.origen_hoja is not null and p.estado = 'confirmado'
+                                     group by p.fecha, p.monto_bruto, n.cliente_id
+                                    having count(distinct p.origen_hoja) > 1) x""")
+    anotar('Ningún pago llegó desde dos hojas distintas', cruzados == 0,
+           f'{cruzados} pagos del mismo cliente, misma fecha y mismo monto aparecen en más de '
+           f'una hoja de dinero, y suman {float(plata_cruzada or 0):,.0f} contados de más. '
+           f'Hay que decidir cuál libro manda antes de reportar ingresos.')
+
     # --- lo que quedó pendiente de asignar: es información, no un error
     sin_resp = _uno(db, "select count(*) from casos where origen_archivo is not null "
                         "and responsable_id is null")
