@@ -22,8 +22,11 @@ from sqlalchemy.orm import Session
 
 from app.core.errores import Invalido, Prohibido
 from app.models.esquema import Usuarios
+from app.services.usuarios import permisos_de_rol
 
 TABLEROS = ('comercial', 'operativo', 'financiero', 'ejecutivo')
+# Los que suman plata de la agencia: vendido, recaudado, cartera, vencido.
+CON_PLATA = ('financiero', 'ejecutivo')
 # Un día de Bogotá a partir de un instante guardado con zona
 _DIA = "(({col}) at time zone 'America/Bogota')::date"
 
@@ -300,6 +303,14 @@ def construir(db: Session, actor: Usuarios, tablero: str, f: Filtros) -> Tablero
         raise Invalido(f'Tablero desconocido. Opciones: {", ".join(TABLEROS)}.')
     if f.desde and f.hasta and f.desde > f.hasta:
         raise Invalido('La fecha inicial es posterior a la final.')
+    # El alcance no alcanza para decidir esto. Operaciones se crea con alcance
+    # «todos» —tiene que ver todos los trámites— y con eso entraba al tablero
+    # financiero, que es exactamente la contabilidad que la administradora dijo
+    # que ese rol no ve (respuesta del 29/09). Ver plata es un permiso, no un
+    # alcance, y el permiso es `pagos.ver`.
+    if tablero in CON_PLATA and 'pagos.ver' not in permisos_de_rol(db, actor.rol_id):
+        raise Prohibido('Este tablero suma la plata de la agencia y su rol no ve montos.',
+                        codigo='sin_permiso')
     return _CONSTRUCTORES[tablero](db, _restringir(actor, f, tablero))
 
 

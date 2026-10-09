@@ -55,3 +55,38 @@ def test_quien_solo_ve_lo_suyo_no_abre_los_tableros_de_toda_la_agencia(
     assert cliente.get('/api/v1/tableros/financiero', headers=cab).status_code == 403
     assert cliente.get('/api/v1/tableros/ejecutivo', headers=cab).status_code == 403
     assert cliente.get('/api/v1/tableros/operativo', headers=cab).status_code == 200
+
+
+# --------------------------------------------- la contabilidad y quien no la ve
+
+def test_operaciones_no_ve_los_tableros_de_plata(cliente, usuario):
+    """Respuesta de la administradora del 29/09: a operaciones no hay que
+    ocultarle nada «salvo lo de la contabilidad».
+
+    Esto se colaba por una razon sutil: el tablero se restringia por el ALCANCE
+    del usuario, y operaciones se crea con alcance «todos» porque tiene que ver
+    todos los tramites. Con eso entraba al financiero y veia vendido, recaudado,
+    cartera y vencido. Ver plata es un permiso, no un alcance.
+    """
+    cab = entrar(cliente, usuario('operaciones'))
+
+    for tablero in ('financiero', 'ejecutivo'):
+        r = cliente.get(f'/api/v1/tableros/{tablero}', headers=cab)
+        assert r.status_code == 403, f'{tablero}: {r.status_code} {r.text[:200]}'
+        assert r.json()['codigo'] == 'sin_permiso'
+
+    # Los suyos si los ve: no se le cierra lo que si es su trabajo.
+    for tablero in ('comercial', 'operativo'):
+        r = cliente.get(f'/api/v1/tableros/{tablero}', headers=cab)
+        assert r.status_code == 200, f'{tablero}: {r.status_code} {r.text[:200]}'
+
+
+def test_finanzas_si_ve_los_tableros_de_plata(cliente, usuario):
+    """El candado no puede dejar por fuera a quien si lleva la contabilidad."""
+    cab = entrar(cliente, usuario('finanzas'))
+    for tablero in ('financiero', 'ejecutivo'):
+        r = cliente.get(f'/api/v1/tableros/{tablero}', headers=cab)
+        assert r.status_code == 200, f'{tablero}: {r.status_code} {r.text[:200]}'
+    claves = {i['clave'] for i in cliente.get('/api/v1/tableros/financiero',
+                                              headers=cab).json()['indicadores']}
+    assert {'vendido', 'recaudado', 'cartera'} <= claves, claves
