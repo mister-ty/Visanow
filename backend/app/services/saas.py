@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from app.core import seguridad as seg
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.migracion import homologacion as hom
+from app.core import homologacion as hom
 from app.models.esquema import (Casos, ConflictosSincronizacion, EstadosOperativos,
                                 Importaciones, ImportacionesFilas, Sincronizaciones,
                                 Solicitantes, Usuarios)

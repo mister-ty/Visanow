@@ -2,7 +2,14 @@
 
 Entrada a produccion: 16/10/2026. Arquitectura: **frontend en Vercel**, **API + PostgreSQL + Caddy (HTTPS) en un servidor con Docker**.
 
-> Este documento y los archivos `Dockerfile`, `docker-compose.prod.yml` y `.env.prod.example` **no se han probado construyendo la imagen ni arrancando contra una base real** (el entorno donde se escribieron no tiene Docker ni PostgreSQL). Haga el ensayo del paso 7 en un servidor de prueba antes del dia de salida.
+> **Ensayado el 08/10/2026** en el portatil de desarrollo: imagen construida, contenedores arriba contra una base vacia, las 14 migraciones desde cero, seed, primer usuario y el ingreso completo (contrasena temporal, cambio, doble factor y rutas de negocio). Lo unico que NO se ha probado es Caddy con un dominio real, porque aqui no hay IP publica.
+>
+> El ensayo encontro dos cosas que impedian arrancar en produccion y ya estan corregidas:
+>
+> 1. `app/services/saas.py` importaba el diccionario de homologacion desde `app/migracion`, que queda fuera de la imagen a proposito. La API no levantaba: `ModuleNotFoundError: No module named 'app.migracion'`. El diccionario se movio a `app/core/homologacion.py`, que es donde corresponde: es conocimiento del catalogo, no maquinaria de migracion.
+> 2. `app/seed.py` exigia un archivo `.env` que en produccion no existe —la configuracion viene por variables de entorno—, asi que el paso 6 fallaba y la base quedaba migrada y vacia, sin roles ni permisos, sin que nadie pudiera entrar.
+>
+> Tambien faltaba `.env.prod.example`, que el paso 4 manda copiar. Ya esta.
 
 ## Donde alojar la API (precios aproximados, verificar vigentes)
 

@@ -23,7 +23,7 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import Callable, Literal
 
-from app.migracion import homologacion as hom
+from app.core import homologacion as hom
 from app.migracion.lectura import Fila, leer_hoja
 from app.migracion.normalizacion import es_nombre_de_persona, limpiar_anotaciones, partir_personas
 

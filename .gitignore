@@ -13,6 +13,9 @@ datos_fuente/
 .env
 .env.*
 !.env.example
+# La plantilla de produccion SI va al repo: no lleva secretos, solo los
+# campos vacios, y el paso 4 de DESPLIEGUE.md manda copiarla.
+!.env.prod.example
 *.pem
 *.key
 

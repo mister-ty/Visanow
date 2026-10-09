@@ -23,9 +23,20 @@ RAIZ = pathlib.Path(__file__).resolve().parents[2]
 
 
 def cargar_env() -> None:
+    """La configuración: del entorno si ya está, y si no del archivo .env.
+
+    En producción no hay archivo. La imagen de Docker no lo lleva —lo bloquea el
+    .dockerignore, que para eso está— y las variables las pasa el compose. Exigir
+    el archivo dejaba el seed sin poder correr en el servidor, que es justo el
+    paso 6 de la guía de despliegue: la base quedaba migrada y vacía, sin roles
+    ni permisos ni catálogo, y nadie podía siquiera entrar.
+    """
+    if os.environ.get('DATABASE_URL'):
+        return
     env = RAIZ / '.env'
     if not env.exists():
-        sys.exit(f'Falta {env}. Cópialo de .env.example y llénalo.')
+        sys.exit(f'Falta {env} y tampoco hay DATABASE_URL en el entorno. '
+                 f'En desarrollo, cópialo de .env.example y llénalo.')
     for linea in env.read_text(encoding='utf-8').splitlines():
         linea = linea.split('#')[0].strip()
         if '=' in linea:

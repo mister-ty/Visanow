@@ -1,5 +1,11 @@
 """Las tablas de traducción de la actividad 0.5.
 
+Viven en `app/core` y no en `app/migracion` porque no son maquinaria de
+migración: son conocimiento del catálogo, y la sincronización del SaaS (RF-031)
+también traduce etapas con ellas. `app/migracion` queda fuera de la imagen de
+producción —lee Excel con datos personales—, así que dejar el diccionario ahí
+impedía que la API arrancara en el servidor.
+
 Vienen de `05_Migracion/Diccionario_Homologacion.md`, que se generó midiendo los
 valores reales de los tres libros: 140 escrituras distintas para lo que en el
 sistema nuevo son unas pocas decenas de códigos.
@@ -15,7 +21,18 @@ entrar con un valor inventado.
 """
 from __future__ import annotations
 
-from app.migracion.normalizacion import sin_tildes
+import unicodedata
+
+
+def sin_tildes(texto: str) -> str:
+    """La misma normalización que la columna generada `nombre_busqueda`.
+
+    Está repetida a propósito y no importada de `app.migracion`: ese paquete lee
+    los Excel con datos personales y queda fuera de la imagen de producción. Si
+    el diccionario dependiera de él, la API no arrancaría en el servidor.
+    """
+    descompuesto = unicodedata.normalize('NFD', texto)
+    return ''.join(c for c in descompuesto if unicodedata.category(c) != 'Mn')
 
 
 def _clave(bruto: str) -> str:

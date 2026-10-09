@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.migracion import homologacion as hom
+from app.core import homologacion as hom
 from app.migracion import lectura
 from app.migracion.identidad import Resolvedor
 from app.migracion.normalizacion import (es_nombre_de_persona, limpiar_anotaciones,
