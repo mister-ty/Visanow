@@ -20,6 +20,7 @@ import { Casos } from './paginas/Casos'
 import { ClienteFicha } from './paginas/ClienteFicha'
 import { Embudo } from './paginas/Embudo'
 import { Clientes } from './paginas/Clientes'
+import { Conciliacion } from './paginas/Conciliacion'
 import { Configuracion } from './paginas/Configuracion'
 import { DobleFactor } from './paginas/DobleFactor'
 import { Inicio } from './paginas/Inicio'
@@ -75,6 +76,7 @@ const enruta = createBrowserRouter([
               { path: '/clientes', element: <Clientes /> },
               { path: '/clientes/:id', element: <ClienteFicha /> },
               { path: '/pagos', element: <Pagos /> },
+              { path: '/conciliacion', element: <Conciliacion /> },
               { path: '/tableros', element: <Tableros /> },
               { path: '/mensajes', element: <Plantillas /> },
               { path: '/usuarios', element: <Usuarios /> },

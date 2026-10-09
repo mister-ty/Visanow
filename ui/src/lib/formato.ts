@@ -1,7 +1,7 @@
-// Fechas en la zona horaria del navegador (RN-10: se guardan con zona y se
-// muestran en la del usuario). Dinero en pesos colombianos sin decimales.
+// Fechas siempre en hora de Bogotá (RN-10: se guardan con zona y el negocio
+// opera en America/Bogota), sin importar la zona del equipo de quien mira. Dinero en pesos colombianos sin decimales.
 
-const fechaHora = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' })
+const fechaHora = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Bogota' })
 const pesos = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
 
 export const formatearFechaHora = (iso: string | null | undefined): string =>
