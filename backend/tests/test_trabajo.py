@@ -155,8 +155,9 @@ def test_la_matriz_es_configurable_y_dice_cuales_tienen_regla(cliente, admin, db
     por_codigo = {t['codigo']: t for t in tipos}
     assert por_codigo['cita_cas']['anticipacion_valor'] == 7
     assert por_codigo['cita_cas']['tiene_regla'] is True
-    # El que todavia no tiene regla se dice, en vez de fingir que se evaluo.
-    assert por_codigo['sync_saas_fallida']['tiene_regla'] is False
+    # Los trece tienen regla desde que entro la sincronizacion del SaaS (5.3).
+    assert all(t['tiene_regla'] for t in tipos), [t['codigo'] for t in tipos
+                                                  if not t['tiene_regla']]
     # Un valor negativo avisa despues del hecho: el saldo ya se vencio.
     assert por_codigo['saldo_vencido']['anticipacion_valor'] < 0
 

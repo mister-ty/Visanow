@@ -55,8 +55,10 @@ def _ahora() -> dt.datetime:
 class Regla:
     """Una consulta que encuentra a quién hay que avisarle, y de qué."""
     sql: str
-    vinculo: str          # la columna de `alertas` donde va la entidad
     mensaje: str          # plantilla con los campos que devuelve la consulta
+    # La columna de `alertas` donde va la entidad. Puede no haber: que la fuente
+    # del SaaS lleve una semana sin sincronizar no cuelga de ningún trámite.
+    vinculo: str | None = None
 
 
 # El intervalo se arma en SQL desde el tipo: valor positivo mira hacia adelante,
@@ -199,6 +201,20 @@ REGLAS: dict[str, Regla] = {
                   and ca.resultado_fecha is not null and ca.resultado_fecha <= :corte""",
         vinculo='caso_id',
         mensaje='{quien}: visa aprobada, falta entregar el pasaporte.'),
+
+    # Sin vinculo: es la fuente entera, no un tramite. `entidad_id` es la ultima
+    # sincronizacion, que es lo que hace que la clave de deduplicacion cambie
+    # cuando vuelve a fallar y no cuando sigue fallando lo mismo.
+    'sync_saas_fallida': Regla(
+        sql="""select s.id as entidad_id, null::bigint as destinatario,
+                      s.ocurrido_en as cuando, s.intentos as intentos,
+                      coalesce(s.detalle, 'sin detalle') as detalle
+                 from sincronizaciones s
+                where s.origen = 'saas'
+                  and s.id = (select max(id) from sincronizaciones where origen = 'saas')
+                  and (s.resultado = 'error' or s.ocurrido_en <= :corte)""",
+        mensaje='La importación del SaaS no se ha hecho con éxito: {detalle} '
+                '({intentos} intento[s]).'),
 }
 
 
@@ -273,7 +289,7 @@ def generar(db: Session, actor: Usuarios, *, codigos: list[str] | None = None,
                 mensaje=regla.mensaje.format(**{k: (v if v is not None else '')
                                                 for k, v in f.items()}),
                 vence_en=f['cuando'] if isinstance(f.get('cuando'), dt.datetime) else None,
-                **{regla.vinculo: f['entidad_id']}))
+                **({regla.vinculo: f['entidad_id']} if regla.vinculo else {})))
             nuevas += 1
         if nuevas:
             por_tipo[tipo.codigo] = nuevas

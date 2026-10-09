@@ -1445,6 +1445,208 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/saas/previsualizar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Previsualizar
+         * @description Clasifica el export sin tocar un solo trámite (RF-033).
+         *
+         *     Devuelve cada solicitud con su veredicto: nueva, actualizada, sin cambio,
+         *     en conflicto o rechazada. Nada cambia hasta que alguien aplique. Importar a
+         *     ciegas sobre datos de clientes reales no se puede deshacer.
+         */
+        post: operations["previsualizar_api_v1_saas_previsualizar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/importaciones/{importacion_id}/aplicar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Aplicar
+         * @description Ejecuta una previsualización ya vista (RF-032).
+         *
+         *     Idempotente por el número de solicitud: volver a aplicar el mismo archivo no
+         *     crea nada. Las filas «nuevo» no crean el trámite solas, porque el export no
+         *     dice de forma confiable de qué persona es: se vinculan a mano.
+         */
+        post: operations["aplicar_api_v1_saas_importaciones__importacion_id__aplicar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/importaciones/{importacion_id}/descartar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Descartar */
+        post: operations["descartar_api_v1_saas_importaciones__importacion_id__descartar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/importaciones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar */
+        get: operations["listar_api_v1_saas_importaciones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/importaciones/{importacion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ver */
+        get: operations["ver_api_v1_saas_importaciones__importacion_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/vincular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Vincular
+         * @description Le pone a un trámite existente su número de solicitud (RF-036).
+         *
+         *     Es el camino de las filas «nuevo»: una persona reconoce de quién es y lo
+         *     amarra. De ahí en adelante las importaciones lo actualizan solas.
+         */
+        post: operations["vincular_api_v1_saas_vincular_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/candidatos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Candidatos
+         * @description Trámites que podrían ser esa solicitud. Sugiere; no decide.
+         */
+        get: operations["candidatos_api_v1_saas_candidatos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/estado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Estado
+         * @description Cuándo fue la última vez que esto funcionó (RF-035).
+         */
+        get: operations["estado_api_v1_saas_estado_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/conflictos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Conflictos
+         * @description Lo que el sistema no decide solo: dos valores distintos para un campo.
+         */
+        get: operations["conflictos_api_v1_saas_conflictos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saas/conflictos/{conflicto_id}/resolver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolver
+         * @description Quién gana: lo de VisaNow, lo del SaaS, o se ignora.
+         */
+        post: operations["resolver_api_v1_saas_conflictos__conflicto_id__resolver_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tableros/{tablero}": {
         parameters: {
             query?: never;
@@ -1942,6 +2144,22 @@ export interface components {
             /** Motivo */
             motivo: string;
         };
+        /** AplicarSalida */
+        AplicarSalida: {
+            /** Importacion Id */
+            importacion_id: number;
+            /** Actualizados */
+            actualizados: number;
+            /** Conflictos */
+            conflictos: number;
+            /**
+             * Por Vincular
+             * @description Solicitudes que no tienen trámite: se vinculan a mano (RF-036)
+             */
+            por_vincular: number;
+            /** Saltados */
+            saltados: number;
+        };
         /** AsignarPago */
         AsignarPago: {
             /** Negocio Id */
@@ -1995,29 +2213,6 @@ export interface components {
             actual: string;
             /** Nueva */
             nueva: string;
-        };
-        /** CandidatoSalida */
-        CandidatoSalida: {
-            /** Pago Id */
-            pago_id: number;
-            /** Negocio Id */
-            negocio_id: number | null;
-            /** Cliente */
-            cliente: string | null;
-            /**
-             * Fecha
-             * Format: date
-             */
-            fecha: string;
-            /** Monto */
-            monto: number;
-            /** Dias De Diferencia */
-            dias_de_diferencia: number;
-            /**
-             * Exacto
-             * @description Mismo día que el movimiento del banco
-             */
-            exacto: boolean;
         };
         /** CasoCrear */
         CasoCrear: {
@@ -2525,6 +2720,26 @@ export interface components {
             /** Negocio Id */
             negocio_id?: number | null;
         };
+        /** ConflictoSalida */
+        ConflictoSalida: {
+            /** Id */
+            id: number;
+            /** Caso Id */
+            caso_id: number | null;
+            /** Campo */
+            campo: string;
+            /** Valor Visanow */
+            valor_visanow: string | null;
+            /** Valor Saas */
+            valor_saas: string | null;
+            /** Estado */
+            estado: string;
+            /**
+             * Detectado En
+             * Format: date-time
+             */
+            detectado_en: string;
+        };
         /** ContactoOportunidad */
         ContactoOportunidad: {
             /** Proxima Accion */
@@ -2734,6 +2949,26 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * EstadoSincronizacion
+         * @description RF-035: de acá lee la alerta de fuente desactualizada.
+         */
+        EstadoSincronizacion: {
+            /** Origen */
+            origen: string;
+            /** Ultima */
+            ultima: string | null;
+            /** Resultado */
+            resultado: ("ok" | "error") | null;
+            /** Detalle */
+            detalle: string | null;
+            /** Intentos */
+            intentos: number;
+            /** Ultima Exitosa */
+            ultima_exitosa: string | null;
+            /** Horas Desde La Ultima Exitosa */
+            horas_desde_la_ultima_exitosa: number | null;
+        };
         /** EventoSalida */
         EventoSalida: {
             /** Clave */
@@ -2802,6 +3037,55 @@ export interface components {
             dias_vencido: number;
             /** Moneda */
             moneda: string;
+        };
+        /**
+         * FilaEntrada
+         * @description Una solicitud del export. Los nombres son los de las columnas, ya leídas.
+         */
+        FilaEntrada: {
+            /**
+             * Numero Solicitud
+             * @description La llave: sin ella la fila se rechaza
+             */
+            numero_solicitud?: string | null;
+            /** Solicitante */
+            solicitante?: string | null;
+            /** Pasaporte */
+            pasaporte?: string | null;
+            /** Etapa */
+            etapa?: string | null;
+            /** Fecha Creacion */
+            fecha_creacion?: string | null;
+            /** Ds160 Enviado En */
+            ds160_enviado_en?: string | null;
+            /** Ds160 Numero */
+            ds160_numero?: string | null;
+            /**
+             * Busqueda Citas
+             * @description «active» / «inactive» del export
+             */
+            busqueda_citas?: unknown;
+            /**
+             * Fila
+             * @description Fila del archivo, para el reporte
+             */
+            fila?: number | null;
+        };
+        /** FilaSalida */
+        FilaSalida: {
+            /** Fila Numero */
+            fila_numero: number;
+            /** Id Externo */
+            id_externo: string | null;
+            /**
+             * Resultado
+             * @enum {string}
+             */
+            resultado: "nuevo" | "actualizado" | "sin_cambio" | "conflicto" | "rechazado";
+            /** Caso Id */
+            caso_id: number | null;
+            /** Detalle */
+            detalle: string | null;
         };
         /** FusionEntrada */
         FusionEntrada: {
@@ -3006,6 +3290,44 @@ export interface components {
              * Format: date-time
              */
             ocurrido_en: string;
+        };
+        /** ImportacionSalida */
+        ImportacionSalida: {
+            /** Id */
+            id: number;
+            /** Origen */
+            origen: string;
+            /** Archivo Nombre */
+            archivo_nombre: string | null;
+            /** Filas Totales */
+            filas_totales: number;
+            /** Nuevos */
+            nuevos: number;
+            /** Actualizados */
+            actualizados: number;
+            /** Sin Cambios */
+            sin_cambios: number;
+            /** Conflictos */
+            conflictos: number;
+            /** Rechazados */
+            rechazados: number;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "previsualizada" | "aplicada" | "descartada" | "fallida";
+            /**
+             * Iniciada En
+             * Format: date-time
+             */
+            iniciada_en: string;
+            /** Aplicada En */
+            aplicada_en: string | null;
+            /**
+             * Filas
+             * @default []
+             */
+            filas: components["schemas"]["FilaSalida"][];
         };
         /** ImportarEntrada */
         ImportarEntrada: {
@@ -3704,6 +4026,13 @@ export interface components {
             /** Saldo */
             saldo: number;
         };
+        /** PrevisualizarEntrada */
+        PrevisualizarEntrada: {
+            /** Filas */
+            filas: components["schemas"]["FilaEntrada"][];
+            /** Archivo */
+            archivo?: string | null;
+        };
         /** RecuperarEntrada */
         RecuperarEntrada: {
             /**
@@ -3737,6 +4066,14 @@ export interface components {
             telefono: string | null;
             /** Correo */
             correo: string | null;
+        };
+        /** ResolverEntrada */
+        ResolverEntrada: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "resuelto_visanow" | "resuelto_saas" | "ignorado";
         };
         /** RestablecerEntrada */
         RestablecerEntrada: {
@@ -3987,7 +4324,7 @@ export interface components {
         SugerenciasSalida: {
             movimiento: components["schemas"]["MovimientoSalida"];
             /** Candidatos */
-            candidatos: components["schemas"]["CandidatoSalida"][];
+            candidatos: components["schemas"]["app__schemas__conciliacion__CandidatoSalida"][];
             /**
              * Sin Duda
              * @description Un solo candidato y del mismo día: se puede cuadrar sin preguntar
@@ -4316,6 +4653,13 @@ export interface components {
             /** Excluir Id */
             excluir_id?: number | null;
         };
+        /** VincularEntrada */
+        VincularEntrada: {
+            /** Caso Id */
+            caso_id: number;
+            /** Numero Solicitud */
+            numero_solicitud: string;
+        };
         /** YoSalida */
         YoSalida: {
             /** Id */
@@ -4341,6 +4685,38 @@ export interface components {
             mfa_requerido: boolean;
             /** Ultimo Acceso */
             ultimo_acceso: string | null;
+        };
+        /** CandidatoSalida */
+        app__schemas__conciliacion__CandidatoSalida: {
+            /** Pago Id */
+            pago_id: number;
+            /** Negocio Id */
+            negocio_id: number | null;
+            /** Cliente */
+            cliente: string | null;
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /** Monto */
+            monto: number;
+            /** Dias De Diferencia */
+            dias_de_diferencia: number;
+            /**
+             * Exacto
+             * @description Mismo día que el movimiento del banco
+             */
+            exacto: boolean;
+        };
+        /** CandidatoSalida */
+        app__schemas__saas__CandidatoSalida: {
+            /** Caso Id */
+            caso_id: number;
+            /** Solicitante */
+            solicitante: string;
+            /** Fuente */
+            fuente: string;
         };
     };
     responses: never;
@@ -6995,6 +7371,306 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenderSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    previsualizar_api_v1_saas_previsualizar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrevisualizarEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    aplicar_api_v1_saas_importaciones__importacion_id__aplicar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importacion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AplicarSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    descartar_api_v1_saas_importaciones__importacion_id__descartar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                importacion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_api_v1_saas_importaciones_get: {
+        parameters: {
+            query?: {
+                limite?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportacionSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ver_api_v1_saas_importaciones__importacion_id__get: {
+        parameters: {
+            query?: {
+                resultado?: ("nuevo" | "actualizado" | "sin_cambio" | "conflicto" | "rechazado") | null;
+            };
+            header?: never;
+            path: {
+                importacion_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vincular_api_v1_saas_vincular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VincularEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__schemas__saas__CandidatoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidatos_api_v1_saas_candidatos_get: {
+        parameters: {
+            query: {
+                numero_solicitud: string;
+                nombre?: string | null;
+                limite?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__schemas__saas__CandidatoSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    estado_api_v1_saas_estado_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstadoSincronizacion"];
+                };
+            };
+        };
+    };
+    conflictos_api_v1_saas_conflictos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictoSalida"][];
+                };
+            };
+        };
+    };
+    resolver_api_v1_saas_conflictos__conflicto_id__resolver_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conflicto_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolverEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictoSalida"];
                 };
             };
             /** @description Validation Error */
