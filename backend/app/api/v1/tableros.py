@@ -1,14 +1,15 @@
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.deps import requiere
+from app.core.deps import ip_cliente, requiere
 from app.db.session import get_db
 from app.models.esquema import Usuarios
+from app.services import exportacion
 from app.services import tableros as servicio
 
 router = APIRouter(prefix='/tableros', tags=['tableros'])
@@ -70,15 +71,21 @@ def ver(tablero: NombreTablero,
 
 
 @router.get('/{tablero}/exportar')
-def exportar(tablero: NombreTablero, formato: Literal['xlsx', 'csv'] = 'xlsx',
+def exportar(request: Request, tablero: NombreTablero, formato: Literal['xlsx', 'csv'] = 'xlsx',
              desde: date | None = None, hasta: date | None = None,
              vendedor_id: int | None = None, servicio_id: int | None = None,
              estado: str | None = None,
              actor: Usuarios = Depends(requiere('tableros.exportar')),
              db: Session = Depends(get_db)):
     """Exporta con los mismos filtros de la pantalla (RF-075): lo que se ve es lo que se baja."""
-    t = servicio.construir(db, actor, tablero, _filtros(desde, hasta, vendedor_id,
-                                                        servicio_id, estado))
+    filtros = _filtros(desde, hasta, vendedor_id, servicio_id, estado)
+    t = servicio.construir(db, actor, tablero, filtros)
+    # Un tablero financiero exportado es contabilidad fuera del sistema: queda
+    # constancia de quién se lo llevó, igual que con las listas (RNF-07).
+    exportacion.registrar(db, actor, f'tablero-{tablero}', formato,
+                          vars(filtros),   # ya con el filtro que el alcance le impuso
+                          sum(len(x.filas) for x in t.tablas), ip_cliente(request))
+    db.commit()
     if formato == 'csv':
         cuerpo, tipo = servicio.a_csv(t), 'text/csv; charset=utf-8'
     else:

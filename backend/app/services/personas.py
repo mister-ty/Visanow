@@ -69,7 +69,7 @@ def listar(db: Session, *, texto_busqueda: str | None = None, incluir_archivados
 
     total = db.scalar(select(func.count()).select_from(consulta.subquery()))
     pagina, tamano = max(1, pagina), min(max(1, tamano), 100)
-    filas = db.scalars(consulta.order_by(Clientes.nombre)
+    filas = db.scalars(consulta.order_by(Clientes.nombre, Clientes.id)
                        .offset((pagina - 1) * tamano).limit(tamano)).all()
     return total, list(filas)
 
