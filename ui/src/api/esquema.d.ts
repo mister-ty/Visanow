@@ -1485,6 +1485,179 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tareas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar Tareas
+         * @description Lo urgente arriba: primero por prioridad y después por vencimiento.
+         */
+        get: operations["listar_tareas_api_v1_tareas_get"];
+        put?: never;
+        /**
+         * Crear Tarea
+         * @description Una tarea con responsable, vencimiento y prioridad (RF-060).
+         *
+         *     Siempre cuelga de un cliente, una venta, una oportunidad o un trámite: una
+         *     tarea suelta no se puede retomar tres semanas después.
+         */
+        post: operations["crear_tarea_api_v1_tareas_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tareas/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resumen Tareas
+         * @description Cuántas tiene encima quien pregunta.
+         */
+        get: operations["resumen_tareas_api_v1_tareas_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tareas/{tarea_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Cambiar Tarea
+         * @description Mueve estado, responsable, prioridad o vencimiento.
+         *
+         *     Cerrarla deja la fecha de cierre: lo que se hizo y lo que se decidió no
+         *     hacer son las dos mitades de la misma historia.
+         */
+        patch: operations["cambiar_tarea_api_v1_tareas__tarea_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/alertas/generar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generar
+         * @description Recorre la matriz configurada y crea lo que falte (RF-061, RF-062).
+         *
+         *     Se puede correr cada hora: la clave de deduplicación impide que la misma
+         *     alerta aparezca sesenta veces, y una ya resuelta no vuelve a nacer.
+         */
+        post: operations["generar_api_v1_alertas_generar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alertas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bandeja
+         * @description La bandeja, lo grave primero. Una pospuesta vuelve al cumplirse su plazo.
+         */
+        get: operations["bandeja_api_v1_alertas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alertas/resumen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resumen Alertas */
+        get: operations["resumen_alertas_api_v1_alertas_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alertas/tipos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tipos
+         * @description La matriz configurable (RF-062), con cuáles ya tienen regla.
+         */
+        get: operations["tipos_api_v1_alertas_tipos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/alertas/{alerta_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Cambiar Alerta
+         * @description Vista, resuelta o pospuesta (RF-061).
+         *
+         *     Posponer exige hasta cuándo: una alerta pospuesta «para después» no vuelve
+         *     nunca, y lo que no vuelve es lo mismo que no existió.
+         */
+        patch: operations["cambiar_alerta_api_v1_alertas__alerta_id__patch"];
+        trace?: never;
+    };
     "/api/v1/usuarios": {
         parameters: {
             query?: never;
@@ -1719,6 +1892,51 @@ export interface components {
             /** Autorizado Por */
             autorizado_por: number;
         };
+        /** AlertaSalida */
+        AlertaSalida: {
+            /** Id */
+            id: number;
+            /**
+             * Tipo
+             * @description Código del tipo configurado en la matriz
+             */
+            tipo: string;
+            /** Tipo Nombre */
+            tipo_nombre: string;
+            /**
+             * Severidad
+             * @enum {string}
+             */
+            severidad: "baja" | "media" | "alta";
+            /** Mensaje */
+            mensaje: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "nueva" | "vista" | "resuelta" | "pospuesta";
+            /** Caso Id */
+            caso_id: number | null;
+            /** Negocio Id */
+            negocio_id: number | null;
+            /** Oportunidad Id */
+            oportunidad_id: number | null;
+            /** Cita Id */
+            cita_id: number | null;
+            /** Destinatario Id */
+            destinatario_id: number | null;
+            /** Vence En */
+            vence_en: string | null;
+            /** Pospuesta Hasta */
+            pospuesta_hasta: string | null;
+            /**
+             * Generada En
+             * Format: date-time
+             */
+            generada_en: string;
+            /** Resuelta En */
+            resuelta_en: string | null;
+        };
         /** AnularEntrada */
         AnularEntrada: {
             /** Motivo */
@@ -1728,6 +1946,19 @@ export interface components {
         AsignarPago: {
             /** Negocio Id */
             negocio_id: number;
+        };
+        /** CambiarAlerta */
+        CambiarAlerta: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "nueva" | "vista" | "resuelta" | "pospuesta";
+            /**
+             * Hasta
+             * @description Obligatorio al posponer: una alerta pospuesta sin fecha no vuelve nunca
+             */
+            hasta?: string | null;
         };
         /** CambiarEstadoPago */
         CambiarEstadoPago: {
@@ -2689,6 +2920,28 @@ export interface components {
              */
             creado_en: string;
         };
+        /** GenerarEntrada */
+        GenerarEntrada: {
+            /**
+             * Codigos
+             * @description Solo estos tipos. Si no se dice, todos los activos
+             */
+            codigos?: string[] | null;
+        };
+        /** GenerarSalida */
+        GenerarSalida: {
+            /** Creadas */
+            creadas: number;
+            /** Por Tipo */
+            por_tipo: {
+                [key: string]: number;
+            };
+            /**
+             * Tipos Sin Regla
+             * @description Configurados pero todavía sin regla que los evalúe
+             */
+            tipos_sin_regla: string[];
+        };
         /** GrupoCrear */
         GrupoCrear: {
             /** Nombre */
@@ -3141,6 +3394,17 @@ export interface components {
             /** Cerrado En */
             cerrado_en: string | null;
         };
+        /** PaginaAlertas */
+        PaginaAlertas: {
+            /** Total */
+            total: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["AlertaSalida"][];
+        };
         /** PaginaCartera */
         PaginaCartera: {
             /** Total */
@@ -3223,6 +3487,17 @@ export interface components {
             tamano: number;
             /** Items */
             items: components["schemas"]["PagoSalida"][];
+        };
+        /** PaginaTareas */
+        PaginaTareas: {
+            /** Total */
+            total: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["TareaSalida"][];
         };
         /** PagoCrear */
         PagoCrear: {
@@ -3500,6 +3775,17 @@ export interface components {
             /** Nota */
             nota?: string | null;
         };
+        /** ResumenAlertas */
+        ResumenAlertas: {
+            /** Alta */
+            alta: number;
+            /** Media */
+            media: number;
+            /** Baja */
+            baja: number;
+            /** Total */
+            total: number;
+        };
         /** ResumenCartera */
         ResumenCartera: {
             /** Vendido */
@@ -3545,6 +3831,17 @@ export interface components {
             duplicado: components["schemas"]["EstadoResumen"];
             reversado: components["schemas"]["EstadoResumen"];
             descartado: components["schemas"]["EstadoResumen"];
+        };
+        /** ResumenTareas */
+        ResumenTareas: {
+            /** Abiertas */
+            abiertas: number;
+            /** Vencidas */
+            vencidas: number;
+            /** Vencen Hoy */
+            vencen_hoy: number;
+            /** Alta Prioridad */
+            alta_prioridad: number;
         };
         /** ReversadoEntrada */
         ReversadoEntrada: {
@@ -3718,6 +4015,147 @@ export interface components {
             indicadores: components["schemas"]["IndicadorSalida"][];
             /** Tablas */
             tablas: components["schemas"]["TablaSalida"][];
+        };
+        /** TareaCambiar */
+        TareaCambiar: {
+            /** Titulo */
+            titulo?: string | null;
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Estado */
+            estado?: ("pendiente" | "en_curso" | "hecha" | "cancelada") | null;
+            /** Responsable Id */
+            responsable_id?: number | null;
+            /** Prioridad */
+            prioridad?: ("baja" | "media" | "alta") | null;
+            /** Vence En */
+            vence_en?: string | null;
+        };
+        /** TareaCrear */
+        TareaCrear: {
+            /** Titulo */
+            titulo: string;
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Caso Id */
+            caso_id?: number | null;
+            /** Negocio Id */
+            negocio_id?: number | null;
+            /** Oportunidad Id */
+            oportunidad_id?: number | null;
+            /**
+             * Cliente Id
+             * @description Al menos uno de los cuatro: una tarea suelta no se puede retomar
+             */
+            cliente_id?: number | null;
+            /**
+             * Responsable Id
+             * @description Si no se dice, quien la crea
+             */
+            responsable_id?: number | null;
+            /**
+             * Prioridad
+             * @default media
+             * @enum {string}
+             */
+            prioridad: "baja" | "media" | "alta";
+            /**
+             * Vence En
+             * @description En hora de Bogotá. Sin hora, vence al final del día
+             */
+            vence_en?: string | null;
+        };
+        /** TareaSalida */
+        TareaSalida: {
+            /** Id */
+            id: number;
+            /** Titulo */
+            titulo: string;
+            /** Descripcion */
+            descripcion: string | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "pendiente" | "en_curso" | "hecha" | "cancelada";
+            /**
+             * Prioridad
+             * @enum {string}
+             */
+            prioridad: "baja" | "media" | "alta";
+            /** Vence En */
+            vence_en: string | null;
+            /**
+             * Vencida
+             * @description Ya pasó su fecha y sigue abierta
+             */
+            vencida: boolean;
+            /** Caso Id */
+            caso_id: number | null;
+            /** Negocio Id */
+            negocio_id: number | null;
+            /** Oportunidad Id */
+            oportunidad_id: number | null;
+            /** Cliente Id */
+            cliente_id: number | null;
+            /** Cliente */
+            cliente?: string | null;
+            /** Responsable Id */
+            responsable_id: number;
+            /** Responsable */
+            responsable: string | null;
+            /**
+             * Origen
+             * @enum {string}
+             */
+            origen: "manual" | "automatica";
+            /** Cerrada En */
+            cerrada_en: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+        };
+        /**
+         * TipoAlertaSalida
+         * @description La matriz configurable (RF-062): cambiarla es editar una fila.
+         */
+        TipoAlertaSalida: {
+            /** Id */
+            id: number;
+            /** Codigo */
+            codigo: string;
+            /** Nombre */
+            nombre: string;
+            /** Entidad */
+            entidad: string;
+            /**
+             * Anticipacion Valor
+             * @description Positivo avisa antes del hecho; negativo, después
+             */
+            anticipacion_valor: number;
+            /**
+             * Anticipacion Unidad
+             * @enum {string}
+             */
+            anticipacion_unidad: "horas" | "dias" | "dias_habiles";
+            /** Repeticiones */
+            repeticiones: number[];
+            /**
+             * Severidad
+             * @enum {string}
+             */
+            severidad: "baja" | "media" | "alta";
+            /** Canal */
+            canal: string;
+            /** Activo */
+            activo: boolean;
+            /**
+             * Tiene Regla
+             * @description Si ya existe la consulta que lo evalúa
+             */
+            tiene_regla: boolean;
         };
         /** TokenSalida */
         TokenSalida: {
@@ -6635,6 +7073,277 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_tareas_api_v1_tareas_get: {
+        parameters: {
+            query?: {
+                responsable_id?: number | null;
+                estado?: ("pendiente" | "en_curso" | "hecha" | "cancelada") | null;
+                prioridad?: ("baja" | "media" | "alta") | null;
+                caso_id?: number | null;
+                negocio_id?: number | null;
+                cliente_id?: number | null;
+                solo_abiertas?: boolean;
+                vencidas?: boolean;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaTareas"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_tarea_api_v1_tareas_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TareaCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TareaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_tareas_api_v1_tareas_resumen_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumenTareas"];
+                };
+            };
+        };
+    };
+    cambiar_tarea_api_v1_tareas__tarea_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tarea_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TareaCambiar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TareaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generar_api_v1_alertas_generar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerarEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerarSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bandeja_api_v1_alertas_get: {
+        parameters: {
+            query?: {
+                estado?: ("nueva" | "vista" | "resuelta" | "pospuesta") | null;
+                severidad?: ("baja" | "media" | "alta") | null;
+                solo_abiertas?: boolean;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaAlertas"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resumen_alertas_api_v1_alertas_resumen_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumenAlertas"];
+                };
+            };
+        };
+    };
+    tipos_api_v1_alertas_tipos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TipoAlertaSalida"][];
+                };
+            };
+        };
+    };
+    cambiar_alerta_api_v1_alertas__alerta_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alerta_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CambiarAlerta"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertaSalida"];
                 };
             };
             /** @description Validation Error */

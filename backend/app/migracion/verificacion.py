@@ -133,10 +133,13 @@ def correr(db: Session) -> list[Comprobacion]:
                                      where p.origen_hoja is not null and p.estado = 'confirmado'
                                      group by p.fecha, p.monto_bruto, n.cliente_id
                                     having count(distinct p.origen_hoja) > 1) x""")
-    anotar('Ningún pago llegó desde dos hojas distintas', cruzados == 0,
-           f'{cruzados} pagos del mismo cliente, misma fecha y mismo monto aparecen en más de '
-           f'una hoja de dinero, y suman {float(plata_cruzada or 0):,.0f} contados de más. '
-           f'Hay que decidir cuál libro manda antes de reportar ingresos.')
+    anotar('Un pago anotado en dos libros entró una sola vez', cruzados == 0,
+           f'{cruzados} pagos aparecen en más de una hoja de dinero, por '
+           f'{float(plata_cruzada or 0):,.0f}. '
+           f'No son pagos duplicados: es el mismo pago anotado en el libro de ventas y en el '
+           f'diario de caja, que es como se lleva la contabilidad. Lo que está mal es de este '
+           f'lado: la migración volvió cada anotación una venta distinta. Hay que pegarlas a '
+           f'la venta que ya existe en vez de crear otra.')
 
     # --- lo que quedó pendiente de asignar: es información, no un error
     sin_resp = _uno(db, "select count(*) from casos where origen_archivo is not null "
