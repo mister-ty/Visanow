@@ -36,16 +36,6 @@ export const SECCIONES: Seccion[] = [
   },
   {
     ruta: '/pagos', titulo: 'Pagos y cartera', icono: IconCash, permiso: 'pagos.ver',
-    pendiente: {
-      actividad: '4.1 a 4.4', fecha: '07 y 08/10', desde: '07/10',
-      contenido: [
-        'Pagos ilimitados por venta, sin columnas Abono 1, 2, 3',
-        'Saldo calculado solo, nunca digitado',
-        'Anticipo del 20 % o del 80 %; el saldo vence a los 30 días',
-        'Cartera por vencer, vencida y días de mora',
-        'La tasa consular separada de lo vendido',
-      ],
-    },
   },
   {
     ruta: '/comisiones', titulo: 'Comisiones', icono: IconPercentage, permiso: 'comisiones.ver',
