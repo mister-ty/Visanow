@@ -22,6 +22,7 @@ import { Embudo } from './paginas/Embudo'
 import { Clientes } from './paginas/Clientes'
 import { Configuracion } from './paginas/Configuracion'
 import { DobleFactor } from './paginas/DobleFactor'
+import { ImportacionSaas } from './paginas/ImportacionSaas'
 import { Inicio } from './paginas/Inicio'
 import { Ingreso } from './paginas/Ingreso'
 import { Pagos } from './paginas/Pagos'
@@ -75,6 +76,7 @@ const enruta = createBrowserRouter([
               { path: '/clientes', element: <Clientes /> },
               { path: '/clientes/:id', element: <ClienteFicha /> },
               { path: '/pagos', element: <Pagos /> },
+              { path: '/importacion', element: <ImportacionSaas /> },
               { path: '/tableros', element: <Tableros /> },
               { path: '/mensajes', element: <Plantillas /> },
               { path: '/usuarios', element: <Usuarios /> },
