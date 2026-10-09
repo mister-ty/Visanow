@@ -56,15 +56,6 @@ export const SECCIONES: Seccion[] = [
   },
   {
     ruta: '/tableros', titulo: 'Tableros', icono: IconChartBar, permiso: 'tableros.ver',
-    pendiente: {
-      actividad: '5.6 y 5.7', fecha: '15/10', desde: '15/10',
-      contenido: [
-        'Comercial: leads, conversión por canal y por vendedor',
-        'Operativo: trámites por estado, antigüedad y riesgo',
-        'Financiero: vendido, recaudado y cartera, por separado',
-        'Exportación a Excel con los mismos filtros de la pantalla',
-      ],
-    },
   },
   { ruta: '/usuarios', titulo: 'Usuarios', icono: IconUsers, permiso: 'usuarios.ver' },
   { ruta: '/configuracion', titulo: 'Configuración', icono: IconSettings, permiso: 'catalogos.editar' },
