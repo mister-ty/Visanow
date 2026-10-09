@@ -14,6 +14,7 @@ import { EnConstruccion } from './componentes/EnConstruccion'
 import { Plantilla } from './componentes/Plantilla'
 import { RutaProtegida } from './componentes/RutaProtegida'
 import { SECCIONES } from './navegacion'
+import { Alertas } from './paginas/Alertas'
 import { CambiarContrasena } from './paginas/CambiarContrasena'
 import { CasoFicha } from './paginas/CasoFicha'
 import { Casos } from './paginas/Casos'
@@ -28,6 +29,7 @@ import { Pagos } from './paginas/Pagos'
 import { NoEncontrada } from './paginas/NoEncontrada'
 import { Plantillas } from './paginas/Plantillas'
 import { Tableros } from './paginas/Tableros'
+import { Tareas } from './paginas/Tareas'
 import { Recuperar, Restablecer } from './paginas/Recuperacion'
 import { Usuarios } from './paginas/Usuarios'
 
@@ -75,6 +77,8 @@ const enruta = createBrowserRouter([
               { path: '/clientes', element: <Clientes /> },
               { path: '/clientes/:id', element: <ClienteFicha /> },
               { path: '/pagos', element: <Pagos /> },
+              { path: '/tareas', element: <Tareas /> },
+              { path: '/alertas', element: <Alertas /> },
               { path: '/tableros', element: <Tableros /> },
               { path: '/mensajes', element: <Plantillas /> },
               { path: '/usuarios', element: <Usuarios /> },
