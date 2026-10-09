@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+ui
+**/__pycache__
+**/*.pyc
+.venv
+almacenamiento
+datos_fuente
+*.xlsx
+*.xls
+*.csv
+*.dump
+backend/tests
+backend/app/migracion
