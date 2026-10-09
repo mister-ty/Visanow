@@ -24,6 +24,9 @@ services:
       db: { condition: service_healthy }
     environment:
       APP_ENV: produccion
+      # El arranque usa uno por defecto porque el plan gratuito de Render
+      # tiene 512 MB. Un VPS con 2 GB aguanta dos sin problema.
+      WEB_CONCURRENCY: "2"
       APP_SECRET: ${APP_SECRET:?define APP_SECRET en .env.prod}
       CIFRADO_LLAVE: ${CIFRADO_LLAVE:?define CIFRADO_LLAVE en .env.prod}
       DATABASE_URL: postgresql+psycopg://${DB_USUARIO:-visanow}:${DB_PASSWORD}@db:5432/${DB_NOMBRE:-visanow}

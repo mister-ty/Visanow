@@ -1,0 +1,71 @@
+# Despliegue temporal en Render (plan gratuito) mientras se consigue el VPS.
+#
+# Render construye el Dockerfile del repositorio y el script de arranque migra,
+# siembra y crea la primera administradora. El plan gratuito no da consola, asi
+# que esos tres pasos no se pueden hacer a mano: por eso corren solos.
+#
+# Lo que NO da el plan gratuito, y hay que tener presente mientras dure:
+#
+#   - El servicio se duerme a los 15 minutos sin trafico y tarda cerca de un
+#     minuto en despertar. La primera persona que entre en la manana va a
+#     esperar; las siguientes, no.
+#   - El disco es efimero: lo que se suba a /app/almacenamiento (comprobantes de
+#     pago) se pierde en cada despliegue. Mientras esto sea un piloto se puede
+#     vivir con eso; en el VPS hay volumen de verdad.
+#   - Supabase en su plan gratuito pausa el proyecto tras una semana sin uso y
+#     no hace respaldos. RNF-06 pide respaldos: eso se cumple en el VPS, no aqui.
+#
+# Para publicarlo:  en Render, New > Blueprint, y apuntar a este repositorio.
+services:
+  - type: web
+    name: visanow-api
+    runtime: docker
+    plan: free
+    region: oregon          # la region gratuita de Render
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /salud
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        value: produccion
+      - key: ZONA_HORARIA
+        value: America/Bogota
+      # Un solo trabajador: el plan gratuito da 512 MB y dos se quedan sin
+      # memoria a mitad de una consulta grande.
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: MFA_ROLES_OBLIGATORIO
+        value: administradora,finanzas
+
+      # --- Lo que hay que llenar en el panel de Render ---
+
+      # La cadena de Supabase. Use el "Session pooler" (puerto 5432), NO el de
+      # transacciones: el de transacciones no admite sentencias preparadas y
+      # psycopg las usa, asi que la API empieza a fallar sola al rato.
+      # Cambie el prefijo postgresql:// por postgresql+psycopg://
+      - key: DATABASE_URL
+        sync: false
+
+      # Minimo 32 caracteres cada uno; la API no arranca si son mas cortos.
+      - key: APP_SECRET
+        generateValue: true
+      # Si esta se pierde o cambia, lo ya cifrado (el numero de DS-160) no se
+      # puede volver a leer. Guardela tambien fuera de Render.
+      - key: CIFRADO_LLAVE
+        generateValue: true
+
+      # El dominio del frontend en Vercel, sin barra final: es el unico origen
+      # que la API acepta por CORS.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: URL_UI
+        sync: false
+
+      # Solo para el primer despliegue: crea la administradora y escribe la
+      # contrasena temporal en el log. Quite las dos variables y vuelva a
+      # desplegar en cuanto haya entrado.
+      - key: ADMIN_INICIAL_NOMBRE
+        sync: false
+      - key: ADMIN_INICIAL_EMAIL
+        sync: false

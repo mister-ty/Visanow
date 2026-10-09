@@ -28,15 +28,54 @@ Elegir una region cercana a Colombia (Miami/Virginia) para la latencia. Vercel: 
 3. **Codigo.** `git clone <repositorio> /opt/visanow && cd /opt/visanow`
 4. **Configuracion.** `cp .env.prod.example .env.prod && chmod 600 .env.prod`, y llenar cada variable (los comandos para generar secretos estan en el archivo). Guardar `CIFRADO_LLAVE` tambien fuera del servidor: sin ella no se pueden leer los datos cifrados.
 5. **Subir.** `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`
-6. **Base de datos y primer usuario** (una sola vez):
+6. **Base de datos y primer usuario.** Ya no hay que hacer nada: el script
+   `backend/arranque.sh` migra y siembra en cada arranque (las dos cosas son
+   idempotentes). Para crear la primera administradora, defina
+   `ADMIN_INICIAL_NOMBRE` y `ADMIN_INICIAL_EMAIL` en el `.env.prod`, levante, y
+   la contrasena temporal sale en el log:
+
    ```bash
-   docker compose -f docker-compose.prod.yml exec api python -m alembic upgrade head
-   docker compose -f docker-compose.prod.yml exec api python -m app.seed
-   docker compose -f docker-compose.prod.yml exec api python -m app.crear_admin --nombre "Nombre" --email correo@dominio.com
+   docker compose -f docker-compose.prod.yml logs api | grep -i "contrasena temporal"
    ```
-   Cada despliegue posterior que traiga migraciones repite solo `alembic upgrade head`.
+
+   Quite esas dos variables y vuelva a levantar en cuanto haya entrado. Si ya
+   existe una administradora el script lo dice y no crea otra.
 7. **Ensayo.** `curl https://api.tudominio.com/salud` debe responder `{"estado":"ok","entorno":"produccion"}`. Entrar con la administradora y completar el doble factor.
 8. **Frontend en Vercel.** Importar el repositorio con *Root Directory* = `ui`. Variable de entorno `VITE_API_URL=https://api.tudominio.com` (sin barra final). El `vercel.json` ya trae las cabeceras de seguridad y la reescritura a `index.html`. Asignar el dominio `crm.tudominio.com` y ponerlo en `URL_UI` del `.env.prod`; luego `docker compose ... up -d` para que la API acepte ese origen (CORS).
+
+## Despliegue temporal: Supabase + Render + Vercel (todo en plan gratuito)
+
+Mientras se consigue el VPS. **Es un piloto, no la operacion**: lea las
+limitaciones antes de poner datos de clientes reales.
+
+| | Que da | Que NO da en el plan gratuito |
+|---|---|---|
+| **Supabase** | PostgreSQL 17 administrado | Sin respaldos (RNF-06 no se cumple). Pausa el proyecto tras una semana sin uso |
+| **Render** | Corre el Dockerfile tal cual | Se duerme a los 15 min sin trafico (~1 min en despertar). Disco efimero: los comprobantes subidos se pierden en cada despliegue |
+| **Vercel** | El frontend | El plan Hobby **prohibe el uso comercial** en sus terminos |
+
+Pasos:
+
+1. **Supabase.** Cree el proyecto. En *Project Settings > Database* genere la
+   contrasena y copie la cadena del **Session pooler** (puerto 5432), no la de
+   transacciones: esa no admite sentencias preparadas y psycopg las usa, asi que
+   la API empieza a fallar sola al rato. Cambie el prefijo `postgresql://` por
+   `postgresql+psycopg://`.
+2. **Render.** *New > Blueprint*, apuntando a este repositorio: lee `render.yaml`.
+   Llene en el panel `DATABASE_URL` (la de Supabase), `CORS_ORIGINS` y `URL_UI`
+   (el dominio de Vercel, sin barra final) y, solo para el primer despliegue,
+   `ADMIN_INICIAL_NOMBRE` y `ADMIN_INICIAL_EMAIL`. `APP_SECRET` y
+   `CIFRADO_LLAVE` las genera Render solo; **copie `CIFRADO_LLAVE` a un lugar
+   seguro fuera de Render**, porque sin ella no se puede leer lo ya cifrado.
+3. **Primer ingreso.** La contrasena temporal sale en el log de Render. Entre,
+   cambiela, active el doble factor, y despues quite las dos variables
+   `ADMIN_INICIAL_*` y vuelva a desplegar.
+4. **Vercel.** Importe el repositorio con *Root Directory* = `ui` y la variable
+   `VITE_API_URL` con la URL de Render (sin barra final). Cuando Vercel asigne
+   el dominio, pongalo en `CORS_ORIGINS` y `URL_UI` de Render.
+
+Al pasar al VPS no cambia nada del codigo: es el mismo Dockerfile y el mismo
+script de arranque, con el `docker-compose.prod.yml` de mas arriba.
 
 ## Respaldos (no negociable)
 
