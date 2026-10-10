@@ -71,5 +71,5 @@ def asignables(_: Usuarios = Depends(requiere('casos.ver')), db: Session = Depen
 
 @router.get('/roles', response_model=list[esq.RolSalida])
 def roles(_: Usuarios = Depends(requiere('usuarios.ver')), db: Session = Depends(get_db)):
-    return [esq.RolSalida(codigo=r.codigo, nombre=r.nombre, permisos=sorted(p))
+    return [esq.RolSalida(id=r.id, codigo=r.codigo, nombre=r.nombre, permisos=sorted(p))
             for r, p in servicio.listar_roles(db)]

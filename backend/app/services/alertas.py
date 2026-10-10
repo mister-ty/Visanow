@@ -32,7 +32,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Invalido, NoEncontrado
-from app.models.esquema import Alertas, AlertasTipos, Casos, Usuarios
+from app.models.esquema import Alertas, AlertasTipos, Casos, Roles, Usuarios
 from app.services.auditoria import auditar, instantanea
 
 BOGOTA = ZoneInfo('America/Bogota')
@@ -362,6 +362,49 @@ def obtener(db: Session, alerta_id: int, *, actor: Usuarios | None = None) -> Al
     if a is None:
         raise NoEncontrado('La alerta no existe.')
     return a
+
+
+def configurar_tipo(db: Session, actor: Usuarios, codigo: str, cambios: dict, *,
+                    ip: str | None = None) -> AlertasTipos:
+    """Ajusta un tipo de la matriz: cuándo avisa, a quién y con qué urgencia (RF-062).
+
+    Lo que no se deja tocar es el código, el nombre y la entidad: identifican la
+    consulta que evalúa el tipo, y cambiarlos lo dejaría configurado pero sin
+    nadie que lo mire. El resto es decisión del negocio y no del sistema.
+
+    Apagar un tipo no borra las alertas que ya creó: lo que se dejó de querer es
+    que siga naciendo, no que se pierda lo que ya estaba por atender.
+    """
+    tipo = db.scalars(select(AlertasTipos).where(AlertasTipos.codigo == codigo)).first()
+    if tipo is None:
+        raise NoEncontrado(f'No existe el tipo de alerta «{codigo}».')
+
+    cambios = {k: v for k, v in cambios.items() if v is not None}
+    if not cambios:
+        raise Invalido('No mandó nada que cambiar.')
+
+    if 'repeticiones' in cambios:
+        reps = sorted(set(cambios['repeticiones']))
+        if any(d <= 0 for d in reps):
+            raise Invalido('Las repeticiones se cuentan en días y empiezan en 1.',
+                           codigo='repeticion_invalida')
+        cambios['repeticiones'] = reps
+
+    if 'destinatario_rol_id' in cambios:
+        rol = db.get(Roles, cambios['destinatario_rol_id'])
+        if rol is None:
+            raise Invalido('Ese rol no existe.', codigo='rol_inexistente')
+
+    antes = {c: getattr(tipo, c) for c in cambios}
+    for campo, valor in cambios.items():
+        setattr(tipo, campo, valor)
+
+    db.flush()
+    auditar(db, operacion='update', entidad='alertas_tipos', usuario_id=actor.id,
+            entidad_id=tipo.id, antes={**antes, 'codigo': codigo},
+            despues={**cambios, 'codigo': codigo}, ip=ip)
+    db.commit()
+    return tipo
 
 
 def cambiar_estado(db: Session, actor: Usuarios, alerta_id: int, estado: str, *,

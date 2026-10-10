@@ -1004,6 +1004,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exportar/recursos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recursos
+         * @description Qué puede exportar quien pregunta.
+         *
+         *     La pantalla no debería ofrecer un botón que va a devolver 403.
+         */
+        get: operations["recursos_api_v1_exportar_recursos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exportar/historial": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Historial
+         * @description Quién exportó qué y cuándo (RNF-07).
+         *
+         *     Es lo que se mira el día que un archivo con datos de clientes aparece donde
+         *     no debía.
+         */
+        get: operations["historial_api_v1_exportar_historial_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exportar/{recurso}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Descargar
+         * @description El archivo, con las columnas que este usuario puede ver (RF-075).
+         *
+         *     Las columnas sensibles se omiten según el permiso, no se devuelve un error:
+         *     operaciones necesita la lista de trámites para trabajar; lo que no necesita
+         *     es cuánto pagó cada cliente. La cabecera `X-Columnas-Omitidas` dice cuáles
+         *     se dejaron por fuera, para que la pantalla pueda avisarlo.
+         */
+        get: operations["descargar_api_v1_exportar__recurso__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/buscar": {
         parameters: {
             query?: never;
@@ -1445,6 +1515,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datos-personales/{cliente_id}/evaluar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evaluar
+         * @description Qué pasaría con los datos de este cliente, antes de tocar nada.
+         *
+         *     Se consulta primero porque borrar no se puede deshacer, y quien atiende una
+         *     solicitud tiene derecho a saber qué va a pasar.
+         */
+        get: operations["evaluar_api_v1_datos_personales__cliente_id__evaluar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datos-personales/{cliente_id}/anonimizar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anonimizar
+         * @description Quita lo que identifica a la persona y deja la contabilidad (RNF-09).
+         *
+         *     Las ventas, los pagos y los trámites siguen ahí: son los libros de la
+         *     empresa. Lo que desaparece es de quién eran.
+         */
+        post: operations["anonimizar_api_v1_datos_personales__cliente_id__anonimizar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datos-personales/{cliente_id}/eliminar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Eliminar
+         * @description Borra todo rastro. Solo si no hay nada contable que conservar.
+         *
+         *     Con ventas o pagos se niega: borrar la contabilidad no es un derecho del
+         *     titular ni una facultad de la empresa.
+         */
+        post: operations["eliminar_api_v1_datos_personales__cliente_id__eliminar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/datos-personales/vencidos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vencidos
+         * @description Quiénes pasaron el plazo de conservación, para revisarlos.
+         *
+         *     No se depura solo: un automatismo que borra datos de personas es el que un
+         *     día se lleva lo que no debía, y acá lo que se pierde no se recupera.
+         */
+        get: operations["vencidos_api_v1_datos_personales_vencidos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/saas/previsualizar": {
         parameters: {
             query?: never;
@@ -1837,6 +1999,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/alertas/tipos/{codigo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Configurar Tipo
+         * @description Cambia cuándo avisa un tipo, a quién y con qué urgencia (RF-062).
+         *
+         *     Pide `catalogos.editar` y no `alertas.editar`: atender una alerta y decidir
+         *     cuándo nacen las alertas de toda la agencia no son la misma facultad.
+         */
+        patch: operations["configurar_tipo_api_v1_alertas_tipos__codigo__patch"];
+        trace?: never;
+    };
     "/api/v1/alertas/{alerta_id}": {
         parameters: {
             query?: never;
@@ -2187,6 +2372,36 @@ export interface components {
             estado: "confirmado" | "pendiente" | "no_identificado" | "reversado" | "duplicado";
             /** Observacion */
             observacion?: string | null;
+        };
+        /**
+         * CambiarTipoAlerta
+         * @description Lo que la administradora puede ajustar de un tipo de alerta (RF-062).
+         *
+         *     El código, el nombre y la entidad no están: identifican la regla que la
+         *     evalúa y cambiarlos la dejaría sin evaluar. Lo demás es la decisión del
+         *     negocio sobre cuándo avisar, a quién y con qué urgencia.
+         */
+        CambiarTipoAlerta: {
+            /**
+             * Anticipacion Valor
+             * @description Positivo avisa antes del hecho; negativo, después
+             */
+            anticipacion_valor?: number | null;
+            /** Anticipacion Unidad */
+            anticipacion_unidad?: ("horas" | "dias" | "dias_habiles") | null;
+            /**
+             * Repeticiones
+             * @description A los cuántos días vuelve a avisar: [7, 15] insiste dos veces
+             */
+            repeticiones?: number[] | null;
+            /** Severidad */
+            severidad?: ("baja" | "media" | "alta") | null;
+            /** Canal */
+            canal?: ("interna" | "correo" | "whatsapp") | null;
+            /** Destinatario Rol Id */
+            destinatario_rol_id?: number | null;
+            /** Activo */
+            activo?: boolean | null;
         };
         /** CambioEstado */
         CambioEstado: {
@@ -2969,12 +3184,61 @@ export interface components {
             /** Horas Desde La Ultima Exitosa */
             horas_desde_la_ultima_exitosa: number | null;
         };
+        /** EvaluacionSalida */
+        EvaluacionSalida: {
+            /** Cliente Id */
+            cliente_id: number;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Puede Eliminarse
+             * @description Falso cuando hay ventas o pagos: ahí se anonimiza, no se borra
+             */
+            puede_eliminarse: boolean;
+            /** Personas */
+            personas: number;
+            /** Ventas */
+            ventas: number;
+            /** Pagos */
+            pagos: number;
+            /** Tramites */
+            tramites: number;
+            /** Razon */
+            razon: string;
+            /**
+             * Advertencias
+             * @default []
+             */
+            advertencias: string[];
+        };
         /** EventoSalida */
         EventoSalida: {
             /** Clave */
             clave: string;
             /** Nombre */
             nombre: string;
+        };
+        /** ExportacionSalida */
+        ExportacionSalida: {
+            /** Id */
+            id: number;
+            /** Usuario */
+            usuario: string;
+            /** Recurso */
+            recurso: string;
+            /** Formato */
+            formato: string;
+            /** Filas */
+            filas: number;
+            /** Ip */
+            ip: string | null;
+            /**
+             * Ocurrido En
+             * Format: date-time
+             */
+            ocurrido_en: string;
+            /** Filtros */
+            filtros: Record<string, never>;
         };
         /**
          * Ficha360
@@ -3457,6 +3721,14 @@ export interface components {
              * @description otpauth:// para generar el código QR
              */
             uri: string;
+        };
+        /** MotivoEntrada */
+        MotivoEntrada: {
+            /**
+             * Motivo
+             * @description Una solicitud del titular, el plazo cumplido, una orden
+             */
+            motivo: string;
         };
         /** MoverOportunidad */
         MoverOportunidad: {
@@ -4041,6 +4313,14 @@ export interface components {
              */
             email: string;
         };
+        /** RecursosSalida */
+        RecursosSalida: {
+            /**
+             * Recursos
+             * @description Lo que este usuario puede exportar
+             */
+            recursos: string[];
+        };
         /** RenderEntrada */
         RenderEntrada: {
             /** Caso Id */
@@ -4187,6 +4467,8 @@ export interface components {
         };
         /** RolSalida */
         RolSalida: {
+            /** Id */
+            id: number;
             /** Codigo */
             codigo: string;
             /** Nombre */
@@ -4486,6 +4768,13 @@ export interface components {
             severidad: "baja" | "media" | "alta";
             /** Canal */
             canal: string;
+            /** Destinatario Rol Id */
+            destinatario_rol_id?: number | null;
+            /**
+             * Destinatario Rol
+             * @description A quién le llega: el nombre del rol, para mostrarlo
+             */
+            destinatario_rol?: string | null;
             /** Activo */
             activo: boolean;
             /**
@@ -4588,6 +4877,25 @@ export interface components {
             clave: string;
             /** Descripcion */
             descripcion: string;
+        };
+        /** VencidoSalida */
+        VencidoSalida: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Desde
+             * Format: date
+             */
+            desde: string;
+            /**
+             * Ultima Senal
+             * Format: date
+             */
+            ultima_senal: string;
+            /** Ventas */
+            ventas: number;
         };
         /** VentaSalida */
         VentaSalida: {
@@ -6548,6 +6856,90 @@ export interface operations {
             };
         };
     };
+    recursos_api_v1_exportar_recursos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecursosSalida"];
+                };
+            };
+        };
+    };
+    historial_api_v1_exportar_historial_get: {
+        parameters: {
+            query?: {
+                limite?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportacionSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    descargar_api_v1_exportar__recurso__get: {
+        parameters: {
+            query?: {
+                formato?: "xlsx" | "csv";
+            };
+            header?: never;
+            path: {
+                recurso: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     buscar_api_v1_buscar_get: {
         parameters: {
             query: {
@@ -7384,6 +7776,138 @@ export interface operations {
             };
         };
     };
+    evaluar_api_v1_datos_personales__cliente_id__evaluar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anonimizar_api_v1_datos_personales__cliente_id__anonimizar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MotivoEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    eliminar_api_v1_datos_personales__cliente_id__eliminar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cliente_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MotivoEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vencidos_api_v1_datos_personales_vencidos_get: {
+        parameters: {
+            query?: {
+                anios?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VencidoSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     previsualizar_api_v1_saas_previsualizar_post: {
         parameters: {
             query?: never;
@@ -7994,6 +8518,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TipoAlertaSalida"][];
+                };
+            };
+        };
+    };
+    configurar_tipo_api_v1_alertas_tipos__codigo__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                codigo: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CambiarTipoAlerta"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TipoAlertaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

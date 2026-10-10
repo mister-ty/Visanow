@@ -12,6 +12,7 @@ import { mostrarError } from '../lib/errores'
 import { aInstanteBogota, formatearFechaHora } from '../lib/formato'
 
 type Alerta = Esquemas['AlertaSalida']
+type TipoAlerta = Esquemas['TipoAlertaSalida']
 type Severidad = Alerta['severidad']
 
 const COLOR_SEVERIDAD: Record<Severidad, string> = { alta: 'red', media: 'yellow', baja: 'gray' }
@@ -208,27 +209,62 @@ function ModalPosponer({ alerta, cerrar }: { alerta: Alerta | null; cerrar: () =
     </Modal>)
 }
 
-/** Vista de solo lectura de la matriz configurable (RF-062). */
+/**
+ * La matriz con la que nacen las alertas (RF-062).
+ *
+ * Es editable, no un informe: el día que «2 horas» resulten pocas para avisar
+ * de un lead sin contactar, eso se cambia acá y no en la base de datos. Lo que
+ * no se deja tocar es el código ni la entidad —identifican la consulta que
+ * evalúa el tipo, y cambiarlos lo dejaría configurado pero sin nadie que lo
+ * mire—, así que no aparecen en el formulario.
+ */
 function Tipos() {
+  const { puede } = useSesion()
+  const qc = useQueryClient()
+  const [editando, setEditando] = useState<TipoAlerta | null>(null)
+  const editable = puede('catalogos.editar')
+
   const tipos = useQuery({
     queryKey: ['alertas', 'tipos'],
     queryFn: () => exigir(api.GET('/api/v1/alertas/tipos')),
   })
+
+  const apagar = useMutation({
+    mutationFn: ({ codigo, activo }: { codigo: string; activo: boolean }) =>
+      exigir(api.PATCH('/api/v1/alertas/tipos/{codigo}', {
+        params: { path: { codigo } }, body: { activo },
+      })),
+    onSuccess: (_d, v) => {
+      notifications.show({
+        color: 'teal',
+        message: v.activo
+          ? 'Vuelve a generar alertas de este tipo'
+          : 'Deja de generar alertas nuevas; las que ya hay siguen en la bandeja',
+      })
+      qc.invalidateQueries({ queryKey: ['alertas'] })
+    },
+    onError: (e) => mostrarError(e, 'No se pudo cambiar'),
+  })
+
   if (tipos.isPending) return <Center h={120}><Loader color="teal" /></Center>
   return (
     <Stack>
       <Alert color="blue" variant="light">
-        Esta es la matriz con la que se generan las alertas. Aquí solo se consulta.
+        Esta es la matriz con la que se generan las alertas.{' '}
+        {editable
+          ? 'Cambiar una fila cambia cuándo avisa, a quién y con qué urgencia, desde la próxima vez que se busquen alertas.'
+          : 'Solo la administradora puede cambiarla.'}{' '}
         Un tipo «sin regla» está configurado pero todavía no hay quien lo evalúe, así que no genera nada.
       </Alert>
       <Card withBorder padding={0}>
-        <Table.ScrollContainer minWidth={820}>
+        <Table.ScrollContainer minWidth={980}>
           <Table verticalSpacing="sm">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Tipo</Table.Th><Table.Th>Sobre</Table.Th><Table.Th>Anticipación</Table.Th>
                 <Table.Th>Repeticiones</Table.Th><Table.Th>Severidad</Table.Th><Table.Th>Canal</Table.Th>
-                <Table.Th>Estado</Table.Th>
+                <Table.Th>Le llega a</Table.Th><Table.Th>Estado</Table.Th>
+                {editable && <Table.Th />}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -240,16 +276,105 @@ function Tipos() {
                   <Table.Td>{t.repeticiones.length ? t.repeticiones.join(', ') : '—'}</Table.Td>
                   <Table.Td><Badge variant="light" color={COLOR_SEVERIDAD[t.severidad]}>{NOMBRE_SEVERIDAD[t.severidad]}</Badge></Table.Td>
                   <Table.Td>{t.canal}</Table.Td>
+                  <Table.Td>{t.destinatario_rol ?? '—'}</Table.Td>
                   <Table.Td>
                     <Group gap={4}>
-                      <Badge variant="light" color={t.activo ? 'teal' : 'gray'}>{t.activo ? 'Activo' : 'Inactivo'}</Badge>
+                      {editable
+                        ? <Switch size="xs" checked={t.activo} label={t.activo ? 'Activo' : 'Inactivo'}
+                            onChange={(e) => apagar.mutate({ codigo: t.codigo, activo: e.currentTarget.checked })} />
+                        : <Badge variant="light" color={t.activo ? 'teal' : 'gray'}>{t.activo ? 'Activo' : 'Inactivo'}</Badge>}
                       {!t.tiene_regla && <Badge variant="light" color="orange">Sin regla</Badge>}
                     </Group>
                   </Table.Td>
+                  {editable && (
+                    <Table.Td>
+                      <Button size="xs" variant="light" onClick={() => setEditando(t)}>Ajustar</Button>
+                    </Table.Td>)}
                 </Table.Tr>))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
       </Card>
+      {editando && <AjustarTipo tipo={editando} cerrar={() => setEditando(null)} />}
     </Stack>)
+}
+
+/** El formulario de una fila de la matriz. */
+function AjustarTipo({ tipo, cerrar }: { tipo: TipoAlerta; cerrar: () => void }) {
+  const qc = useQueryClient()
+  const [valor, setValor] = useState(String(tipo.anticipacion_valor))
+  const [unidad, setUnidad] = useState(tipo.anticipacion_unidad)
+  const [severidad, setSeveridad] = useState(tipo.severidad)
+  const [canal, setCanal] = useState(tipo.canal)
+  const [rol, setRol] = useState(tipo.destinatario_rol_id ? String(tipo.destinatario_rol_id) : null)
+  const [reps, setReps] = useState(tipo.repeticiones.join(', '))
+
+  const roles = useQuery({
+    queryKey: ['roles'],
+    queryFn: () => exigir(api.GET('/api/v1/roles')),
+    staleTime: 10 * 60 * 1000,
+  })
+
+  const guardar = useMutation({
+    mutationFn: () => exigir(api.PATCH('/api/v1/alertas/tipos/{codigo}', {
+      params: { path: { codigo: tipo.codigo } },
+      body: {
+        anticipacion_valor: Number(valor),
+        anticipacion_unidad: unidad,
+        severidad,
+        canal,
+        destinatario_rol_id: rol ? Number(rol) : undefined,
+        repeticiones: reps.split(',').map((x) => Number(x.trim())).filter((x) => x > 0),
+      },
+    })),
+    onSuccess: () => {
+      notifications.show({ color: 'teal', message: 'La matriz quedó cambiada' })
+      qc.invalidateQueries({ queryKey: ['alertas'] })
+      cerrar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo guardar'),
+  })
+
+  return (
+    <Modal opened onClose={cerrar} title={tipo.nombre} size="lg">
+      <Stack>
+        <Text size="sm" c="dimmed">
+          Sobre {tipo.entidad}. El código «{tipo.codigo}» no se cambia: es lo que une
+          este tipo con la consulta que lo evalúa.
+        </Text>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+          <TextInput label="Anticipación" value={valor} onChange={(e) => setValor(e.currentTarget.value)}
+            description="Positivo avisa antes del hecho; negativo, después" />
+          <Select label="Unidad" data={[
+            { value: 'horas', label: 'horas' },
+            { value: 'dias', label: 'días' },
+            { value: 'dias_habiles', label: 'días hábiles' }]}
+            value={unidad} onChange={(v) => v && setUnidad(v as TipoAlerta['anticipacion_unidad'])} />
+          <Select label="Severidad" data={[
+            { value: 'baja', label: 'Baja' }, { value: 'media', label: 'Media' },
+            { value: 'alta', label: 'Alta' }]}
+            value={severidad} onChange={(v) => v && setSeveridad(v as TipoAlerta['severidad'])} />
+          <Select label="Canal" data={[
+            { value: 'interna', label: 'interna' }, { value: 'correo', label: 'correo' },
+            { value: 'whatsapp', label: 'whatsapp' }]}
+            value={canal} onChange={(v) => v && setCanal(v)} />
+          {/* El filtro no sobra: una opción sin `value` se vuelve "undefined",
+              dos se vuelven dos "undefined", y Mantine tumba la página entera
+              por opciones repetidas. Mejor un desplegable corto que una
+              pantalla en blanco. */}
+          <Select label="Le llega a" value={rol} onChange={setRol} clearable
+            data={(roles.data ?? [])
+              .filter((r) => r.id != null)
+              .map((r) => ({ value: String(r.id), label: r.nombre }))}
+            nothingFoundMessage="No se pudo cargar la lista de roles"
+            description="Quién recibe este aviso" />
+          <TextInput label="Repeticiones" value={reps} onChange={(e) => setReps(e.currentTarget.value)}
+            placeholder="7, 15" description="A los cuántos días vuelve a insistir" />
+        </SimpleGrid>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={cerrar}>Cancelar</Button>
+          <Button loading={guardar.isPending} onClick={() => guardar.mutate()}>Guardar</Button>
+        </Group>
+      </Stack>
+    </Modal>)
 }

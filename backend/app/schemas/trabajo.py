@@ -131,5 +131,28 @@ class TipoAlertaSalida(BaseModel):
     repeticiones: list[int]
     severidad: Severidad
     canal: str
+    destinatario_rol_id: int | None = None
+    destinatario_rol: str | None = Field(
+        default=None, description='A quién le llega: el nombre del rol, para mostrarlo')
     activo: bool
     tiene_regla: bool = Field(description='Si ya existe la consulta que lo evalúa')
+
+
+class CambiarTipoAlerta(BaseModel):
+    """Lo que la administradora puede ajustar de un tipo de alerta (RF-062).
+
+    El código, el nombre y la entidad no están: identifican la regla que la
+    evalúa y cambiarlos la dejaría sin evaluar. Lo demás es la decisión del
+    negocio sobre cuándo avisar, a quién y con qué urgencia.
+    """
+    anticipacion_valor: int | None = Field(
+        default=None, ge=-365, le=365,
+        description='Positivo avisa antes del hecho; negativo, después')
+    anticipacion_unidad: Literal['horas', 'dias', 'dias_habiles'] | None = None
+    repeticiones: list[int] | None = Field(
+        default=None, max_length=10,
+        description='A los cuántos días vuelve a avisar: [7, 15] insiste dos veces')
+    severidad: Severidad | None = None
+    canal: Literal['interna', 'correo', 'whatsapp'] | None = None
+    destinatario_rol_id: int | None = None
+    activo: bool | None = None

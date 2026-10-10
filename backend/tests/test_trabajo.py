@@ -310,3 +310,93 @@ def test_una_importacion_que_si_fallo_lo_dice(cliente, admin, db):
     assert a is not None
     assert 'fall' in a.mensaje.lower(), a.mensaje
     assert 'N° Solicitud' in a.mensaje, 'el detalle del error es lo util'
+
+
+# ------------------------------------------ la matriz se configura, no solo se mira
+
+def _tipo(db, codigo='lead_sin_contacto'):
+    return db.scalars(select(AlertasTipos).where(AlertasTipos.codigo == codigo)).first()
+
+
+def test_la_administradora_cambia_cuando_avisa_un_tipo(cliente, admin, db):
+    """RF-062. Si la matriz solo se consulta, «configurable» es un adorno: el
+    dia que 2 horas resulten pocas hay que tocar la base de datos."""
+    r = cliente.patch('/api/v1/alertas/tipos/lead_sin_contacto', headers=admin,
+                      json={'anticipacion_valor': 6, 'anticipacion_unidad': 'horas',
+                            'severidad': 'media', 'repeticiones': [3, 1, 3]})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d['anticipacion_valor'] == 6 and d['severidad'] == 'media'
+    assert d['repeticiones'] == [1, 3], 'ordenadas y sin repetidos'
+
+    db.expire_all()
+    t = _tipo(db)
+    assert t.anticipacion_valor == 6 and t.severidad == 'media'
+
+
+def test_apagar_un_tipo_deja_de_crear_alertas_pero_no_borra_las_que_hay(cliente, admin, db):
+    """Lo que se dejo de querer es que sigan naciendo, no perder las de antes."""
+    _alerta_de_sync(db, cliente, admin, resultado='error', hace_horas=1, detalle='algo')
+    antes = db.scalar(text("select count(*) from alertas a join alertas_tipos t "
+                           "on t.id = a.tipo_id where t.codigo = 'sync_saas_fallida'"))
+    assert antes == 1
+
+    cliente.patch('/api/v1/alertas/tipos/sync_saas_fallida', headers=admin,
+                  json={'activo': False})
+    cliente.post('/api/v1/alertas/generar', headers=admin,
+                 json={'codigos': ['sync_saas_fallida']})
+
+    db.expire_all()
+    assert db.scalar(text("select count(*) from alertas a join alertas_tipos t "
+                          "on t.id = a.tipo_id where t.codigo = 'sync_saas_fallida'")) == antes
+
+
+def test_el_codigo_no_se_puede_cambiar_porque_es_lo_que_une_el_tipo_con_su_regla(
+        cliente, admin, db):
+    r = cliente.patch('/api/v1/alertas/tipos/lead_sin_contacto', headers=admin,
+                      json={'codigo': 'otro_nombre', 'severidad': 'baja'})
+    assert r.status_code == 200, r.text
+    db.expire_all()
+    assert _tipo(db, 'otro_nombre') is None, 'el codigo no es configurable'
+    assert _tipo(db).severidad == 'baja', 'pero lo que si es, se aplico'
+
+
+def test_una_repeticion_en_cero_dias_avisaria_para_siempre(cliente, admin):
+    r = cliente.patch('/api/v1/alertas/tipos/lead_sin_contacto', headers=admin,
+                      json={'repeticiones': [0, 7]})
+    assert r.status_code == 422
+    assert r.json()['codigo'] == 'repeticion_invalida'
+
+
+def test_atender_una_alerta_no_autoriza_a_cambiar_la_matriz_de_toda_la_agencia(
+        cliente, usuario):
+    """`alertas.editar` deja resolver lo propio; decidir cuando nacen las
+    alertas de todos es otra facultad."""
+    cab = entrar(cliente, usuario('operaciones'))
+    r = cliente.patch('/api/v1/alertas/tipos/lead_sin_contacto', headers=cab,
+                      json={'severidad': 'baja'})
+    assert r.status_code == 403
+
+
+def test_un_tipo_que_no_existe_se_rechaza(cliente, admin):
+    r = cliente.patch('/api/v1/alertas/tipos/no_existe', headers=admin,
+                      json={'severidad': 'baja'})
+    assert r.status_code == 404
+
+
+def test_la_matriz_dice_a_que_rol_le_llega_y_no_un_numero(cliente, admin):
+    tipos = cliente.get('/api/v1/alertas/tipos', headers=admin).json()
+    con_rol = [t for t in tipos if t['destinatario_rol_id']]
+    assert con_rol, 'la matriz tiene destinatarios'
+    assert all(t['destinatario_rol'] for t in con_rol), (
+        'tiene que venir el nombre del rol, no solo el id')
+
+
+def test_la_lista_de_roles_trae_el_id_porque_la_matriz_guarda_el_id(cliente, admin):
+    """La pantalla de la matriz arma el desplegable de «le llega a» con esta
+    lista. Sin `id` todas las opciones valian «undefined», se repetian, y
+    Mantine tumbaba la pagina entera al abrir el formulario."""
+    roles = cliente.get('/api/v1/roles', headers=admin).json()
+    assert roles, 'hay roles'
+    assert all(isinstance(r.get('id'), int) for r in roles), roles[0]
+    assert len({r['id'] for r in roles}) == len(roles), 'y los id no se repiten'

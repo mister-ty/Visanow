@@ -46,6 +46,7 @@ class UsuarioAsignable(BaseModel):
 
 
 class RolSalida(BaseModel):
+    id: int
     codigo: str
     nombre: str
     permisos: list[str]

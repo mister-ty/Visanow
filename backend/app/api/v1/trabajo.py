@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import ip_cliente, requiere
 from app.db.session import get_db
-from app.models.esquema import Alertas, AlertasTipos, Tareas, Usuarios
+from app.models.esquema import Alertas, AlertasTipos, Roles, Tareas, Usuarios
 from app.schemas import trabajo as esq
 from app.services import alertas as serv_alertas
 from app.services import tareas as serv_tareas
@@ -38,6 +38,11 @@ def _alerta(a: Alertas) -> esq.AlertaSalida:
 
 
 # ------------------------------------------------------------------- tareas
+
+def _roles(db: Session) -> dict[int, str]:
+    """Los nombres de los roles, para que la matriz diga «Administradora» y no «1»."""
+    return {r.id: r.nombre for r in db.scalars(select(Roles))}
+
 
 @router.post('/tareas', response_model=esq.TareaSalida, status_code=status.HTTP_201_CREATED)
 def crear_tarea(datos: esq.TareaCrear, request: Request,
@@ -127,12 +132,36 @@ def resumen_alertas(actor: Usuarios = Depends(requiere('alertas.ver')),
 @router.get('/alertas/tipos', response_model=list[esq.TipoAlertaSalida])
 def tipos(_: Usuarios = Depends(requiere('alertas.ver')), db: Session = Depends(get_db)):
     """La matriz configurable (RF-062), con cuáles ya tienen regla."""
+    roles = _roles(db)
     return [esq.TipoAlertaSalida(
         id=t.id, codigo=t.codigo, nombre=t.nombre, entidad=t.entidad,
         anticipacion_valor=t.anticipacion_valor, anticipacion_unidad=t.anticipacion_unidad,
         repeticiones=list(t.repeticiones or []), severidad=t.severidad, canal=t.canal,
+        destinatario_rol_id=t.destinatario_rol_id,
+        destinatario_rol=roles.get(t.destinatario_rol_id),
         activo=t.activo, tiene_regla=t.codigo in serv_alertas.REGLAS)
         for t in db.scalars(select(AlertasTipos).order_by(AlertasTipos.id))]
+
+
+@router.patch('/alertas/tipos/{codigo}', response_model=esq.TipoAlertaSalida)
+def configurar_tipo(codigo: str, datos: esq.CambiarTipoAlerta, request: Request,
+                    actor: Usuarios = Depends(requiere('catalogos.editar')),
+                    db: Session = Depends(get_db)):
+    """Cambia cuándo avisa un tipo, a quién y con qué urgencia (RF-062).
+
+    Pide `catalogos.editar` y no `alertas.editar`: atender una alerta y decidir
+    cuándo nacen las alertas de toda la agencia no son la misma facultad.
+    """
+    t = serv_alertas.configurar_tipo(db, actor, codigo, datos.model_dump(exclude_unset=True),
+                                     ip=ip_cliente(request))
+    roles = _roles(db)
+    return esq.TipoAlertaSalida(
+        id=t.id, codigo=t.codigo, nombre=t.nombre, entidad=t.entidad,
+        anticipacion_valor=t.anticipacion_valor, anticipacion_unidad=t.anticipacion_unidad,
+        repeticiones=list(t.repeticiones or []), severidad=t.severidad, canal=t.canal,
+        destinatario_rol_id=t.destinatario_rol_id,
+        destinatario_rol=roles.get(t.destinatario_rol_id),
+        activo=t.activo, tiene_regla=t.codigo in serv_alertas.REGLAS)
 
 
 @router.patch('/alertas/{alerta_id}', response_model=esq.AlertaSalida)
