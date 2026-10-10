@@ -2,7 +2,7 @@
 from functools import lru_cache
 import pathlib
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 RAIZ = pathlib.Path(__file__).resolve().parents[3]
@@ -45,6 +45,26 @@ class Ajustes(BaseSettings):
     @property
     def origenes_cors(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(',') if o.strip()]
+
+    @field_validator('database_url', 'app_secret', 'cifrado_llave', 'cors_origins',
+                     'url_ui', mode='before')
+    @classmethod
+    def _sin_espacios_de_sobra(cls, v):
+        """Quita los espacios y saltos de línea que trae un valor pegado a mano.
+
+        El primer despliegue en Render murió por esto: el `DATABASE_URL` quedó
+        con un salto de línea al final y Postgres contestó
+
+            FATAL: database "postgres
+            " does not exist
+
+        —la comilla de cierre en el renglón siguiente es todo el síntoma—. Pegar
+        una cadena en un formulario web y que se cuele el retorno es lo más
+        normal del mundo; que eso tumbe el despliegue con un error que no se
+        puede leer, no. El valor con espacios de sobra nunca es el que se quiso
+        poner, así que recortarlo no esconde ningún error de verdad.
+        """
+        return v.strip() if isinstance(v, str) else v
 
     @model_validator(mode='after')
     def _secretos_fuertes(self) -> 'Ajustes':

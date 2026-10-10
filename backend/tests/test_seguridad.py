@@ -138,3 +138,35 @@ def test_toda_columna_de_una_tabla_con_datos_personales_esta_clasificada(db):
         fantasmas = ocultas - reales
         assert not fantasmas, (
             f'«{tabla}» oculta columnas que ya no existen: {sorted(fantasmas)}')
+
+
+def test_una_variable_pegada_con_salto_de_linea_no_tumba_el_arranque():
+    """El primer despliegue en Render murio por esto.
+
+    El DATABASE_URL se pego en el formulario con un salto de linea al final, y
+    Postgres contesto:
+
+        FATAL: database "postgres
+        " does not exist
+
+    -la comilla de cierre en el renglon siguiente es todo el sintoma-. Pegar una
+    cadena en un formulario web y que se cuele el retorno es lo mas normal del
+    mundo; que eso tumbe el despliegue con un error que nadie puede leer, no.
+
+    Un valor con espacios de sobra nunca es el que se quiso poner, asi que
+    recortarlo no esconde ningun error de verdad.
+    """
+    from app.core.config import Ajustes
+
+    sucio = Ajustes(
+        app_secret='  ' + 'x' * 40 + '\n',
+        database_url='postgresql+psycopg://u:p@host:5432/postgres\n',
+        cifrado_llave='y' * 44 + '\r\n',
+        cors_origins=' https://visanow.vercel.app \n',
+        url_ui='https://visanow.vercel.app\r\n',
+    )
+    assert sucio.database_url.endswith('/postgres'), repr(sucio.database_url)
+    assert sucio.app_secret == 'x' * 40
+    assert sucio.cifrado_llave == 'y' * 44
+    assert sucio.url_ui == 'https://visanow.vercel.app'
+    assert sucio.origenes_cors == ['https://visanow.vercel.app']

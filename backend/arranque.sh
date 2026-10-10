@@ -16,6 +16,16 @@ set -e
 # alembic que termina en KeyError, y no le dice a nadie que hacer. Es el error
 # mas probable del primer despliegue: el blueprint la deja en blanco a proposito
 # porque lleva la clave de la base.
+# Lo mismo que hace la configuracion de Python, pero aqui tambien: alembic
+# levanta su propio proceso y lee la variable directo del entorno. Un salto de
+# linea pegado por accidente al final hacia que Postgres buscara una base cuyo
+# nombre terminaba en un retorno de carro, y el error era ilegible.
+#
+# [:cntrl:] y no los escapes de tr: quita retornos, saltos y tabuladores sin
+# tocar los espacios internos, que sed recorta aparte solo en los extremos.
+DATABASE_URL="$(printf %s "${DATABASE_URL:-}" | tr -d "[:cntrl:]" | sed -e "s/^[[:space:]]*//" -e "s/[[:space:]]*$//")"
+export DATABASE_URL
+
 if [ -z "$DATABASE_URL" ]; then
   echo "[arranque] FALTA LA VARIABLE DATABASE_URL."
   echo "[arranque]"
