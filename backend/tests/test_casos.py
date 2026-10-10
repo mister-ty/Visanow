@@ -596,3 +596,53 @@ def test_el_404_al_editar_lo_ajeno_no_puede_ser_cosmetico(
     db.expire_all()
     assert db.get(M, caso['id']).proxima_accion == antes, (
         'el 404 mintio: el tramite ajeno quedo cambiado de todas formas')
+
+
+# --------------------------------- la fecha del resultado es la de Bogota (RF-027)
+
+def test_una_visa_resuelta_de_noche_no_queda_con_la_fecha_de_manana():
+    """El contenedor corre con TZ=UTC (Dockerfile:7) y el servicio usaba
+    date.today(), que ahi devuelve el dia UTC. Colombia esta en UTC-5: desde las
+    siete de la noche de Bogota, para el servidor ya es manana. La agencia
+    atiende de noche, asi que una visa aprobada el jueves a las ocho quedaba
+    registrada el viernes.
+
+    No es un detalle de presentacion: resultado_fecha es la fecha en que el
+    consulado resolvio, y de ella salen los conteos por dia y por mes.
+
+    Se prueba con un instante EXPLICITO a proposito: este equipo esta en Bogota,
+    asi que comparar contra date.today() pasaria sin comprobar nada.
+    """
+    import datetime as dt
+    from app.services.casos import _hoy
+
+    # 11 de octubre 02:30 UTC == 10 de octubre 21:30 en Bogota
+    de_noche = dt.datetime(2026, 10, 11, 2, 30, tzinfo=dt.timezone.utc)
+    assert _hoy(de_noche) == dt.date(2026, 10, 10), 'se adelanto un dia'
+    assert de_noche.date() == dt.date(2026, 10, 11), 'asi es como estaba mal'
+
+    # Y de dia, cuando las dos zonas coinciden, no cambia nada.
+    de_dia = dt.datetime(2026, 10, 10, 15, 0, tzinfo=dt.timezone.utc)
+    assert _hoy(de_dia) == dt.date(2026, 10, 10)
+
+    # Al filo: 04:59 UTC sigue siendo el dia anterior en Bogota; 05:00 ya no.
+    assert _hoy(dt.datetime(2026, 10, 11, 4, 59, tzinfo=dt.timezone.utc)) == dt.date(2026, 10, 10)
+    assert _hoy(dt.datetime(2026, 10, 11, 5, 0, tzinfo=dt.timezone.utc)) == dt.date(2026, 10, 11)
+
+
+def test_el_resultado_se_guarda_con_la_fecha_de_bogota(cliente, db, usuario,
+                                                       solicitante, pais_usa):
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    from app.models.esquema import Casos as M
+
+    dueno = usuario('operaciones')
+    cab = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, dueno.u.id)
+    r = cliente.post(f'{CASOS}/{caso["id"]}/resultado', headers=cab,
+                     json={'resultado': 'aprobada'})
+    assert r.status_code == 200, r.text
+
+    db.expire_all()
+    guardada = db.get(M, caso['id']).resultado_fecha
+    assert guardada == dt.datetime.now(ZoneInfo('America/Bogota')).date()

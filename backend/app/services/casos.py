@@ -19,6 +19,7 @@ Las reglas que este servicio hace cumplir, y que hoy ningún Excel puede:
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -29,6 +30,7 @@ from app.models.esquema import (Casos, CasosChecklist, CasosColaboradores, Casos
                                 Solicitantes, TransicionesOperativas, Usuarios)
 from app.services.auditoria import auditar
 
+BOGOTA = ZoneInfo('America/Bogota')
 ESTADO_INICIAL = 'registrado'
 DIAS_RIESGO_MEDIO, DIAS_RIESGO_ALTO = 3, 5
 RESULTADOS = ('aprobada', 'negada', 'proceso_administrativo', 'cancelado', 'no_continuo')
@@ -39,6 +41,23 @@ CAMPOS_CASO = ('pais_id', 'tipo_visa_id', 'modalidad_id', 'sede_id', 'responsabl
 
 def _ahora() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _hoy(ahora: datetime | None = None) -> date:
+    """Qué día es hoy en Bogotá, no en el reloj del servidor.
+
+    El contenedor corre con TZ=UTC (Dockerfile), así que `date.today()` devuelve
+    el día UTC. Colombia está en UTC-5: desde las siete de la noche de Bogotá,
+    para el servidor ya es mañana. La agencia atiende de noche, y una visa
+    aprobada el jueves a las ocho quedaba registrada el viernes.
+
+    No es un detalle de presentación: `resultado_fecha` es la fecha en que el
+    consulado resolvió, y de ella salen los conteos por día y por mes.
+
+    Recibe el instante para poder probarse: este equipo está en Bogotá, así que
+    una prueba que compare contra `date.today()` pasaría sin comprobar nada.
+    """
+    return (ahora or _ahora()).astimezone(BOGOTA).date()
 
 
 def _historial(db: Session, caso_id: int, campo: str, anterior, nuevo, actor_id: int | None,
@@ -302,7 +321,7 @@ def registrar_resultado(db: Session, actor: Usuarios, caso_id: int, *, resultado
         raise Invalido(f'Resultado inválido. Opciones: {", ".join(RESULTADOS)}.')
     caso = obtener(db, caso_id, actor=actor)
     anterior = caso.resultado
-    caso.resultado, caso.resultado_fecha, caso.resultado_nota = resultado, fecha or date.today(), nota
+    caso.resultado, caso.resultado_fecha, caso.resultado_nota = resultado, fecha or _hoy(), nota
     caso.ultima_actividad_en = _ahora()
     _historial(db, caso.id, 'resultado', anterior, resultado, actor.id, nota)
     auditar(db, operacion='update', entidad='casos', usuario_id=actor.id, entidad_id=caso.id,
