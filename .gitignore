@@ -39,3 +39,7 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# Los respaldos de produccion: datos personales, nunca al repositorio.
+99_Respaldos/
+*.dump
