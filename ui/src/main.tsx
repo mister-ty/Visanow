@@ -24,6 +24,7 @@ import { Clientes } from './paginas/Clientes'
 import { Conciliacion } from './paginas/Conciliacion'
 import { Configuracion } from './paginas/Configuracion'
 import { DobleFactor } from './paginas/DobleFactor'
+import { ImportacionSaas } from './paginas/ImportacionSaas'
 import { Inicio } from './paginas/Inicio'
 import { Ingreso } from './paginas/Ingreso'
 import { Pagos } from './paginas/Pagos'
@@ -81,6 +82,7 @@ const enruta = createBrowserRouter([
               { path: '/conciliacion', element: <Conciliacion /> },
               { path: '/tareas', element: <Tareas /> },
               { path: '/alertas', element: <Alertas /> },
+              { path: '/importacion', element: <ImportacionSaas /> },
               { path: '/tableros', element: <Tableros /> },
               { path: '/mensajes', element: <Plantillas /> },
               { path: '/usuarios', element: <Usuarios /> },
