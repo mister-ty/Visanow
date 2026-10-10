@@ -174,7 +174,7 @@ def listar(db: Session, *, actor: Usuarios | None = None, estado: str | None = N
 
     total = db.scalar(select(func.count()).select_from(consulta.subquery()))
     pagina, tamano = max(1, pagina), min(max(1, tamano), 200)
-    filas = db.scalars(consulta.order_by(Casos.ultima_actividad_en)
+    filas = db.scalars(consulta.order_by(Casos.ultima_actividad_en, Casos.id)
                        .offset((pagina - 1) * tamano).limit(tamano)).unique().all()
     return total, list(filas)
 

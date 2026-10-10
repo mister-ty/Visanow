@@ -104,7 +104,7 @@ def cartera(db: Session, *, solo_vencida: bool = False, vendedor_id: int | None 
                c.valor_pactado, c.total_pagado, c.saldo, c.exigible_hoy, c.vencido,
                c.por_vencer, c.dias_mora, c.moneda
         {base}
-        order by c.dias_mora desc, c.vencido desc
+        order by c.dias_mora desc, c.vencido desc, c.negocio_id
         limit :tamano offset :salto"""),
         parametros | {'tamano': tamano, 'salto': (pagina - 1) * tamano}).all()
 

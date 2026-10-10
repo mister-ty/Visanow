@@ -7,6 +7,7 @@ import { IconAlertTriangle, IconCloudDownload, IconSearch, IconX } from '@tabler
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, exigir } from '../api/cliente'
+import { BotonExportar } from '../componentes/BotonExportar'
 
 const COLOR_RIESGO = { alto: 'red', medio: 'yellow', bajo: 'gray', ninguno: 'gray' } as const
 
@@ -35,7 +36,12 @@ export function Casos() {
 
   return (
     <Stack>
-      <Title order={2}>Trámites</Title>
+      <Group justify="space-between">
+        <Title order={2}>Trámites</Title>
+        <BotonExportar lista="casos" permiso="casos.exportar" filtros={{
+          estado: estado ?? undefined, texto: busqueda || undefined, sin_asignar: sinAsignar,
+          incluir_finalizados: finalizados }} />
+      </Group>
 
       <Group gap="xs">
         <Chip checked={estado === null} onChange={() => setEstado(null)} variant="light">

@@ -1004,6 +1004,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/exportaciones/{lista}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Exportar
+         * @description Descarga una lista con los mismos filtros de su pantalla (RF-075).
+         *
+         *     El permiso es `<módulo>.exportar` y se comprueba en el servicio, porque
+         *     depende de la lista pedida. Cada descarga queda registrada en la auditoría
+         *     con quién fue y cuántas filas se llevó (RNF-07).
+         */
+        get: operations["exportar_api_v1_exportaciones__lista__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/buscar": {
         parameters: {
             query?: never;
@@ -6535,6 +6559,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LiquidacionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportar_api_v1_exportaciones__lista__get: {
+        parameters: {
+            query?: {
+                formato?: "xlsx" | "csv";
+                texto?: string | null;
+                archivados?: boolean;
+                estado?: string | null;
+                responsable_id?: number | null;
+                pais_id?: number | null;
+                incluir_finalizados?: boolean;
+                sin_asignar?: boolean;
+                solo_vencida?: boolean;
+                vendedor_id?: number | null;
+                desde_dias?: number | null;
+                periodo?: string | null;
+            };
+            header?: never;
+            path: {
+                lista: "clientes" | "casos" | "cartera" | "comisiones";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

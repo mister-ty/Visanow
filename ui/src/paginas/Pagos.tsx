@@ -8,6 +8,7 @@ import { IconPlus } from '@tabler/icons-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
+import { BotonExportar } from '../componentes/BotonExportar'
 import { useSesion } from '../auth/sesion'
 import { useAsignables } from '../lib/catalogos'
 import { mostrarError } from '../lib/errores'
@@ -135,6 +136,11 @@ function Cartera({ abrirVenta }: { abrirVenta: (id: number) => void }) {
           value={moraMinima} onChange={(v) => setMoraMinima(typeof v === 'bigint' ? Number(v) : v)} />
         <Switch mb={8} label="Solo lo vencido" checked={soloVencida}
           onChange={(e) => setSoloVencida(e.currentTarget.checked)} />
+        <div style={{ marginLeft: 'auto' }}>
+          <BotonExportar lista="cartera" permiso="pagos.exportar" filtros={{
+            solo_vencida: soloVencida, vendedor_id: vendedor ? Number(vendedor) : undefined,
+            desde_dias: moraMinima !== '' ? Number(moraMinima) : undefined }} />
+        </div>
       </Group>
 
       <Card withBorder padding={0}>

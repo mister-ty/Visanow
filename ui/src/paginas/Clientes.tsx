@@ -10,6 +10,7 @@ import { IconPlus, IconSearch, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, exigir } from '../api/cliente'
+import { BotonExportar } from '../componentes/BotonExportar'
 import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados } from '../componentes/AvisoDuplicados'
 import { aSelect, useCatalogos } from '../lib/catalogos'
@@ -38,9 +39,13 @@ export function Clientes() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Clientes</Title>
-        {puede('clientes.crear') && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setCreando(true)}>Nuevo cliente</Button>
-        )}
+        <Group gap="xs">
+          <BotonExportar lista="clientes" permiso="clientes.exportar"
+            filtros={{ texto: busqueda || undefined, archivados }} />
+          {puede('clientes.crear') && (
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setCreando(true)}>Nuevo cliente</Button>
+          )}
+        </Group>
       </Group>
 
       <Group align="flex-end">
