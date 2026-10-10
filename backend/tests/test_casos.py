@@ -505,3 +505,94 @@ def test_quien_no_ve_el_tramite_no_puede_meter_gente_en_el(
     r = cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=entrar(cliente, ajeno),
                      json={'usuario_id': ajeno.u.id})
     assert r.status_code == 404, 'ni siquiera para meterse a si mismo'
+
+
+# ------------------------------- el alcance tambien tiene que valer al ESCRIBIR
+
+def test_quien_solo_ve_lo_suyo_tampoco_puede_tocar_lo_ajeno(
+        cliente, db, usuario, solicitante, pais_usa):
+    """RNF-03, la mitad que faltaba.
+
+    El alcance se aplicaba al LEER: quien tiene «solo asignados» no ve los
+    tramites ajenos en la lista y recibe 404 si entra por la URL. Pero las cinco
+    rutas de ESCRITURA llamaban a obtener(db, caso_id) sin el actor, asi que con
+    solo saber el numero del tramite se podia editarlo, moverlo de estado,
+    registrarle el resultado, agendarle una cita y marcarle el checklist.
+
+    Peor que ver lo ajeno: cambiarlo. Y como el responsable no se entera, el
+    historial dice que alguien lo movio sin que nadie entienda por que.
+    """
+    from app.services import usuarios as servicio_usuarios
+
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ajeno = usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, ajeno.u.id, alcance='asignados')
+    db.commit()
+
+    cab_dueno = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab_dueno, solicitante, pais_usa, dueno.u.id)
+    cab_ajeno = entrar(cliente, ajeno)
+
+    # Primero, lo que ya funcionaba: no lo ve.
+    assert cliente.get(f'{CASOS}/{caso["id"]}', headers=cab_ajeno).status_code == 404
+
+    # Y ahora lo que no: tampoco puede tocarlo por ninguna de las cinco puertas.
+    escrituras = [
+        ('editar', lambda: cliente.patch(f'{CASOS}/{caso["id"]}', headers=cab_ajeno,
+                                         json={'proxima_accion': 'Me lo apropio'})),
+        ('mover', lambda: cliente.post(f'{CASOS}/{caso["id"]}/mover', headers=cab_ajeno,
+                                       json={'estado': 'documentos'})),
+        ('resultado', lambda: cliente.post(f'{CASOS}/{caso["id"]}/resultado',
+                                           headers=cab_ajeno,
+                                           json={'resultado': 'aprobada'})),
+        ('cita', lambda: cliente.post(f'{CASOS}/{caso["id"]}/citas', headers=cab_ajeno,
+                                      json={'tipo': 'cas', 'inicia_en': '2026-12-01T09:00:00'})),
+        ('checklist', lambda: cliente.post(f'{CASOS}/{caso["id"]}/checklist/1',
+                                           headers=cab_ajeno, json={'cumplido': True})),
+    ]
+    # Se revisan las cinco y se reportan todas: parar en la primera esconde las
+    # demas, y lo que hace falta saber es cuantas puertas quedaron abiertas.
+    coladas = [(n, llamar().status_code) for n, llamar in escrituras]
+    coladas = [(n, c) for n, c in coladas if c != 404]
+    assert not coladas, (
+        f'dejaron escribir en un tramite ajeno: {coladas}. '
+        f'No ver algo y no poder cambiarlo tienen que ser la misma cosa.')
+
+    # Y el tramite quedo igual.
+    db.expire_all()
+    from app.models.esquema import Casos as M
+    assert db.get(M, caso['id']).proxima_accion != 'Me lo apropio'
+
+
+def test_el_404_al_editar_lo_ajeno_no_puede_ser_cosmetico(
+        cliente, db, usuario, solicitante, pais_usa):
+    """La ruta escribia y DESPUES devolvia el detalle, que es quien da el 404.
+
+        servicio.editar(db, actor, caso_id, ...)   # ya escribio
+        return detalle(caso_id, actor, db)         # el 404 sale aca
+
+    Asi que quien no tiene alcance recibia un 404, creia que no habia pasado
+    nada, y el tramite ajeno quedaba cambiado. Un error que miente sobre lo que
+    acaba de ocurrir es peor que no tener control: nadie va a ir a revisar.
+    """
+    from app.services import usuarios as servicio_usuarios
+    from app.models.esquema import Casos as M
+
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ajeno = usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, ajeno.u.id, alcance='asignados')
+    db.commit()
+
+    cab_dueno = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab_dueno, solicitante, pais_usa, dueno.u.id)
+    antes = db.get(M, caso['id']).proxima_accion
+
+    r = cliente.patch(f'{CASOS}/{caso["id"]}', headers=entrar(cliente, ajeno),
+                      json={'proxima_accion': 'Fantasma'})
+    assert r.status_code == 404
+
+    db.expire_all()
+    assert db.get(M, caso['id']).proxima_accion == antes, (
+        'el 404 mintio: el tramite ajeno quedo cambiado de todas formas')

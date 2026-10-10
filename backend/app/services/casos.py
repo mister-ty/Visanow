@@ -115,7 +115,7 @@ def crear(db: Session, actor: Usuarios, datos: dict, ip: str | None = None) -> C
 def editar(db: Session, actor: Usuarios, caso_id: int, cambios: dict, ip: str | None = None) -> Casos:
     """Cambios de datos del caso (responsable, sede, tipo de visa, próxima acción).
     El estado no se cambia por aquí: tiene sus propias reglas."""
-    caso = obtener(db, caso_id)
+    caso = obtener(db, caso_id, actor=actor)
     for campo, valor in cambios.items():
         if campo not in CAMPOS_CASO:
             continue
@@ -238,7 +238,7 @@ def _validar_checklist(db: Session, caso: Casos) -> None:
 def cambiar_estado(db: Session, actor: Usuarios, caso_id: int, *, codigo_destino: str,
                    motivo: str | None = None, cambios: dict | None = None, forzar: bool = False,
                    ip: str | None = None) -> Casos:
-    caso = obtener(db, caso_id)
+    caso = obtener(db, caso_id, actor=actor)
     origen, destino = caso.estado, _estado(db, codigo_destino)
     if origen.id == destino.id:
         raise Invalido('El trámite ya está en ese estado.')
@@ -300,7 +300,7 @@ def registrar_resultado(db: Session, actor: Usuarios, caso_id: int, *, resultado
     puede tener todavía pendiente la entrega del pasaporte (RN-06)."""
     if resultado not in RESULTADOS:
         raise Invalido(f'Resultado inválido. Opciones: {", ".join(RESULTADOS)}.')
-    caso = obtener(db, caso_id)
+    caso = obtener(db, caso_id, actor=actor)
     anterior = caso.resultado
     caso.resultado, caso.resultado_fecha, caso.resultado_nota = resultado, fecha or date.today(), nota
     caso.ultima_actividad_en = _ahora()
@@ -314,7 +314,7 @@ def registrar_resultado(db: Session, actor: Usuarios, caso_id: int, *, resultado
 # --------------------------------------------------------------------- citas
 
 def agendar_cita(db: Session, actor: Usuarios, caso_id: int, datos: dict, ip: str | None = None) -> Citas:
-    caso = obtener(db, caso_id)
+    caso = obtener(db, caso_id, actor=actor)
     cita = Citas(caso_id=caso.id, **datos)
     db.add(cita)
     db.flush()
@@ -336,6 +336,9 @@ def actualizar_cita(db: Session, actor: Usuarios, cita_id: int, cambios: dict,
     cita = db.get(Citas, cita_id)
     if cita is None:
         raise NoEncontrado('La cita no existe.')
+    # Entra por el id de la cita, pero el alcance se decide sobre su tramite:
+    # si no, bastaba con saber el numero de la cita para tocar la de cualquiera.
+    obtener(db, cita.caso_id, actor=actor)
 
     antes_fecha, antes_estado = cita.inicia_en, cita.estado
     cambiados = []
@@ -395,7 +398,7 @@ def checklist_de(db: Session, caso: Casos) -> list[tuple[ChecklistItems, bool]]:
 
 def marcar_item(db: Session, actor: Usuarios, caso_id: int, item_id: int, *, cumplido: bool,
                 observacion: str | None = None, ip: str | None = None) -> None:
-    caso = obtener(db, caso_id)
+    caso = obtener(db, caso_id, actor=actor)
     item = db.get(ChecklistItems, item_id)
     if item is None:
         raise NoEncontrado('El documento del checklist no existe.')
