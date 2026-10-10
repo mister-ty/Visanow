@@ -1,16 +1,17 @@
-"""Que una tabla nueva no vuelva a abrir la puerta (RNF-10).
+"""Que nada vuelva a quedar legible con la llave anonima (RNF-10).
 
-Supabase publica el esquema `public` por internet con PostgREST. Una tabla sin
-«row level security» queda legible con la llave anonima, que va en el codigo del
-navegador y no es secreta. La migracion 0015 cerro las que existian ese dia;
-esta prueba se encarga de las que vengan despues, que es donde se cuela el
-descuido: nada falla, nadie se entera, y los datos quedan a la vista.
+Supabase publica el esquema `public` por internet con PostgREST. La llave
+anonima va en el codigo del navegador y no es secreta, asi que todo lo que ese
+rol pueda leer es publico.
+
+Estas pruebas existen porque el hueco ya se abrio una vez, y de la forma menos
+evidente: la migracion 0015 cerro las 56 tablas con RLS, pero las VISTAS se
+quedaron por fuera. Una vista en PostgreSQL corre por omision con los permisos
+de quien la creo, no de quien pregunta, asi que `v_estado_financiero` y
+`v_cartera` seguian devolviendo las 477 ventas y los 65 millones de cartera.
+Las tablas cerradas y la puerta de al lado abierta.
 """
 from sqlalchemy import text
-
-# `alembic_version` no tiene datos de nadie: solo dice en que migracion va la
-# base. No vale la pena cerrarla y dejarla fuera hace la intencion explicita.
-SIN_RLS_A_PROPOSITO = {'alembic_version'}
 
 
 def test_toda_tabla_del_esquema_publico_tiene_rls(db):
@@ -20,12 +21,29 @@ def test_toda_tabla_del_esquema_publico_tiene_rls(db):
          where n.nspname = 'public' and c.relkind = 'r'
            and not c.relrowsecurity
          order by c.relname"""))]
-    sobran = sorted(set(abiertas) - SIN_RLS_A_PROPOSITO)
-    assert not sobran, (
+    assert not abiertas, (
         'Estas tablas quedarian legibles con la llave anonima de Supabase: '
-        + ', '.join(sobran)
+        + ', '.join(abiertas)
         + '. Agregue `alter table <tabla> enable row level security` a la migracion '
           'que las creo.')
+
+
+def test_toda_vista_corre_con_los_permisos_de_quien_pregunta(db):
+    """Sin `security_invoker`, una vista se salta el RLS de sus tablas.
+
+    Es el defecto que ya paso: no basta con cerrar las tablas.
+    """
+    sin_invoker = [f for (f,) in db.execute(text("""
+        select c.relname
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'public' and c.relkind = 'v'
+           and coalesce((select option_value from pg_options_to_table(c.reloptions)
+                          where option_name = 'security_invoker'), 'false') <> 'true'
+         order by c.relname"""))]
+    assert not sin_invoker, (
+        'Estas vistas se saltan el RLS de sus tablas y quedarian legibles con la llave '
+        'anonima: ' + ', '.join(sin_invoker)
+        + '. Agregue `alter view <vista> set (security_invoker = true)`.')
 
 
 def test_ninguna_tabla_tiene_politicas_que_abran_la_api(db):
@@ -35,8 +53,28 @@ def test_ninguna_tabla_tiene_politicas_que_abran_la_api(db):
     Asi que no deberia existir ninguna politica, y si aparece una es que alguien
     abrio algo sin querer.
     """
-    politicas = [f'{e}.{t}: {p}' for e, t, p in db.execute(text("""
-        select schemaname, tablename, policyname from pg_policies
+    politicas = [f'{t}: {p}' for t, p in db.execute(text("""
+        select tablename, policyname from pg_policies
          where schemaname = 'public' order by tablename"""))]
     assert not politicas, ('Hay politicas de RLS en public y no deberia haber ninguna: '
                            + '; '.join(politicas))
+
+
+def test_las_funciones_tienen_search_path_fijo(db):
+    """Una funcion sin `search_path` resuelve nombres contra un esquema que el
+    llamante puede controlar. En `auditoria_inalterable` importa de verdad: es
+    la que impide modificar la auditoria (RNF-05)."""
+    sueltas = [f for (f,) in db.execute(text("""
+        select p.proname
+          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = 'public' and p.prokind = 'f'
+           -- Solo las nuestras: citext, pg_trgm y unaccent instalan las suyas en
+           -- public y no son nuestras para andar modificandolas.
+           and not exists (select 1 from pg_depend d
+                            where d.objid = p.oid and d.deptype = 'e')
+           and not exists (select 1 from unnest(coalesce(p.proconfig, '{}'))
+                            as c(x) where x like 'search_path=%')
+         order by p.proname"""))]
+    assert not sueltas, ('Estas funciones no tienen search_path fijo: '
+                         + ', '.join(sueltas)
+                         + '. Agregue `alter function <f> set search_path = pg_catalog, public`.')

@@ -41,7 +41,8 @@ import subprocess
 import sys
 import tempfile
 
-RAIZ = pathlib.Path(__file__).resolve().parents[1]
+# La raiz del repositorio: este archivo esta en backend/app/, y el .env en la raiz.
+RAIZ = pathlib.Path(__file__).resolve().parents[2]
 
 
 def _psql_bin(nombre: str) -> str:
@@ -94,42 +95,45 @@ def main() -> None:
     origen = _url_desarrollo()
     pg_dump, psql = _psql_bin('pg_dump'), _psql_bin('psql')
 
-    # Si Render desplego primero, su arranque ya sembro el catalogo (roles,
-    # permisos, servicios, tarifas...) y el volcado chocaria contra las llaves
-    # unicas a mitad de la carga, dejando la base medio llena. Se mira antes.
-    ya = subprocess.run([psql, '-t', '-A', '-c',
-                         "select coalesce((select count(*) from roles), 0)",
-                         destino], capture_output=True, text=True)
-    sembrada = ya.returncode == 0 and (ya.stdout or '0').strip().isdigit() \
-        and int(ya.stdout.strip()) > 0
-    if sembrada and not limpiar:
+    # Lo que decide si se puede borrar es si hay DATOS DE CLIENTES, no si hay
+    # catalogo: la migracion 0001 inserta por si misma los estados operativos y
+    # comerciales, asi que el destino nunca esta del todo vacio aunque nadie lo
+    # haya usado nunca. Mirar el catalogo daba un falso positivo.
+    def _cuantos_clientes() -> int:
+        r = subprocess.run([psql, '-t', '-A', '-c',
+                            "select coalesce((select count(*) from clientes), 0)", destino],
+                           capture_output=True, text=True)
+        salida = (r.stdout or '').strip()
+        return int(salida) if r.returncode == 0 and salida.isdigit() else 0
+
+    if _cuantos_clientes() > 0 and not limpiar:
         raise SystemExit(
-            'La base de Supabase ya tiene catalogo sembrado: probablemente Render\n'
-            'desplego antes que esta carga. El volcado chocaria contra las llaves\n'
-            'unicas y la dejaria a medias.\n\n'
-            'Si esos datos no importan (es el catalogo del arranque, no datos de\n'
-            'clientes), vuelva a correr con --limpiar y se borra todo antes de cargar.')
-    if sembrada and limpiar:
-        print('0/3  vaciando lo que habia...')
-        _correr([psql, '--quiet', '-v', 'ON_ERROR_STOP=1', '-c', """
-            do $$
-            declare t record;
-            begin
-              for t in select tablename from pg_tables where schemaname = 'public'
-              loop
-                execute format('alter table public.%I disable trigger all', t.tablename);
-                execute format('truncate table public.%I cascade', t.tablename);
-                execute format('alter table public.%I enable trigger all', t.tablename);
-              end loop;
-            end $$;""", destino])
-        print('     listo')
+            'La base de Supabase YA TIENE CLIENTES. Esta carga los reemplazaria.\n\n'
+            'Si de verdad quiere reemplazarlos, vuelva a correr con --limpiar.\n'
+            'Si no, revise antes que hay ahi: puede ser el trabajo de alguien.')
 
     print('1/3  esquema, con alembic...')
     entorno = dict(os.environ, PYTHONPATH='.', DATABASE_URL=destino_sa,
                    PYTHONIOENCODING='utf-8')
     _correr([sys.executable, '-m', 'alembic', 'upgrade', 'head'],
             cwd=str(RAIZ / 'backend'), env=entorno)
-    print('     listo')
+
+    # Y recien aqui se vacia, porque alembic acaba de sembrar los estados al
+    # crear el esquema: si se vaciara antes, volverian a aparecer y el volcado
+    # chocaria contra ellos. El volcado trae su propia copia de todo.
+    _correr([psql, '--quiet', '-v', 'ON_ERROR_STOP=1', '-c', """
+        set session_replication_role = replica;
+        do $$
+        declare t record;
+        begin
+          for t in select tablename from pg_tables
+                    where schemaname = 'public' and tablename <> 'alembic_version'
+          loop
+            execute format('truncate table public.%I cascade', t.tablename);
+          end loop;
+        end $$;
+        set session_replication_role = origin;""", destino])
+    print('     listo, y el destino quedo vacio para recibir los datos')
 
     print('2/3  volcando los datos de desarrollo...')
     with tempfile.TemporaryDirectory() as tmp:
