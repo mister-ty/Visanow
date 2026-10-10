@@ -1,5 +1,5 @@
 import {
-  IconAddressBook, IconCalendarEvent, IconCash, IconChartBar, IconFilter, IconHome, IconMessage,
+  IconAddressBook, IconBuildingBank, IconCalendarEvent, IconCash, IconChartBar, IconFilter, IconHome, IconMessage,
   IconPercentage, IconPlaneDeparture, IconSettings, IconUsers, type Icon,
 } from '@tabler/icons-react'
 
@@ -36,6 +36,9 @@ export const SECCIONES: Seccion[] = [
   },
   {
     ruta: '/pagos', titulo: 'Pagos y cartera', icono: IconCash, permiso: 'pagos.ver',
+  },
+  {
+    ruta: '/conciliacion', titulo: 'Conciliación', icono: IconBuildingBank, permiso: 'pagos.ver',
   },
   {
     ruta: '/comisiones', titulo: 'Comisiones', icono: IconPercentage, permiso: 'comisiones.ver',
