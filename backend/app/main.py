@@ -3,6 +3,7 @@
     uvicorn app.main:app --reload
 """
 import logging
+import os
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -59,5 +60,20 @@ montar_admin(app)
 
 @app.get('/salud', tags=['sistema'])
 def salud(db: Session = Depends(get_db)):
+    """Que la aplicacion responde, que alcanza la base, y QUE VERSION es.
+
+    Lo ultimo no es un adorno. Despues de desplegar, la pregunta siempre es «¿ya
+    quedo lo que acabo de subir o sigue lo de antes?», y sin esto hay que ir a
+    buscarlo al tablero del proveedor. `RENDER_GIT_COMMIT` la pone Render sola;
+    fuera de Render no existe y sale «desconocida», que es la respuesta honesta.
+
+    No revela nada: el repositorio y sus commits ya se saben.
+    """
     db.execute(text('select 1'))
-    return {'estado': 'ok', 'entorno': ajustes().app_env}
+    commit = os.environ.get('RENDER_GIT_COMMIT') or os.environ.get('GIT_COMMIT')
+    return {
+        'estado': 'ok',
+        'entorno': ajustes().app_env,
+        'version': commit[:7] if commit else 'desconocida',
+        'migracion': db.execute(text('select version_num from alembic_version')).scalar(),
+    }

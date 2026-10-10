@@ -170,3 +170,17 @@ def test_una_variable_pegada_con_salto_de_linea_no_tumba_el_arranque():
     assert sucio.cifrado_llave == 'y' * 44
     assert sucio.url_ui == 'https://visanow.vercel.app'
     assert sucio.origenes_cors == ['https://visanow.vercel.app']
+
+
+def test_salud_dice_que_version_esta_corriendo(cliente, monkeypatch):
+    """Despues de desplegar la pregunta siempre es «¿ya quedo lo que subi o
+    sigue lo de antes?». Sin esto hay que ir al tablero del proveedor."""
+    monkeypatch.setenv('RENDER_GIT_COMMIT', '8a99bfe1234567890abcdef')
+    d = cliente.get('/salud').json()
+    assert d['estado'] == 'ok'
+    assert d['version'] == '8a99bfe', d
+    assert d['migracion'], 'y en que migracion quedo la base'
+
+    monkeypatch.delenv('RENDER_GIT_COMMIT')
+    assert cliente.get('/salud').json()['version'] == 'desconocida', (
+        'fuera de Render no se inventa una version')
