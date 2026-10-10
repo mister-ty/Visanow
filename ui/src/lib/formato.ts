@@ -24,3 +24,9 @@ export const NOMBRES_ALCANCE: Record<string, string> = {
   asignados: 'Solo casos asignados',
   propios: 'Solo lo propio',
 }
+
+/** Convierte lo que entrega un <input type="datetime-local"> (hora de pared, sin
+ *  zona) en un instante con la zona de Bogotá. Colombia no tiene horario de
+ *  verano, así que -05:00 es fijo; sin esto el servidor, que corre en UTC,
+ *  tomaría la hora cinco horas antes de lo que la persona escribió. */
+export const aInstanteBogota = (local: string): string => `${local}:00-05:00`

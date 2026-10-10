@@ -1,5 +1,6 @@
 import {
-  IconAddressBook, IconBuildingBank, IconCalendarEvent, IconCash, IconChartBar, IconFilter, IconHome, IconMessage,
+  IconAddressBook, IconBell, IconBuildingBank, IconCalendarEvent, IconCash, IconChartBar,
+  IconChecklist, IconFilter, IconHome, IconMessage,
   IconPercentage, IconPlaneDeparture, IconSettings, IconUsers, type Icon,
 } from '@tabler/icons-react'
 
@@ -29,6 +30,12 @@ export const SECCIONES: Seccion[] = [
       actividad: '2.5', fecha: '28/09', desde: '28/09',
       contenido: ['Citas CAS, biometría, entrevistas, preparaciones y entregas, con sede y zona horaria'],
     },
+  },
+  {
+    ruta: '/tareas', titulo: 'Tareas', icono: IconChecklist, permiso: 'alertas.ver',
+  },
+  {
+    ruta: '/alertas', titulo: 'Alertas', icono: IconBell, permiso: 'alertas.ver',
   },
   {
     ruta: '/embudo', titulo: 'Embudo comercial', icono: IconFilter,
