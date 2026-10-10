@@ -12,6 +12,21 @@
 # procesos compitiendo por la misma tabla.
 set -e
 
+# Sin esto, la falta de DATABASE_URL sale como un traceback de treinta lineas de
+# alembic que termina en KeyError, y no le dice a nadie que hacer. Es el error
+# mas probable del primer despliegue: el blueprint la deja en blanco a proposito
+# porque lleva la clave de la base.
+if [ -z "$DATABASE_URL" ]; then
+  echo "[arranque] FALTA LA VARIABLE DATABASE_URL."
+  echo "[arranque]"
+  echo "[arranque] Es la cadena de conexion de la base. En Render se pone en"
+  echo "[arranque] Environment > Environment Variables, con la clave DATABASE_URL."
+  echo "[arranque] Si la base es Supabase, use la del Session pooler (puerto 5432),"
+  echo "[arranque] no la de transacciones, y cambie el prefijo postgresql:// por"
+  echo "[arranque] postgresql+psycopg://"
+  exit 1
+fi
+
 echo "[arranque] migrando la base..."
 python -m alembic upgrade head
 
