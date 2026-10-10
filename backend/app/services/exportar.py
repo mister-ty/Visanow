@@ -31,11 +31,14 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.deps import permisos_de_rol
-from app.core.errores import Invalido, Prohibido
+from app.core.errores import Conflicto, Invalido, Prohibido
 from app.models.esquema import Exportaciones, Usuarios
 
 BOGOTA = ZoneInfo('America/Bogota')
 FORMATOS = ('xlsx', 'csv')
+# Una exportacion sin tope es una forma de vaciar la base en una peticion. Con
+# 866 personas hoy no se nota; el tope es para el dia que si.
+MAX_FILAS = 50_000
 
 
 @dataclass
@@ -200,8 +203,26 @@ def _filas(db: Session, actor: Usuarios, recurso: Recurso,
         else:
             sql = sql.replace(':alcance', 'true')
     crudas = db.execute(text(sql), p).mappings().all()
+    if len(crudas) > MAX_FILAS:
+        raise Conflicto(
+            f'La consulta trae {len(crudas):,} filas y el tope por archivo es de '
+            f'{MAX_FILAS:,}. Filtre antes de exportar.'.replace(',', '.'),
+            'demasiadas_filas')
     nombres = [c.campo for c in columnas]
-    return [[fila.get(n) for n in nombres] for fila in crudas]
+    return [[_inerte(fila.get(n)) for n in nombres] for fila in crudas]
+
+
+def _inerte(v):
+    """Neutraliza lo que Excel y Sheets ejecutarian al abrir el archivo.
+
+    Una celda que empieza por «=», «+», «-» o «@» es una formula, y se ejecuta
+    en el computador de quien abre la descarga, no en el servidor. El dato entra
+    por el nombre de un cliente, que lo escribe cualquiera. La comilla delante
+    es lo que Excel entiende como «esto es texto» y no se ve al abrirlo.
+    """
+    if isinstance(v, str) and v[:1] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + v
+    return v
 
 
 def _a_csv(titulos: list[str], filas: list[list]) -> bytes:

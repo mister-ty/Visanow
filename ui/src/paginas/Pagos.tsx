@@ -9,6 +9,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
+import { BotonExportar } from '../componentes/BotonExportar'
 import { useAsignables } from '../lib/catalogos'
 import { mostrarError } from '../lib/errores'
 import { formatearPesos } from '../lib/formato'
@@ -52,6 +53,10 @@ export function Pagos() {
           <Title order={2}>Pagos y cartera</Title>
           <Text size="sm" c="dimmed">Quién debe, cuánto y desde cuándo; y los pagos que aún no tienen dueño.</Text>
         </div>
+        <Group gap="xs">
+          <BotonExportar recurso="cartera" etiqueta="Exportar cartera" />
+          <BotonExportar recurso="pagos" etiqueta="Exportar pagos" />
+        </Group>
         {puede('pagos.crear') && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => setRegistrando(true)}>
             Registrar pago

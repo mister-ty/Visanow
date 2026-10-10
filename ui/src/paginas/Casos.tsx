@@ -6,6 +6,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { IconAlertTriangle, IconCloudDownload, IconSearch, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BotonExportar } from '../componentes/BotonExportar'
 import { api, exigir } from '../api/cliente'
 
 const COLOR_RIESGO = { alto: 'red', medio: 'yellow', bajo: 'gray', ninguno: 'gray' } as const
@@ -35,7 +36,10 @@ export function Casos() {
 
   return (
     <Stack>
-      <Title order={2}>Trámites</Title>
+      <Group justify="space-between">
+        <Title order={2}>Trámites</Title>
+        <BotonExportar recurso="casos" />
+      </Group>
 
       <Group gap="xs">
         <Chip checked={estado === null} onChange={() => setEstado(null)} variant="light">

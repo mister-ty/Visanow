@@ -9,6 +9,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { IconPlus, IconSearch, IconX } from '@tabler/icons-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BotonExportar } from '../componentes/BotonExportar'
 import { api, exigir } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados } from '../componentes/AvisoDuplicados'
@@ -38,9 +39,12 @@ export function Clientes() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Clientes</Title>
-        {puede('clientes.crear') && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setCreando(true)}>Nuevo cliente</Button>
-        )}
+        <Group gap="xs">
+          <BotonExportar recurso="clientes" />
+          {puede('clientes.crear') && (
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setCreando(true)}>Nuevo cliente</Button>
+          )}
+        </Group>
       </Group>
 
       <Group align="flex-end">

