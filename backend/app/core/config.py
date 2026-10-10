@@ -30,6 +30,19 @@ class Ajustes(BaseSettings):
     # sensibles. Se puede vaciar en local para agilizar pruebas manuales.
     mfa_roles_obligatorio: str = 'administradora,finanzas'
 
+    # Correo (RNF-02). Sin host ni remitente no se envía nada, y se dice en el
+    # log en vez de fingir que se envió. SMTP y no un servicio con su propia
+    # llave: VisaNow ya tiene correo, lo habla cualquier proveedor, y no agrega
+    # una dependencia ni un secreto más que rotar.
+    smtp_host: str = ''
+    smtp_puerto: int = 587
+    smtp_usuario: str = ''
+    smtp_password: str = ''
+    smtp_desde: str = ''
+    smtp_tls: bool = True          # STARTTLS en el 587, que es lo habitual
+    smtp_ssl: bool = False         # SSL directo, para el 465
+    smtp_timeout: int = 15         # sin esto, un proveedor caído cuelga la petición
+
     # Bloqueo por contraseñas erradas
     login_max_intentos: int = 5
     login_bloqueo_minutos: int = 15

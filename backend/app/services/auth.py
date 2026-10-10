@@ -215,7 +215,7 @@ def solicitar_recuperacion(db: Session, email: str, ip: str | None) -> None:
                             pwf=seg.huella_password(u.password_hash))
     auditar(db, operacion='recuperacion', entidad='usuarios', usuario_id=u.id, entidad_id=u.id, ip=ip)
     db.commit()
-    notificaciones.enviar_recuperacion(u.email, token)
+    notificaciones.enviar_recuperacion(u.email, token, MINUTOS_TOKEN_RECUPERACION)
 
 
 def restablecer_password(db: Session, token: str, nueva: str, ip: str | None) -> None:

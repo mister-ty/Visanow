@@ -23,7 +23,13 @@ _cargar_env()
 config = context.config
 config.set_main_option('sqlalchemy.url', os.environ['DATABASE_URL'])
 if config.config_file_name:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False a proposito. Por omision es True, y eso APAGA
+    # todos los loggers que no esten declarados en alembic.ini: los de la
+    # aplicacion entre ellos. En produccion no se nota porque arranque.sh corre
+    # alembic en su propio proceso y despues hace exec de uvicorn, pero en
+    # cualquier sitio donde alembic corra dentro del mismo proceso -las pruebas,
+    # por ejemplo- la aplicacion se queda muda y no hay nada que lo diga.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = None  # el esquema se gobierna por SQL, no por autogenerate
 

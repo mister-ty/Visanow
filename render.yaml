@@ -69,3 +69,17 @@ services:
         sync: false
       - key: ADMIN_INICIAL_EMAIL
         sync: false
+
+      # Correo (RNF-02). Sin esto, «¿Olvido su contrasena?» no envia nada: la
+      # peticion responde igual -si no, delataria quien tiene cuenta- pero queda
+      # el error en el log. Mientras tanto la administradora restablece la
+      # contrasena desde Usuarios y entrega la temporal.
+      # Con Gmail va una "contrasena de aplicacion", no la del buzon.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USUARIO
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_DESDE
+        sync: false
