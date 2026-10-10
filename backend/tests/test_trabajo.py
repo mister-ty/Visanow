@@ -264,3 +264,49 @@ def test_operaciones_puede_trabajar_sus_tareas_y_alertas(cliente, operaciones):
     assert cliente.get('/api/v1/tareas', headers=cab).status_code == 200
     assert cliente.get('/api/v1/alertas', headers=cab).status_code == 200
     assert cliente.get('/api/v1/alertas/resumen', headers=cab).status_code == 200
+
+
+# ------------------------------------- una alerta que dice lo que no es, estorba
+
+def _alerta_de_sync(db, cliente, cab, *, resultado, hace_horas, detalle):
+    """Deja una sola sincronizacion del SaaS y pide que se evaluen las alertas."""
+    db.execute(text("delete from alertas where tipo_id in "
+                    "(select id from alertas_tipos where codigo = 'sync_saas_fallida')"))
+    db.execute(text('delete from sincronizaciones'))
+    db.execute(text("""insert into sincronizaciones (origen, resultado, detalle, intentos,
+                                                     ocurrido_en)
+                       values ('saas', :r, :d, 1, now() - make_interval(hours => :h))"""),
+               {'r': resultado, 'd': detalle, 'h': hace_horas})
+    db.commit()
+    r = cliente.post('/api/v1/alertas/generar', headers=cab,
+                     json={'codigos': ['sync_saas_fallida']})
+    assert r.status_code == 200, r.text
+    db.expire_all()
+    return db.scalars(select(Alertas).join(AlertasTipos)
+                      .where(AlertasTipos.codigo == 'sync_saas_fallida')
+                      .order_by(Alertas.id.desc())).first()
+
+
+def test_una_importacion_vieja_pero_exitosa_no_se_anuncia_como_fallida(cliente, admin, db):
+    """La regla dispara por dos motivos distintos -fallo, o lleva mucho sin
+    correr- y los anunciaba con el mismo texto: «no se ha hecho con éxito».
+
+    Quien lee eso de una importación que sí funcionó sale a buscar un fallo que
+    no ocurrió; y el día que una de verdad falle, no va a poder distinguirla.
+    """
+    a = _alerta_de_sync(db, cliente, admin, resultado='ok', hace_horas=40,
+                        detalle='5 trámites actualizados, 0 con conflicto')
+    assert a is not None, 'a las 40 horas sin importar si tiene que avisar'
+    assert 'no se ha hecho con éxito' not in a.mensaje, a.mensaje
+    assert 'fall' not in a.mensaje.lower(), (
+        f'la importación funcionó; el problema es que está vieja: {a.mensaje}')
+    assert '40' in a.mensaje or 'hora' in a.mensaje.lower(), (
+        f'tiene que decir cuánto lleva sin correr: {a.mensaje}')
+
+
+def test_una_importacion_que_si_fallo_lo_dice(cliente, admin, db):
+    a = _alerta_de_sync(db, cliente, admin, resultado='error', hace_horas=1,
+                        detalle='el archivo no trae la columna N° Solicitud')
+    assert a is not None
+    assert 'fall' in a.mensaje.lower(), a.mensaje
+    assert 'N° Solicitud' in a.mensaje, 'el detalle del error es lo util'

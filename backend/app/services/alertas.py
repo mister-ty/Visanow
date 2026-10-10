@@ -206,15 +206,26 @@ REGLAS: dict[str, Regla] = {
     # sincronizacion, que es lo que hace que la clave de deduplicacion cambie
     # cuando vuelve a fallar y no cuando sigue fallando lo mismo.
     'sync_saas_fallida': Regla(
+        # Dispara por dos motivos que no son el mismo: la ultima importacion
+        # fallo, o funciono pero lleva mucho sin correr. Anunciarlos con el
+        # mismo texto hace que quien lea «fallida» de una importacion que si
+        # funciono salga a buscar un problema que no existe, y que el dia que
+        # una de verdad falle no se distinga de la otra. `que_paso` las separa.
         sql="""select s.id as entidad_id, null::bigint as destinatario,
                       s.ocurrido_en as cuando, s.intentos as intentos,
-                      coalesce(s.detalle, 'sin detalle') as detalle
+                      coalesce(s.detalle, 'sin detalle') as detalle,
+                      case when s.resultado = 'error'
+                           then 'La importación del SaaS falló tras ' ||
+                                s.intentos || ' intento(s)'
+                           else 'El SaaS lleva ' ||
+                                round(extract(epoch from (now() - s.ocurrido_en)) / 3600)::int ||
+                                ' horas sin importarse; la última sí funcionó'
+                      end as que_paso
                  from sincronizaciones s
                 where s.origen = 'saas'
                   and s.id = (select max(id) from sincronizaciones where origen = 'saas')
                   and (s.resultado = 'error' or s.ocurrido_en <= :corte)""",
-        mensaje='La importación del SaaS no se ha hecho con éxito: {detalle} '
-                '({intentos} intento[s]).'),
+        mensaje='{que_paso}: {detalle}.'),
 }
 
 
