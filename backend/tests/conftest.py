@@ -26,7 +26,18 @@ def _url_del_env() -> str:
 
 
 URL_BASE = _url_del_env()
-URL_PRUEBAS = re.sub(r'/[^/]+$', '/visanow_test', URL_BASE)
+
+#: El nombre de la base de pruebas se puede cambiar con BASE_PRUEBAS.
+#:
+#: La suite entera recrea esta base desde cero, asi que dos corridas a la vez
+#: sobre el mismo nombre se tumban la una a la otra: la segunda hace DROP de la
+#: base que la primera esta usando y lo que se ve son errores que no tienen nada
+#: que ver con el codigo. Pasa al revisar varias cosas en paralelo, o con dos
+#: terminales abiertas.
+#:
+#: Por omision es la de siempre, asi que nadie tiene que hacer nada distinto.
+BASE_PRUEBAS = os.environ.get('BASE_PRUEBAS', 'visanow_test')
+URL_PRUEBAS = re.sub(r'/[^/]+$', f'/{BASE_PRUEBAS}', URL_BASE)
 os.environ['DATABASE_URL'] = URL_PRUEBAS
 os.environ['APP_ENV'] = 'local'
 os.environ['MFA_ROLES_OBLIGATORIO'] = 'administradora,finanzas'
@@ -48,8 +59,8 @@ from app.services.usuarios import exige_mfa  # noqa: E402
 def base_de_pruebas():
     mantenimiento = re.sub(r'/[^/]+$', '/postgres', URL_BASE.replace('postgresql+psycopg://', 'postgresql://'))
     with psycopg.connect(mantenimiento, autocommit=True) as c:
-        c.execute('drop database if exists visanow_test with (force)')
-        c.execute('create database visanow_test')
+        c.execute(f'drop database if exists {BASE_PRUEBAS} with (force)')
+        c.execute(f'create database {BASE_PRUEBAS}')
 
     from alembic import command
     from alembic.config import Config
