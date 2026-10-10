@@ -364,3 +364,144 @@ def test_mover_una_cita_deja_una_sola_linea_en_el_historial(cliente, operaciones
     nueva = historial[0]
     assert 'reprogramada' in nueva['titulo']
     assert nueva['observacion'] == 'El consulado la corrió', 'la nota va en la misma línea'
+
+
+# ------------------------------------------------------------ colaboradores
+
+def _con_alcance_limitado(db, usuario, admin):
+    from app.services import usuarios as servicio_usuarios
+    u = usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, u.u.id, alcance='asignados')
+    db.commit()
+    return u
+
+
+def test_colaborar_en_un_tramite_deja_verlo_aunque_no_sea_suyo(
+        cliente, db, usuario, solicitante, pais_usa):
+    """RF-026. Hasta hoy solo existia el responsable: ayudar en un tramite ajeno
+    obligaba a reasignarlo, y reasignar cambia quien responde por el, que no es
+    lo mismo que ayudar.
+
+    Lo que esta prueba vigila es que ser colaborador sirva de algo. Si el nombre
+    quedara en la ficha pero el alcance siguiera mirando solo al responsable,
+    el colaborador veria que lo pusieron y no podria abrir el tramite.
+    """
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ayuda = _con_alcance_limitado(db, usuario, admin)
+
+    cab_dueno = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab_dueno, solicitante, pais_usa, dueno.u.id)
+
+    cab_ayuda = entrar(cliente, ayuda)
+    assert cliente.get(f'{CASOS}/{caso["id"]}', headers=cab_ayuda).status_code == 404
+
+    r = cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=cab_dueno,
+                     json={'usuario_id': ayuda.u.id})
+    assert r.status_code == 201, r.text
+    assert [c['usuario_id'] for c in r.json()] == [ayuda.u.id]
+
+    assert cliente.get(f'{CASOS}/{caso["id"]}', headers=cab_ayuda).status_code == 200
+    vistos = cliente.get(CASOS, headers=cab_ayuda).json()
+    assert caso['id'] in [c['id'] for c in vistos['items']], 'y sale en su lista'
+
+
+def test_quitarlo_le_quita_el_acceso(cliente, db, usuario, solicitante, pais_usa):
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ayuda = _con_alcance_limitado(db, usuario, admin)
+    cab_dueno, cab_ayuda = entrar(cliente, dueno), entrar(cliente, ayuda)
+    caso = crear_caso(cliente, cab_dueno, solicitante, pais_usa, dueno.u.id)
+
+    cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=cab_dueno,
+                 json={'usuario_id': ayuda.u.id})
+    assert cliente.get(f'{CASOS}/{caso["id"]}', headers=cab_ayuda).status_code == 200
+
+    r = cliente.delete(f'{CASOS}/{caso["id"]}/colaboradores/{ayuda.u.id}', headers=cab_dueno)
+    assert r.status_code == 200 and r.json() == []
+    assert cliente.get(f'{CASOS}/{caso["id"]}', headers=cab_ayuda).status_code == 404
+
+
+def test_colaborar_no_abre_los_demas_tramites(cliente, db, usuario, solicitante, pais_usa):
+    """Es acceso a ESE tramite, no un ascenso de alcance."""
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ayuda = _con_alcance_limitado(db, usuario, admin)
+    cab_dueno, cab_ayuda = entrar(cliente, dueno), entrar(cliente, ayuda)
+
+    uno = crear_caso(cliente, cab_dueno, solicitante, pais_usa, dueno.u.id)
+    otro = crear_caso(cliente, cab_dueno, solicitante, pais_usa, dueno.u.id)
+    cliente.post(f'{CASOS}/{uno["id"]}/colaboradores', headers=cab_dueno,
+                 json={'usuario_id': ayuda.u.id})
+
+    assert cliente.get(f'{CASOS}/{uno["id"]}', headers=cab_ayuda).status_code == 200
+    assert cliente.get(f'{CASOS}/{otro["id"]}', headers=cab_ayuda).status_code == 404
+
+
+def test_el_responsable_no_se_agrega_como_colaborador_de_lo_suyo(
+        cliente, db, usuario, solicitante, pais_usa):
+    dueno = usuario('operaciones')
+    cab = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, dueno.u.id)
+    r = cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=cab,
+                     json={'usuario_id': dueno.u.id})
+    assert r.status_code == 409 and r.json()['codigo'] == 'ya_es_responsable'
+
+
+def test_no_se_agrega_dos_veces(cliente, db, usuario, solicitante, pais_usa):
+    dueno, ayuda = usuario('operaciones'), usuario('operaciones')
+    cab = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, dueno.u.id)
+    cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=cab,
+                 json={'usuario_id': ayuda.u.id})
+    r = cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=cab,
+                     json={'usuario_id': ayuda.u.id})
+    assert r.status_code == 409 and r.json()['codigo'] == 'ya_colabora'
+
+
+def test_no_se_agrega_a_alguien_inactivo(cliente, db, usuario, solicitante, pais_usa):
+    """Dar acceso a una cuenta desactivada es volver a abrirla por la ventana."""
+    from app.services import usuarios as servicio_usuarios
+    admin = usuario('administradora')
+    dueno, ido = usuario('operaciones'), usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, ido.u.id, activo=False)
+    db.commit()
+
+    cab = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, dueno.u.id)
+    r = cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=cab,
+                     json={'usuario_id': ido.u.id})
+    assert r.status_code == 422 and r.json()['codigo'] == 'usuario_invalido'
+
+
+def test_entrar_y_salir_queda_en_el_historial_del_tramite(
+        cliente, db, usuario, solicitante, pais_usa):
+    """RN-08: el historial solo crece. Quien entro a ver un tramite ajeno y
+    cuando dejo de poder es justo lo que hay que poder reconstruir."""
+    dueno, ayuda = usuario('operaciones'), usuario('operaciones')
+    cab = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, dueno.u.id)
+    cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=cab,
+                 json={'usuario_id': ayuda.u.id})
+    cliente.delete(f'{CASOS}/{caso["id"]}/colaboradores/{ayuda.u.id}', headers=cab)
+
+    from app.models.esquema import CasosHistorial
+    filas = db.scalars(select(CasosHistorial).where(
+        CasosHistorial.caso_id == caso['id'],
+        CasosHistorial.campo == 'colaborador')).all()
+    assert len(filas) == 2, filas
+    assert {f.observacion for f in filas} == {'Entra a colaborar en el trámite.',
+                                              'Deja de colaborar en el trámite.'}
+
+
+def test_quien_no_ve_el_tramite_no_puede_meter_gente_en_el(
+        cliente, db, usuario, solicitante, pais_usa):
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ajeno = _con_alcance_limitado(db, usuario, admin)
+    cab_dueno = entrar(cliente, dueno)
+    caso = crear_caso(cliente, cab_dueno, solicitante, pais_usa, dueno.u.id)
+
+    r = cliente.post(f'{CASOS}/{caso["id"]}/colaboradores', headers=entrar(cliente, ajeno),
+                     json={'usuario_id': ajeno.u.id})
+    assert r.status_code == 404, 'ni siquiera para meterse a si mismo'

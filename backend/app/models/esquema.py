@@ -453,6 +453,7 @@ class Usuarios(Base):
     liquidaciones_comision_vendedor: Mapped[list['LiquidacionesComision']] = relationship('LiquidacionesComision', foreign_keys='[LiquidacionesComision.vendedor_id]', back_populates='vendedor')
     migracion_corridas: Mapped[list['MigracionCorridas']] = relationship('MigracionCorridas', back_populates='usuarios')
     parametros: Mapped[list['Parametros']] = relationship('Parametros', back_populates='usuarios')
+    plantillas_mensaje: Mapped[list['PlantillasMensaje']] = relationship('PlantillasMensaje', back_populates='usuarios')
     actividades: Mapped[list['Actividades']] = relationship('Actividades', back_populates='usuario')
     oportunidades: Mapped[list['Oportunidades']] = relationship('Oportunidades', back_populates='asesor')
     negocios: Mapped[list['Negocios']] = relationship('Negocios', back_populates='vendedor')
@@ -461,6 +462,8 @@ class Usuarios(Base):
     comisiones: Mapped[list['Comisiones']] = relationship('Comisiones', back_populates='vendedor')
     pagos: Mapped[list['Pagos']] = relationship('Pagos', back_populates='usuarios')
     casos_checklist: Mapped[list['CasosChecklist']] = relationship('CasosChecklist', back_populates='usuarios')
+    casos_colaboradores_agregado_por: Mapped[list['CasosColaboradores']] = relationship('CasosColaboradores', foreign_keys='[CasosColaboradores.agregado_por]', back_populates='usuarios')
+    casos_colaboradores_usuario: Mapped[list['CasosColaboradores']] = relationship('CasosColaboradores', foreign_keys='[CasosColaboradores.usuario_id]', back_populates='usuario')
     casos_historial: Mapped[list['CasosHistorial']] = relationship('CasosHistorial', back_populates='usuario')
     conflictos_sincronizacion: Mapped[list['ConflictosSincronizacion']] = relationship('ConflictosSincronizacion', back_populates='usuarios')
     gastos: Mapped[list['Gastos']] = relationship('Gastos', back_populates='usuarios')
@@ -781,6 +784,31 @@ class Parametros(Base):
     actualizado_por: Mapped[Optional[int]] = mapped_column(BigInteger)
 
     usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='parametros')
+
+
+class PlantillasMensaje(Base):
+    __tablename__ = 'plantillas_mensaje'
+    __table_args__ = (
+        CheckConstraint("canal::text = ANY (ARRAY['whatsapp'::character varying, 'correo'::character varying, 'sms'::character varying]::text[])", name='ck_plantilla_canal'),
+        CheckConstraint('length(btrim(cuerpo)) > 0', name='ck_plantilla_cuerpo'),
+        ForeignKeyConstraint(['creada_por'], ['usuarios.id'], name='plantillas_mensaje_creada_por_fkey'),
+        PrimaryKeyConstraint('id', name='plantillas_mensaje_pkey'),
+        Index('ix_plantilla_evento', 'evento', postgresql_where='activa'),
+        Index('ux_plantilla_nombre', 'evento', 'canal', 'nombre', unique=True)
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    evento: Mapped[str] = mapped_column(String(40), nullable=False)
+    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
+    canal: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'whatsapp'::character varying"))
+    cuerpo: Mapped[str] = mapped_column(Text, nullable=False)
+    activa: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
+    creada_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    actualizada_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    asunto: Mapped[Optional[str]] = mapped_column(String(160))
+    creada_por: Mapped[Optional[int]] = mapped_column(BigInteger)
+
+    usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='plantillas_mensaje')
 
 
 class Tarifas(Base):
@@ -1124,6 +1152,7 @@ class Casos(Base):
     solicitante: Mapped['Solicitantes'] = relationship('Solicitantes', back_populates='casos')
     tipo_visa: Mapped[Optional['TiposVisa']] = relationship('TiposVisa', back_populates='casos')
     casos_checklist: Mapped[list['CasosChecklist']] = relationship('CasosChecklist', back_populates='caso')
+    casos_colaboradores: Mapped[list['CasosColaboradores']] = relationship('CasosColaboradores', back_populates='caso')
     casos_historial: Mapped[list['CasosHistorial']] = relationship('CasosHistorial', back_populates='caso')
     citas: Mapped[list['Citas']] = relationship('Citas', back_populates='caso')
     conflictos_sincronizacion: Mapped[list['ConflictosSincronizacion']] = relationship('ConflictosSincronizacion', back_populates='caso')
@@ -1254,6 +1283,26 @@ class CasosChecklist(Base):
     caso: Mapped['Casos'] = relationship('Casos', back_populates='casos_checklist')
     usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='casos_checklist')
     item: Mapped['ChecklistItems'] = relationship('ChecklistItems', back_populates='casos_checklist')
+
+
+class CasosColaboradores(Base):
+    __tablename__ = 'casos_colaboradores'
+    __table_args__ = (
+        ForeignKeyConstraint(['agregado_por'], ['usuarios.id'], name='casos_colaboradores_agregado_por_fkey'),
+        ForeignKeyConstraint(['caso_id'], ['casos.id'], ondelete='CASCADE', name='casos_colaboradores_caso_id_fkey'),
+        ForeignKeyConstraint(['usuario_id'], ['usuarios.id'], name='casos_colaboradores_usuario_id_fkey'),
+        PrimaryKeyConstraint('caso_id', 'usuario_id', name='casos_colaboradores_pkey'),
+        Index('ix_casos_colaboradores_usuario', 'usuario_id', 'caso_id')
+    )
+
+    caso_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    usuario_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    agregado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    agregado_por: Mapped[Optional[int]] = mapped_column(BigInteger)
+
+    usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', foreign_keys=[agregado_por], back_populates='casos_colaboradores_agregado_por')
+    caso: Mapped['Casos'] = relationship('Casos', back_populates='casos_colaboradores')
+    usuario: Mapped['Usuarios'] = relationship('Usuarios', foreign_keys=[usuario_id], back_populates='casos_colaboradores_usuario')
 
 
 class CasosHistorial(Base):

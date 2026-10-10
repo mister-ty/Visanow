@@ -138,3 +138,36 @@ def marcar_checklist(caso_id: int, item_id: int, datos: esq.MarcarItem, request:
                      actor: Usuarios = Depends(requiere('casos.editar')), db: Session = Depends(get_db)):
     servicio.marcar_item(db, actor, caso_id, item_id, cumplido=datos.cumplido,
                          observacion=datos.observacion, ip=ip_cliente(request))
+
+
+# ------------------------------------------------------------ colaboradores
+
+@router.get('/casos/{caso_id}/colaboradores', response_model=list[esq.ColaboradorSalida])
+def colaboradores(caso_id: int, actor: Usuarios = Depends(requiere('casos.ver')),
+                  db: Session = Depends(get_db)):
+    """Quiénes trabajan en el trámite además del responsable (RF-026)."""
+    return [esq.ColaboradorSalida(**c) for c in servicio.colaboradores(db, caso_id, actor=actor)]
+
+
+@router.post('/casos/{caso_id}/colaboradores', response_model=list[esq.ColaboradorSalida],
+             status_code=status.HTTP_201_CREATED)
+def agregar_colaborador(caso_id: int, datos: esq.ColaboradorEntrada, request: Request,
+                        actor: Usuarios = Depends(requiere('casos.editar')),
+                        db: Session = Depends(get_db)):
+    """Suma a alguien al trámite sin quitarle la responsabilidad a nadie.
+
+    El responsable sigue siendo uno solo: RN-04 pide que todo trámite activo
+    tenga responsable, y un trámite con tres dueños no tiene ninguno.
+    """
+    return [esq.ColaboradorSalida(**c) for c in servicio.agregar_colaborador(
+        db, actor, caso_id, datos.usuario_id, ip=ip_cliente(request))]
+
+
+@router.delete('/casos/{caso_id}/colaboradores/{usuario_id}',
+               response_model=list[esq.ColaboradorSalida])
+def quitar_colaborador(caso_id: int, usuario_id: int, request: Request,
+                       actor: Usuarios = Depends(requiere('casos.editar')),
+                       db: Session = Depends(get_db)):
+    """Lo saca del trámite; con eso deja de verlo si su alcance es limitado."""
+    return [esq.ColaboradorSalida(**c) for c in servicio.quitar_colaborador(
+        db, actor, caso_id, usuario_id, ip=ip_cliente(request))]

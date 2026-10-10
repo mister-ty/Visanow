@@ -163,6 +163,10 @@ export function CasoFicha() {
                     onChange={(v) => editar.mutate({ responsable_id: v ? Number(v) : null })}
                     placeholder="sin asignar" clearable />
                 </Grid.Col>
+                <Grid.Col span={6}>
+                  <Colaboradores casoId={c.id} responsableId={c.responsable_id}
+                    editable={puedeEditar} />
+                </Grid.Col>
                 <Grid.Col span={12}>
                   <ProximaAccion caso={c} editable={puedeEditar}
                     guardar={(texto) => editar.mutate({ proxima_accion: texto })} />
@@ -496,4 +500,93 @@ function ModalReprogramar({ cita, cerrar, hecho }: {
         </Stack>
       </form>
     </Modal>)
+}
+
+
+/**
+ * Quién más trabaja en este trámite (RF-026).
+ *
+ * El responsable sigue siendo uno solo a propósito: RN-04 pide que todo trámite
+ * activo tenga responsable, y uno con tres dueños no tiene ninguno. Colaborar es
+ * otra cosa —acompañar una cita, cubrir una ausencia, atender al cliente
+ * mientras el responsable no está— y hasta ahora obligaba a reasignar el
+ * trámite, que cambia quién responde por él.
+ *
+ * Quien tiene alcance limitado **sí ve** los trámites en los que colabora. Esa
+ * es toda la gracia: sin eso, el nombre saldría en la ficha y la persona no
+ * podría abrirla.
+ */
+function Colaboradores({ casoId, responsableId, editable }: {
+  casoId: number; responsableId?: number | null; editable: boolean
+}) {
+  const qc = useQueryClient()
+  const asignables = useAsignables()
+  const [agregando, setAgregando] = useState<string | null>(null)
+
+  const lista = useQuery({
+    queryKey: ['caso', casoId, 'colaboradores'],
+    queryFn: () => exigir(api.GET('/api/v1/casos/{caso_id}/colaboradores', {
+      params: { path: { caso_id: casoId } },
+    })),
+  })
+
+  const refrescar = () => {
+    qc.invalidateQueries({ queryKey: ['caso', casoId] })
+    qc.invalidateQueries({ queryKey: ['casos'] })
+  }
+
+  const agregar = useMutation({
+    mutationFn: (usuario_id: number) =>
+      exigir(api.POST('/api/v1/casos/{caso_id}/colaboradores', {
+        params: { path: { caso_id: casoId } }, body: { usuario_id },
+      })),
+    onSuccess: () => {
+      notifications.show({ color: 'teal', message: 'Ya puede ver y trabajar este trámite' })
+      setAgregando(null)
+      refrescar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo agregar'),
+  })
+
+  const quitar = useMutation({
+    mutationFn: (usuario_id: number) =>
+      exigir(api.DELETE('/api/v1/casos/{caso_id}/colaboradores/{usuario_id}', {
+        params: { path: { caso_id: casoId, usuario_id } },
+      })),
+    onSuccess: () => {
+      notifications.show({ color: 'teal', message: 'Deja de colaborar; si su alcance es limitado, deja de ver el trámite' })
+      refrescar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo quitar'),
+  })
+
+  const yaEstan = new Set((lista.data ?? []).map((c) => c.usuario_id))
+  const disponibles = (asignables.data ?? [])
+    .filter((u) => u.id !== responsableId && !yaEstan.has(u.id))
+    .map((u) => ({ value: String(u.id), label: u.nombre }))
+
+  return (
+    <Stack gap={6}>
+      <Text size="xs" fw={500} c="dimmed">Colaboran</Text>
+      <Group gap={6}>
+        {(lista.data ?? []).length === 0 && (
+          <Text size="xs" c="dimmed">Solo el responsable.</Text>)}
+        {(lista.data ?? []).map((c) => (
+          <Badge key={c.usuario_id} variant="light" size="lg"
+            rightSection={editable && (
+              <ActionIcon size="xs" variant="transparent" color="gray"
+                aria-label={`Quitar a ${c.nombre}`}
+                onClick={() => quitar.mutate(c.usuario_id)}>
+                <IconX size={12} />
+              </ActionIcon>)}>
+            {c.nombre}
+          </Badge>))}
+      </Group>
+      {editable && (
+        <Select size="xs" searchable clearable placeholder="Sumar a alguien"
+          data={disponibles} value={agregando}
+          nothingFoundMessage="Ya están todos"
+          onChange={(v) => { setAgregando(v); if (v) agregar.mutate(Number(v)) }} />)}
+    </Stack>
+  )
 }

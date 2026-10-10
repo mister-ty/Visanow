@@ -150,3 +150,16 @@ class HistorialSalida(BaseModel):
     usuario: str | None
     observacion: str | None
     ocurrido_en: datetime
+
+
+class ColaboradorSalida(BaseModel):
+    """Alguien que trabaja en el trámite sin ser el responsable (RF-026)."""
+    usuario_id: int
+    nombre: str
+    rol_id: int | None = None
+    agregado_en: datetime
+    agregado_por: int | None = None
+
+
+class ColaboradorEntrada(BaseModel):
+    usuario_id: int

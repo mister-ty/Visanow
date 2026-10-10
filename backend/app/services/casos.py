@@ -24,9 +24,9 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado, Prohibido
-from app.models.esquema import (Casos, CasosChecklist, CasosHistorial, ChecklistItems,
-                                Checklists, Citas, EstadosOperativos, Solicitantes,
-                                TransicionesOperativas, Usuarios)
+from app.models.esquema import (Casos, CasosChecklist, CasosColaboradores, CasosHistorial,
+                                ChecklistItems, Checklists, Citas, EstadosOperativos,
+                                Solicitantes, TransicionesOperativas, Usuarios)
 from app.services.auditoria import auditar
 
 ESTADO_INICIAL = 'registrado'
@@ -54,12 +54,20 @@ def obtener(db: Session, caso_id: int, *, actor: Usuarios | None = None) -> Caso
     caso = db.get(Casos, caso_id, options=[selectinload(Casos.solicitante), selectinload(Casos.estado)])
     if caso is None:
         raise NoEncontrado('El trámite no existe.')
-    if (actor is not None and actor.alcance != 'todos'
-            and caso.responsable_id != actor.id):
+    if actor is not None and actor.alcance != 'todos' and not _puede_verlo(db, caso, actor):
         # Se responde lo mismo que si no existiera: decir «existe pero no es
         # suyo» ya revela que ese cliente es cliente de VisaNow.
         raise NoEncontrado('El trámite no existe.')
     return caso
+
+
+def _puede_verlo(db: Session, caso: Casos, actor: Usuarios) -> bool:
+    """Es el responsable, o lo pusieron a colaborar (RF-026, RNF-03)."""
+    if caso.responsable_id == actor.id:
+        return True
+    return db.scalar(select(CasosColaboradores.caso_id).where(
+        CasosColaboradores.caso_id == caso.id,
+        CasosColaboradores.usuario_id == actor.id)) is not None
 
 
 def _estado(db: Session, codigo: str) -> EstadosOperativos:
@@ -136,8 +144,12 @@ def alcance_de(actor: Usuarios | None):
     if actor is None or actor.alcance == 'todos':
         return None
     # «propios» y «asignados» coinciden en un trámite: lo propio de alguien en
-    # la operación es aquello de lo que es responsable.
-    return Casos.responsable_id == actor.id
+    # la operación es aquello de lo que es responsable, más aquello en lo que
+    # lo pusieron a colaborar (RF-026). Sin esta segunda parte ser colaborador
+    # no serviría de nada: se vería el nombre en la ficha y no se podría abrir.
+    return or_(Casos.responsable_id == actor.id,
+               Casos.id.in_(select(CasosColaboradores.caso_id)
+                            .where(CasosColaboradores.usuario_id == actor.id)))
 
 
 def listar(db: Session, *, actor: Usuarios | None = None, estado: str | None = None,
@@ -408,3 +420,69 @@ def historial_de(db: Session, caso_id: int) -> list[CasosHistorial]:
     return list(db.scalars(select(CasosHistorial).where(CasosHistorial.caso_id == caso_id)
                            .options(selectinload(CasosHistorial.usuario))
                            .order_by(CasosHistorial.ocurrido_en.desc(), CasosHistorial.id.desc())))
+
+
+# ------------------------------------------------------------ colaboradores
+
+def colaboradores(db: Session, caso_id: int, *, actor: Usuarios | None = None) -> list[dict]:
+    """Quiénes trabajan en el trámite además del responsable (RF-026)."""
+    obtener(db, caso_id, actor=actor)
+    filas = db.execute(
+        select(CasosColaboradores, Usuarios.nombre, Usuarios.rol_id)
+        .join(Usuarios, Usuarios.id == CasosColaboradores.usuario_id)
+        .where(CasosColaboradores.caso_id == caso_id)
+        .order_by(Usuarios.nombre)).all()
+    return [{'usuario_id': c.usuario_id, 'nombre': nombre, 'rol_id': rol_id,
+             'agregado_en': c.agregado_en, 'agregado_por': c.agregado_por}
+            for c, nombre, rol_id in filas]
+
+
+def agregar_colaborador(db: Session, actor: Usuarios, caso_id: int, usuario_id: int, *,
+                        ip: str | None = None) -> list[dict]:
+    """Suma a alguien al trámite sin quitarle la responsabilidad a nadie.
+
+    El responsable sigue siendo uno solo a propósito: RN-04 pide que todo
+    trámite activo tenga responsable, y un trámite con tres dueños no tiene
+    ninguno. Colaborar es otra cosa —acompañar una cita, cubrir una ausencia,
+    atender al cliente mientras el responsable no está— y hasta hoy obligaba a
+    reasignar el trámite, que cambia quién responde por él.
+    """
+    caso = obtener(db, caso_id, actor=actor)
+    quien = db.get(Usuarios, usuario_id)
+    if quien is None or not quien.activo:
+        raise Invalido('Esa persona no existe o está inactiva.', codigo='usuario_invalido')
+    if caso.responsable_id == usuario_id:
+        raise Conflicto('Ya es el responsable del trámite; no hace falta agregarlo '
+                        'como colaborador.', codigo='ya_es_responsable')
+    ya = db.get(CasosColaboradores, (caso_id, usuario_id))
+    if ya is not None:
+        raise Conflicto('Ya está colaborando en este trámite.', codigo='ya_colabora')
+
+    db.add(CasosColaboradores(caso_id=caso_id, usuario_id=usuario_id, agregado_por=actor.id))
+    _historial(db, caso_id, 'colaborador', None, quien.nombre, actor.id,
+               'Entra a colaborar en el trámite.')
+    caso.ultima_actividad_en = _ahora()
+    db.flush()
+    auditar(db, operacion='insert', entidad='casos_colaboradores', usuario_id=actor.id,
+            entidad_id=caso_id, despues={'usuario_id': usuario_id}, ip=ip)
+    db.commit()
+    return colaboradores(db, caso_id, actor=actor)
+
+
+def quitar_colaborador(db: Session, actor: Usuarios, caso_id: int, usuario_id: int, *,
+                       ip: str | None = None) -> list[dict]:
+    """Lo saca del trámite, y con eso deja de verlo si su alcance es limitado."""
+    caso = obtener(db, caso_id, actor=actor)
+    fila = db.get(CasosColaboradores, (caso_id, usuario_id))
+    if fila is None:
+        raise NoEncontrado('Esa persona no está colaborando en este trámite.')
+    quien = db.get(Usuarios, usuario_id)
+
+    db.delete(fila)
+    _historial(db, caso_id, 'colaborador', quien.nombre if quien else usuario_id,
+               None, actor.id, 'Deja de colaborar en el trámite.')
+    db.flush()
+    auditar(db, operacion='delete', entidad='casos_colaboradores', usuario_id=actor.id,
+            entidad_id=caso_id, antes={'usuario_id': usuario_id}, ip=ip)
+    db.commit()
+    return colaboradores(db, caso_id, actor=actor)

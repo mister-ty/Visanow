@@ -380,6 +380,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/casos/{caso_id}/colaboradores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Colaboradores
+         * @description Quiénes trabajan en el trámite además del responsable (RF-026).
+         */
+        get: operations["colaboradores_api_v1_casos__caso_id__colaboradores_get"];
+        put?: never;
+        /**
+         * Agregar Colaborador
+         * @description Suma a alguien al trámite sin quitarle la responsabilidad a nadie.
+         *
+         *     El responsable sigue siendo uno solo: RN-04 pide que todo trámite activo
+         *     tenga responsable, y un trámite con tres dueños no tiene ninguno.
+         */
+        post: operations["agregar_colaborador_api_v1_casos__caso_id__colaboradores_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}/colaboradores/{usuario_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Quitar Colaborador
+         * @description Lo saca del trámite; con eso deja de verlo si su alcance es limitado.
+         */
+        delete: operations["quitar_colaborador_api_v1_casos__caso_id__colaboradores__usuario_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalogos": {
         parameters: {
             query?: never;
@@ -2930,6 +2977,30 @@ export interface components {
              * @default false
              */
             posible_familiar: boolean;
+        };
+        /** ColaboradorEntrada */
+        ColaboradorEntrada: {
+            /** Usuario Id */
+            usuario_id: number;
+        };
+        /**
+         * ColaboradorSalida
+         * @description Alguien que trabaja en el trámite sin ser el responsable (RF-026).
+         */
+        ColaboradorSalida: {
+            /** Usuario Id */
+            usuario_id: number;
+            /** Nombre */
+            nombre: string;
+            /** Rol Id */
+            rol_id?: number | null;
+            /**
+             * Agregado En
+             * Format: date-time
+             */
+            agregado_en: string;
+            /** Agregado Por */
+            agregado_por?: number | null;
         };
         /** ComisionSalida */
         ComisionSalida: {
@@ -5782,6 +5853,104 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    colaboradores_api_v1_casos__caso_id__colaboradores_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColaboradorSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    agregar_colaborador_api_v1_casos__caso_id__colaboradores_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ColaboradorEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColaboradorSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quitar_colaborador_api_v1_casos__caso_id__colaboradores__usuario_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+                usuario_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColaboradorSalida"][];
+                };
             };
             /** @description Validation Error */
             422: {
