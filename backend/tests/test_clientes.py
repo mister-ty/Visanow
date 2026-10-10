@@ -370,4 +370,9 @@ def test_editar_un_grupo_queda_en_la_auditoria(cliente, db, usuario):
     registro = db.scalar(select(Auditoria).where(Auditoria.entidad == 'grupos',
                                                  Auditoria.entidad_id == g['id'],
                                                  Auditoria.operacion == 'update'))
-    assert registro is not None and registro.despues['nombre'] == 'Familia Prada Ruiz'
+    assert registro is not None
+    # Queda constancia de que cambio el nombre, pero no el nombre: el de un grupo
+    # es el apellido de una familia, y la auditoria es inalterable -lo que entre
+    # ahi sobrevive a cualquier anonimizacion posterior-.
+    assert 'nombre' in registro.despues
+    assert 'Prada' not in str(registro.despues), registro.despues

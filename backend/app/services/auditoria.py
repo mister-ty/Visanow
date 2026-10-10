@@ -1,7 +1,9 @@
 """Registro de auditoría (RNF-05, RN-08).
 
 La tabla es inalterable a nivel de base de datos (migración 0002): aquí solo se
-inserta. Los secretos nunca entran a la auditoría, ni cifrados.
+inserta. Los secretos nunca entran a la auditoría, ni cifrados, y los datos que
+identifican a una persona entran como «cambió este campo», sin el valor: la
+auditoría no puede ser la copia de la base que sobrevive a una anonimización.
 """
 from __future__ import annotations
 
@@ -15,6 +17,46 @@ from sqlalchemy.orm import Session
 from app.models.esquema import Auditoria
 
 NUNCA_AUDITAR = {'password_hash', 'mfa_secreto'}
+
+# Estos campos SI se registran -saber que cambio el telefono de un cliente es
+# justamente para lo que sirve una auditoria- pero sin repetir el valor.
+#
+# El motivo es RNF-09. Anonimizar a una persona le quita el nombre, el documento
+# y el pasaporte de sus tablas; si la auditoria guarda el registro completo de
+# cuando se creo, el nombre sigue ahi y la anonimizacion no anonimizo nada. Y la
+# auditoria es inalterable a proposito (RNF-05), asi que no se puede limpiar
+# despues: o no entra, o se queda para siempre.
+#
+# Va por ENTIDAD y no por nombre de campo: `nombre` en `clientes` es una persona,
+# pero en `servicios`, `roles` o `alertas_tipos` es una etiqueta del catalogo, y
+# ocultarla dejaria sin poder leer quien renombro que. El indice ciego del
+# pasaporte tambien entra: no guarda el dato, pero deja confirmar que una persona
+# estuvo, y eso tambien identifica.
+#
+# Lo que se pierde es el valor anterior de un campo personal. Lo que se conserva
+# -quien, cuando, sobre que registro y que campo- es lo que se mira el dia que
+# hay que responder por un cambio. El valor actual esta en la tabla, que es
+# donde tiene que estar.
+DATOS_PERSONALES: dict[str, set[str]] = {
+    'clientes': {'nombre', 'nombre_busqueda', 'numero_documento', 'telefono',
+                 'telefono_normalizado', 'email', 'observaciones'},
+    'solicitantes': {'nombre', 'nombre_busqueda', 'numero_documento', 'pasaporte',
+                     'pasaporte_indice', 'fecha_nacimiento', 'telefono',
+                     'telefono_normalizado', 'email', 'observaciones'},
+    'casos': {'ds160_numero_cifrado', 'ds160_hash', 'resultado_nota'},
+    'usuarios': {'nombre', 'email'},
+    # El nombre de un grupo es el apellido de una familia.
+    'grupos': {'nombre', 'observaciones'},
+}
+OCULTO = '«dato personal»'
+
+
+def sin_datos_personales(entidad: str, d: dict | None) -> dict | None:
+    """Deja constancia de que el campo cambio, sin volver a escribir el dato."""
+    campos = DATOS_PERSONALES.get(entidad)
+    if not d or not campos:
+        return d
+    return {k: (OCULTO if k in campos and v is not None else v) for k, v in d.items()}
 
 
 def _a_json(valor: Any) -> Any:
@@ -55,4 +97,6 @@ def auditar(db: Session, *, operacion: str, entidad: str, usuario_id: int | None
         antes = {k: antes.get(k) for k in claves}
         despues = {k: despues.get(k) for k in claves}
     db.add(Auditoria(usuario_id=usuario_id, operacion=operacion[:15], entidad=entidad[:40],
-                     entidad_id=entidad_id, antes=antes, despues=despues, ip=ip))
+                     entidad_id=entidad_id,
+                     antes=sin_datos_personales(entidad, antes),
+                     despues=sin_datos_personales(entidad, despues), ip=ip))

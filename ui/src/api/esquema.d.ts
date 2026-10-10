@@ -4,6 +4,54 @@
  */
 
 export interface paths {
+    "/api/v1/auditoria/filtros": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Filtros
+         * @description Las entidades y operaciones que existen en la tabla.
+         *
+         *     Se sacan de los datos y no de una lista escrita a mano: una lista escrita a
+         *     mano se queda vieja el día que aparece una entidad nueva, y el filtro que
+         *     no se ofrece es un registro que nadie va a encontrar.
+         */
+        get: operations["filtros_api_v1_auditoria_filtros_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auditoria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar
+         * @description El registro, del más reciente al más viejo (RF-076, RNF-05).
+         *
+         *     Sin filtros son miles de líneas y no sirve de nada; con `entidad` y
+         *     `entidad_id` responde la pregunta que de verdad se hace: qué le pasó a este
+         *     cliente, a este trámite, a este pago.
+         */
+        get: operations["listar_api_v1_auditoria_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -3351,6 +3399,16 @@ export interface components {
             /** Detalle */
             detalle: string | null;
         };
+        /**
+         * FiltrosSalida
+         * @description Lo que de verdad hay registrado, para que los filtros no ofrezcan vacíos.
+         */
+        FiltrosSalida: {
+            /** Entidades */
+            entidades: string[];
+            /** Operaciones */
+            operaciones: string[];
+        };
         /** FusionEntrada */
         FusionEntrada: {
             /** Absorbido Id */
@@ -3999,6 +4057,17 @@ export interface components {
             /** Items */
             items: components["schemas"]["AlertaSalida"][];
         };
+        /** PaginaAuditoria */
+        PaginaAuditoria: {
+            /** Total */
+            total: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["RegistroSalida"][];
+        };
         /** PaginaCartera */
         PaginaCartera: {
             /** Total */
@@ -4320,6 +4389,40 @@ export interface components {
              * @description Lo que este usuario puede exportar
              */
             recursos: string[];
+        };
+        /** RegistroSalida */
+        RegistroSalida: {
+            /** Id */
+            id: number;
+            /**
+             * Ocurrido En
+             * Format: date-time
+             */
+            ocurrido_en: string;
+            /** Usuario Id */
+            usuario_id: number | null;
+            /**
+             * Usuario
+             * @description El nombre vive en la tabla de usuarios, no en el registro
+             */
+            usuario: string | null;
+            /** Operacion */
+            operacion: string;
+            /** Entidad */
+            entidad: string;
+            /** Entidad Id */
+            entidad_id: number | null;
+            /** Ip */
+            ip: string | null;
+            /**
+             * Campos
+             * @description Qué cambió, para leer la lista de un vistazo
+             */
+            campos: string[];
+            /** Antes */
+            antes: Record<string, never> | null;
+            /** Despues */
+            despues: Record<string, never> | null;
         };
         /** RenderEntrada */
         RenderEntrada: {
@@ -5035,6 +5138,64 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    filtros_api_v1_auditoria_filtros_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FiltrosSalida"];
+                };
+            };
+        };
+    };
+    listar_api_v1_auditoria_get: {
+        parameters: {
+            query?: {
+                entidad?: string | null;
+                operacion?: string | null;
+                usuario_id?: number | null;
+                entidad_id?: number | null;
+                desde?: string | null;
+                hasta?: string | null;
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaAuditoria"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_api_v1_auth_login_post: {
         parameters: {
             query?: never;

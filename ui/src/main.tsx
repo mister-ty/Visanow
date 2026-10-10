@@ -15,6 +15,7 @@ import { Plantilla } from './componentes/Plantilla'
 import { RutaProtegida } from './componentes/RutaProtegida'
 import { SECCIONES } from './navegacion'
 import { Alertas } from './paginas/Alertas'
+import { Auditoria } from './paginas/Auditoria'
 import { CambiarContrasena } from './paginas/CambiarContrasena'
 import { CasoFicha } from './paginas/CasoFicha'
 import { Casos } from './paginas/Casos'
@@ -83,6 +84,7 @@ const enruta = createBrowserRouter([
               { path: '/tareas', element: <Tareas /> },
               { path: '/alertas', element: <Alertas /> },
               { path: '/importacion', element: <ImportacionSaas /> },
+              { path: '/auditoria', element: <Auditoria /> },
               { path: '/tableros', element: <Tableros /> },
               { path: '/mensajes', element: <Plantillas /> },
               { path: '/usuarios', element: <Usuarios /> },

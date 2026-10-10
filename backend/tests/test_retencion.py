@@ -205,3 +205,54 @@ def test_quien_no_puede_borrar_clientes_no_puede_anonimizar(cliente, usuario, db
     r = cliente.post(f'/api/v1/datos-personales/{c["id"]}/anonimizar', headers=cab,
                      json={'motivo': 'Deberia dar 403'})
     assert r.status_code == 403
+
+
+# ------------------------- la auditoria no puede sobrevivir a la anonimizacion
+
+def test_la_auditoria_no_guarda_el_nombre_de_quien_despues_se_anonimice(cliente, admin, db):
+    """Anonimizar le quita el nombre a la persona en sus tablas. Si la auditoria
+    guardo el registro completo de cuando se creo, el nombre sigue ahi y la
+    anonimizacion no anonimizo nada.
+
+    Y la auditoria es inalterable a proposito (RNF-05): no se puede limpiar
+    despues. O el dato no entra, o se queda para siempre.
+    """
+    c, s = una_persona(cliente, admin, db, 'Rastreable Enauditoria Persona',
+                       documento='55443322', pasaporte='ZZ777111')
+
+    registros = db.scalars(select(Auditoria).where(
+        Auditoria.entidad.in_(('clientes', 'solicitantes')),
+        Auditoria.entidad_id.in_((c['id'], s['id'])))).all()
+    assert registros, 'crear un cliente si se audita'
+
+    for reg in registros:
+        texto = f'{reg.antes} {reg.despues}'
+        assert 'Rastreable' not in texto, (reg.entidad, reg.operacion, texto[:200])
+        assert '55443322' not in texto, 'ni el documento'
+        assert 'ZZ777111' not in texto, 'ni el pasaporte'
+        assert '3001234567' not in texto, 'ni el telefono'
+
+    # Pero si queda que esos campos se tocaron: la auditoria sigue sirviendo.
+    insercion = next(r for r in registros if r.operacion == 'insert')
+    assert 'nombre' in (insercion.despues or {}), insercion.despues
+
+
+def test_el_indice_ciego_tampoco_entra_a_la_auditoria(cliente, admin, db):
+    """No guarda el pasaporte, pero deja confirmar que una persona estuvo."""
+    from app.core import seguridad as seg
+    huella = seg.indice_ciego('QQ333444')
+    _, s = una_persona(cliente, admin, db, 'Indice Ciego Persona',
+                       documento='77665544', pasaporte='QQ333444')
+    regs = db.scalars(select(Auditoria).where(Auditoria.entidad == 'solicitantes',
+                                              Auditoria.entidad_id == s['id'])).all()
+    for reg in regs:
+        assert huella not in f'{reg.antes} {reg.despues}', reg.despues
+
+
+def test_el_catalogo_si_se_lee_entero_porque_no_es_un_dato_personal(cliente, admin, db):
+    """Ocultar por nombre de campo y no por entidad dejaria sin poder leer quien
+    renombro un servicio o un rol, que es justo para lo que sirve la auditoria."""
+    from app.services.auditoria import sin_datos_personales
+    assert sin_datos_personales('servicios', {'nombre': 'Asesoría USA'}) == {
+        'nombre': 'Asesoría USA'}
+    assert sin_datos_personales('clientes', {'nombre': 'Quien Sea'})['nombre'] != 'Quien Sea'

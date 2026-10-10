@@ -78,3 +78,63 @@ def test_las_funciones_tienen_search_path_fijo(db):
     assert not sueltas, ('Estas funciones no tienen search_path fijo: '
                          + ', '.join(sueltas)
                          + '. Agregue `alter function <f> set search_path = pg_catalog, public`.')
+
+
+# --------------------------- lo que la auditoria puede y no puede guardar
+
+#: Columnas de las tablas con datos personales que NO identifican a nadie y por
+#: eso si se escriben completas en la auditoria. Es una lista a proposito: si
+#: manana alguien agrega una columna, la prueba de abajo falla y hay que decidir
+#: de que lado va. Una columna nueva con el telefono de la persona que se cuele
+#: sin que nadie lo note es exactamente lo que esta prueba existe para impedir.
+NO_IDENTIFICAN = {
+    'clientes': {
+        'id', 'tipo_documento', 'ciudad', 'pais_id', 'canal_id', 'consentimiento',
+        'consentimiento_fecha', 'archivado', 'creado_por', 'creado_en', 'actualizado_en',
+        'ultimo_contacto_en', 'origen_archivo', 'origen_hoja', 'origen_fila',
+        'migrado_en', 'fusionado_en_id'},
+    'solicitantes': {
+        'id', 'grupo_id', 'cliente_id', 'tipo_documento', 'nacionalidad',
+        'relacion_con_cliente', 'creado_en', 'origen_archivo', 'origen_hoja',
+        'origen_fila', 'migrado_en', 'fusionado_en_id'},
+    'casos': {
+        'id', 'negocio_id', 'solicitante_id', 'pais_id', 'tipo_visa_id', 'modalidad_id',
+        'sede_id', 'fuente', 'id_externo', 'sincronizado_en', 'estado_id',
+        'responsable_id', 'resultado', 'resultado_fecha', 'ultima_actividad_en',
+        'creado_en', 'origen_archivo', 'origen_hoja', 'origen_fila', 'migrado_en',
+        'ds160_enviado_en', 'busqueda_citas', 'etapa_saas', 'proxima_accion',
+        'proxima_accion_fecha'},
+    'usuarios': {
+        'id', 'password_hash', 'rol_id', 'activo', 'mfa_habilitado', 'mfa_secreto',
+        'ultimo_acceso', 'creado_en', 'alcance', 'intentos_fallidos', 'bloqueado_hasta',
+        'password_cambiado_en', 'debe_cambiar_password'},
+    'grupos': {
+        'id', 'cliente_contacto_id', 'creado_en', 'origen_archivo', 'origen_hoja',
+        'origen_fila'},
+}
+
+
+def test_toda_columna_de_una_tabla_con_datos_personales_esta_clasificada(db):
+    """Cada columna esta o en la lista de lo que se oculta o en la de lo que no
+    identifica. Ninguna puede quedar sin decidir.
+
+    La auditoria es inalterable: lo que entre ahi sobrevive a cualquier
+    anonimizacion posterior. Una columna nueva que se cuele sin clasificar se
+    empieza a guardar en claro y ya no se puede sacar.
+    """
+    from app.services.auditoria import DATOS_PERSONALES
+
+    for tabla, ocultas in DATOS_PERSONALES.items():
+        reales = {r[0] for r in db.execute(text(
+            'select column_name from information_schema.columns where table_name = :t'),
+            {'t': tabla})}
+        assert reales, f'la tabla {tabla} no existe'
+        clasificadas = ocultas | NO_IDENTIFICAN.get(tabla, set())
+        sin_decidir = reales - clasificadas
+        assert not sin_decidir, (
+            f'en «{tabla}» hay columnas sin clasificar: {sorted(sin_decidir)}. '
+            f'Decida si identifican a alguien -y van a DATOS_PERSONALES en '
+            f'app/services/auditoria.py- o no -y van a NO_IDENTIFICAN aca-.')
+        fantasmas = ocultas - reales
+        assert not fantasmas, (
+            f'«{tabla}» oculta columnas que ya no existen: {sorted(fantasmas)}')

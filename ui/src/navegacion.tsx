@@ -1,6 +1,6 @@
 import {
   IconAddressBook, IconBell, IconBuildingBank, IconCalendarEvent, IconCash, IconChartBar,
-  IconChecklist, IconFileImport, IconFilter, IconHome, IconMessage,
+  IconChecklist, IconFileImport, IconFilter, IconHistory, IconHome, IconMessage,
   IconPercentage, IconPlaneDeparture, IconSettings, IconUsers, type Icon,
 } from '@tabler/icons-react'
 
@@ -58,6 +58,7 @@ export const SECCIONES: Seccion[] = [
     ruta: '/tableros', titulo: 'Tableros', icono: IconChartBar, permiso: 'tableros.ver',
   },
   { ruta: '/importacion', titulo: 'Importación SaaS', icono: IconFileImport, permiso: 'importacion.ver' },
+  { ruta: '/auditoria', titulo: 'Auditoría', icono: IconHistory, permiso: 'auditoria.ver' },
   { ruta: '/mensajes', titulo: 'Mensajes', icono: IconMessage, permiso: 'catalogos.editar' },
   { ruta: '/usuarios', titulo: 'Usuarios', icono: IconUsers, permiso: 'usuarios.ver' },
   { ruta: '/configuracion', titulo: 'Configuración', icono: IconSettings, permiso: 'catalogos.editar' },
