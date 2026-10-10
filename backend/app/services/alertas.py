@@ -213,7 +213,7 @@ REGLAS: dict[str, Regla] = {
         # una de verdad falle no se distinga de la otra. `que_paso` las separa.
         sql="""select s.id as entidad_id, null::bigint as destinatario,
                       s.ocurrido_en as cuando, s.intentos as intentos,
-                      coalesce(s.detalle, 'sin detalle') as detalle,
+                      rtrim(coalesce(s.detalle, 'sin detalle'), '. ') as detalle,
                       case when s.resultado = 'error'
                            then 'La importación del SaaS falló tras ' ||
                                 s.intentos || ' intento(s)'

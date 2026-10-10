@@ -155,7 +155,7 @@ ALERTAS = [
     ('entrevista_proxima',      'Entrevista / radicación',        'cita',         7, 'dias',         [1],       'operaciones',    'alta'),
     ('resultado_no_registrado', 'Resultado no registrado',        'cita',        -2, 'dias',         [],        'operaciones',    'media'),
     ('pasaporte_por_entregar',  'Pasaporte por recoger o enviar', 'caso',        -2, 'dias',         [],        'operaciones',    'media'),
-    ('sync_saas_fallida',       'Sincronización SaaS fallida',    'importacion', -1, 'dias',         [],        'administradora', 'alta'),
+    ('sync_saas_fallida',       'Importación del SaaS',           'importacion', -1, 'dias',         [],        'administradora', 'alta'),
 ]
 
 
