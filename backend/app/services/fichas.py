@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import quote
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, func, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import seguridad as seg
@@ -294,3 +294,133 @@ def _por_que(texto: str, digitos: str, c: Clientes) -> str:
     if c.email and c.email.lower() == texto.lower():
         return 'correo'
     return 'nombre'
+
+
+# ------------------------------------------------- los bloques de la vista 360
+#
+# RF-005 pide nueve cosas en una sola ficha y habia dos. Lo que sigue arma las
+# otras siete. Cada una se pregunta aparte y con SU permiso, porque la ficha
+# responde todo junto y mezclarlos seria entregarle a operaciones los montos que
+# la administradora dijo el 29/09 que no debe ver.
+
+
+def oportunidades_de(db: Session, cliente_id: int) -> list[dict]:
+    """Los leads del cliente, abiertos y cerrados."""
+    filas = db.execute(text("""
+        select o.id, ec.nombre as estado, s.nombre as servicio, p.nombre as pais,
+               o.valor_estimado, o.proxima_accion, o.proxima_accion_fecha, o.creado_en
+          from oportunidades o
+          left join estados_comerciales ec on ec.id = o.estado_id
+          left join servicios s on s.id = o.servicio_id
+          left join paises p on p.id = o.pais_id
+         where o.cliente_id = :c
+         order by o.creado_en desc""" ), {'c': cliente_id}).mappings().all()
+    return [{'id': f['id'], 'estado': f['estado'] or 'sin estado', 'servicio': f['servicio'],
+             'pais': f['pais'], 'valor_estimado': float(f['valor_estimado'] or 0) or None,
+             'proxima_accion': f['proxima_accion'],
+             'proxima_accion_fecha': f['proxima_accion_fecha'],
+             'creada_en': f['creado_en']} for f in filas]
+
+
+def ventas_de(db: Session, cliente_id: int) -> list[dict]:
+    """Las ventas con su saldo, que sale de la vista y nunca de una columna (RN-01)."""
+    filas = db.execute(text("""
+        select n.id, s.nombre as servicio, n.fecha_venta, n.cantidad_solicitantes,
+               n.valor_pactado, ef.total_pagado, ef.saldo, ef.estado_financiero
+          from negocios n
+          left join servicios s on s.id = n.servicio_id
+          left join v_estado_financiero ef on ef.negocio_id = n.id
+         where n.cliente_id = :c
+         order by n.fecha_venta desc, n.id desc"""), {'c': cliente_id}).mappings().all()
+    return [{'id': f['id'], 'servicio': f['servicio'], 'fecha_venta': f['fecha_venta'],
+             'personas': f['cantidad_solicitantes'] or 1,
+             'valor_pactado': float(f['valor_pactado'] or 0),
+             'pagado': float(f['total_pagado'] or 0), 'saldo': float(f['saldo'] or 0),
+             'estado_financiero': f['estado_financiero'] or 'sin pagos'} for f in filas]
+
+
+def pagos_de(db: Session, cliente_id: int, limite: int = 50) -> list[dict]:
+    filas = db.execute(text("""
+        select p.id, p.negocio_id, p.fecha, p.monto_bruto, mp.nombre as medio, p.referencia
+          from pagos p
+          join negocios n on n.id = p.negocio_id
+          left join medios_pago mp on mp.id = p.medio_pago_id
+         where n.cliente_id = :c
+         order by p.fecha desc, p.id desc
+         limit :l"""), {'c': cliente_id, 'l': limite}).mappings().all()
+    return [{'id': f['id'], 'negocio_id': f['negocio_id'], 'fecha': f['fecha'],
+             'monto': float(f['monto_bruto'] or 0), 'medio': f['medio'],
+             'referencia': f['referencia']} for f in filas]
+
+
+def esta_al_dia(db: Session, cliente_id: int) -> bool:
+    """Si no debe nada VENCIDO. Es lo que se le responde a quien no ve montos.
+
+    No es «no debe nada»: un cliente con cuotas al futuro esta al dia aunque
+    tenga saldo, y es con quien si se puede arrancar el tramite.
+    """
+    vencido = db.execute(text("""
+        select coalesce(sum(c.vencido), 0)
+          from v_cartera c join negocios n on n.id = c.negocio_id
+         where n.cliente_id = :c"""), {'c': cliente_id}).scalar()
+    return float(vencido or 0) <= 0
+
+
+def tareas_de(db: Session, cliente_id: int, limite: int = 20) -> list[dict]:
+    """Las tareas del cliente y las de sus tramites: para quien atiende es lo mismo."""
+    filas = db.execute(text("""
+        select t.id, t.titulo, t.estado, t.prioridad, t.vence_en, u.nombre as responsable
+          from tareas t
+          left join usuarios u on u.id = t.responsable_id
+         where t.cliente_id = :c
+            or t.caso_id in (select ca.id from casos ca
+                               join solicitantes so on so.id = ca.solicitante_id
+                              where so.cliente_id = :c)
+            or t.negocio_id in (select id from negocios where cliente_id = :c)
+         order by (t.estado in ('hecha', 'cancelada')), t.vence_en nulls last, t.id desc
+         limit :l"""), {'c': cliente_id, 'l': limite}).mappings().all()
+    return [dict(f) for f in filas]
+
+
+def alertas_de(db: Session, cliente_id: int, limite: int = 20) -> list[dict]:
+    filas = db.execute(text("""
+        select a.id, at.nombre as tipo, a.mensaje, at.severidad, a.estado, a.generada_en
+          from alertas a
+          join alertas_tipos at on at.id = a.tipo_id
+         where a.caso_id in (select ca.id from casos ca
+                               join solicitantes so on so.id = ca.solicitante_id
+                              where so.cliente_id = :c)
+            or a.negocio_id in (select id from negocios where cliente_id = :c)
+            or a.oportunidad_id in (select id from oportunidades where cliente_id = :c)
+         order by (a.estado = 'resuelta'), a.generada_en desc
+         limit :l"""), {'c': cliente_id, 'l': limite}).mappings().all()
+    return [{'id': f['id'], 'tipo': f['tipo'], 'mensaje': f['mensaje'],
+             'severidad': f['severidad'], 'estado': f['estado'],
+             'creada_en': f['generada_en']} for f in filas]
+
+
+def documentos_de(db: Session, cliente_id: int, *, ve_reservados: bool) -> list[dict]:
+    """Los adjuntos del cliente, de sus personas y de sus tramites, juntos.
+
+    Para quien atiende, «los documentos de Ana» son todos, no los de la ficha
+    del cliente por un lado y los del tramite por otro.
+    """
+    filas = db.execute(text("""
+        select d.id, d.nombre, d.almacenamiento, d.url, d.mime, d.restringido,
+               d.entidad, d.creado_en
+          from documentos d
+         where (d.entidad = 'cliente' and d.entidad_id = :c)
+            or (d.entidad = 'solicitante' and d.entidad_id in
+                  (select id from solicitantes where cliente_id = :c))
+            or (d.entidad = 'caso' and d.entidad_id in
+                  (select ca.id from casos ca join solicitantes so on so.id = ca.solicitante_id
+                    where so.cliente_id = :c))
+            or (d.entidad = 'negocio' and d.entidad_id in
+                  (select id from negocios where cliente_id = :c))
+         order by d.creado_en desc"""), {'c': cliente_id}).mappings().all()
+    COMO = {'cliente': 'el cliente', 'solicitante': 'una persona', 'caso': 'un trámite',
+            'negocio': 'una venta'}
+    return [{'id': f['id'], 'nombre': f['nombre'], 'almacenamiento': f['almacenamiento'],
+             'url': f['url'], 'mime': f['mime'], 'restringido': f['restringido'],
+             'sobre': COMO.get(f['entidad'], f['entidad']), 'creado_en': f['creado_en']}
+            for f in filas if ve_reservados or not f['restringido']]

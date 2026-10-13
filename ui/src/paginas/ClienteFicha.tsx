@@ -17,7 +17,7 @@ import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados, type Coincidencia } from '../componentes/AvisoDuplicados'
 import { Documentos } from '../componentes/Documentos'
 import { mostrarError } from '../lib/errores'
-import { formatearFechaHora } from '../lib/formato'
+import { formatearFechaHora, formatearPesos } from '../lib/formato'
 import { aSelect, type Opcion, porPais, useAsignables, useCatalogos } from '../lib/catalogos'
 
 type Detalle = Esquemas['ClienteDetalle']
@@ -148,6 +148,55 @@ export function ClienteFicha() {
               })}>Unir a esta ficha</Button>
           ) : null} />
       )}
+
+      <Dinero dinero={f.dinero} />
+
+      {f.ve_oportunidades && f.oportunidades.length > 0 && (
+        <Card withBorder padding="lg">
+          <Text fw={600} mb="sm">Oportunidades</Text>
+          <Table.ScrollContainer minWidth={620}>
+            <Table verticalSpacing={6}>
+              <Table.Thead><Table.Tr>
+                <Table.Th>Servicio</Table.Th><Table.Th>País</Table.Th>
+                <Table.Th>Estado</Table.Th><Table.Th>Próxima acción</Table.Th>
+              </Table.Tr></Table.Thead>
+              <Table.Tbody>
+                {f.oportunidades.map((o) => (
+                  <Table.Tr key={o.id}>
+                    <Table.Td><Text size="sm">{o.servicio ?? '—'}</Text></Table.Td>
+                    <Table.Td><Text size="sm">{o.pais ?? '—'}</Text></Table.Td>
+                    <Table.Td><Badge variant="light">{o.estado}</Badge></Table.Td>
+                    <Table.Td><Text size="sm" c="dimmed">{o.proxima_accion ?? '—'}</Text></Table.Td>
+                  </Table.Tr>))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Card>)}
+
+      {f.ve_trabajo && (f.tareas.length > 0 || f.alertas.length > 0) && (
+        <Card withBorder padding="lg">
+          <Text fw={600} mb="sm">Pendientes</Text>
+          <Stack gap={6}>
+            {f.alertas.map((a) => (
+              <Group key={`a${a.id}`} gap={8} wrap="nowrap">
+                <Badge size="sm" variant="light"
+                  color={a.severidad === 'alta' ? 'red' : a.severidad === 'media' ? 'yellow' : 'gray'}>
+                  {a.severidad}
+                </Badge>
+                <Text size="sm" style={{ flex: 1 }}>{a.mensaje}</Text>
+                {a.estado === 'resuelta' && <Text size="xs" c="dimmed">resuelta</Text>}
+              </Group>))}
+            {f.tareas.map((t) => (
+              <Group key={`t${t.id}`} gap={8} wrap="nowrap">
+                <Badge size="sm" variant="outline" color="gray">tarea</Badge>
+                <Text size="sm" style={{ flex: 1 }}
+                  td={['hecha', 'cancelada'].includes(t.estado) ? 'line-through' : undefined}>
+                  {t.titulo}
+                </Text>
+                {t.responsable && <Text size="xs" c="dimmed">{t.responsable}</Text>}
+              </Group>))}
+          </Stack>
+        </Card>)}
 
       <Card withBorder padding="lg">
         <Text fw={600} mb="sm">Archivos adjuntos</Text>
@@ -871,4 +920,87 @@ function FormularioEditarGrupo({ grupo, cerrar, guardado }: {
         </Stack>
       </form>
     </Modal>)
+}
+
+
+/**
+ * La plata del cliente, o solo si está al día, según quién pregunte (RF-005).
+ *
+ * Operaciones necesita saber si el cliente pagó el anticipo para arrancar el
+ * trámite, y no tiene por qué ver cuánto (respuesta de la administradora del
+ * 29/09). Por eso el servidor manda `ve_montos`: la pantalla no decide esto,
+ * lo obedece. Y cuando no los ve, se dice —«no se le muestran»— en vez de
+ * enseñar ceros, que se leerían como «este cliente no ha pagado nada».
+ */
+function Dinero({ dinero }: { dinero: Esquemas['DineroEnFicha'] }) {
+  const { ve_montos, al_dia, ventas, pagos, total_pactado, total_pagado, saldo } = dinero
+  if (ventas.length === 0 && al_dia === null) return null
+
+  return (
+    <Card withBorder padding="lg">
+      <Group justify="space-between" mb="sm">
+        <Text fw={600}>Ventas y pagos</Text>
+        {al_dia !== null && (
+          <Badge variant="light" color={al_dia ? 'teal' : 'red'}>
+            {al_dia ? 'Al día' : 'Tiene saldo vencido'}
+          </Badge>)}
+      </Group>
+
+      {ve_montos && total_pactado !== null && (
+        <Group gap="xl" mb="sm">
+          <div><Text size="xs" c="dimmed">Pactado</Text>
+            <Text fw={600}>{formatearPesos(total_pactado)}</Text></div>
+          <div><Text size="xs" c="dimmed">Pagado</Text>
+            <Text fw={600}>{formatearPesos(total_pagado ?? 0)}</Text></div>
+          <div><Text size="xs" c="dimmed">Saldo</Text>
+            <Text fw={600} c={(saldo ?? 0) > 0 ? 'red' : undefined}>
+              {formatearPesos(saldo ?? 0)}</Text></div>
+        </Group>)}
+
+      {ventas.length > 0 && (
+        <Table.ScrollContainer minWidth={ve_montos ? 620 : 420}>
+          <Table verticalSpacing={6}>
+            <Table.Thead><Table.Tr>
+              <Table.Th>Servicio</Table.Th><Table.Th>Fecha</Table.Th>
+              <Table.Th>Personas</Table.Th>
+              {ve_montos && <><Table.Th>Pactado</Table.Th><Table.Th>Saldo</Table.Th></>}
+              <Table.Th>Estado</Table.Th>
+            </Table.Tr></Table.Thead>
+            <Table.Tbody>
+              {ventas.map((v) => (
+                <Table.Tr key={v.id}>
+                  <Table.Td><Text size="sm">{v.servicio ?? '—'}</Text></Table.Td>
+                  <Table.Td><Text size="sm">{v.fecha_venta}</Text></Table.Td>
+                  <Table.Td><Text size="sm">{v.personas}</Text></Table.Td>
+                  {ve_montos && (
+                    <><Table.Td><Text size="sm">{formatearPesos(v.valor_pactado)}</Text></Table.Td>
+                      <Table.Td><Text size="sm" c={v.saldo > 0 ? 'red' : undefined}>
+                        {formatearPesos(v.saldo)}</Text></Table.Td></>)}
+                  <Table.Td><Badge variant="light" size="sm">{v.estado_financiero}</Badge></Table.Td>
+                </Table.Tr>))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>)}
+
+      {!ve_montos && ventas.length > 0 && (
+        <Text size="xs" c="dimmed" mt={6}>
+          Los montos no se le muestran a su perfil. Lo que sí puede ver es si el cliente
+          está al día, que es lo que hace falta para arrancar un trámite.
+        </Text>)}
+
+      {ve_montos && pagos.length > 0 && (
+        <>
+          <Text fw={600} size="sm" mt="md" mb={6}>Últimos pagos</Text>
+          <Stack gap={4}>
+            {pagos.slice(0, 8).map((p) => (
+              <Group key={p.id} gap={10} wrap="nowrap">
+                <Text size="sm" style={{ minWidth: 92 }}>{p.fecha}</Text>
+                <Text size="sm" fw={500}>{formatearPesos(p.monto)}</Text>
+                <Text size="xs" c="dimmed">{p.medio ?? ''}</Text>
+                {p.referencia && <Text size="xs" c="dimmed">· {p.referencia}</Text>}
+              </Group>))}
+          </Stack>
+        </>)}
+    </Card>
+  )
 }

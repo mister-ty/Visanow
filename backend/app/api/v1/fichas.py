@@ -32,17 +32,50 @@ def buscar(q: str = Query(min_length=2, description='Nombre, teléfono, document
 @router.get('/clientes/{cliente_id}/ficha', response_model=esq.Ficha360)
 def ficha_360(cliente_id: int, actor: Usuarios = Depends(requiere('clientes.ver')),
               db: Session = Depends(get_db)):
-    """RF-005: el cliente, quiénes viajan con él, sus trámites, sus próximas
-    citas y la cronología, en una sola pantalla."""
+    """RF-005: todo lo del cliente en una sola pantalla.
+
+    Las nueve cosas que pide el requisito: oportunidades, ventas, trámites,
+    pagos, saldo, tareas, alertas, documentos y cronología. Antes había dos, y
+    lo demás estaba repartido entre siete pantallas distintas.
+    """
     from app.api.v1.clientes import detalle as detalle_cliente
     from app.api.v1.casos import _salida as caso_salida
 
     cliente = personas.obtener(db, cliente_id)
-    ve_tramites = 'casos.ver' in permisos_de_rol(db, actor.rol_id)
+    puede = permisos_de_rol(db, actor.rol_id)
+
+    # Cada bloque con SU permiso. La ficha responde todo junto, asi que
+    # mezclarlos seria entregarle a operaciones los montos que la administradora
+    # dijo el 29/09 que no debe ver. Y el campo `ve_*` existe para que la
+    # pantalla distinga «no hay» de «no le corresponde»: confundirlos hace creer
+    # que un cliente no tiene ventas cuando lo que pasa es que no se le muestran.
+    ve_tramites = 'casos.ver' in puede
+    ve_oportunidades = 'oportunidades.ver' in puede
+    ve_montos = 'pagos.ver' in puede
+    ve_al_dia = ve_montos or 'pagos.estado' in puede
+    ve_ventas = 'negocios.ver' in puede
+    ve_trabajo = 'alertas.ver' in puede
+    ve_reservados = 'solicitantes.reservado' in puede
+
     tramites = fichas.tramites_de(db, cliente_id) if ve_tramites else []
     citas = fichas.proximas_citas(db, cliente_id) if ve_tramites else []
     personas_totales = len(fichas.solicitantes_ids(db, cliente_id))
     ahora = datetime.now(timezone.utc)
+
+    ventas = fichas.ventas_de(db, cliente_id) if ve_ventas else []
+    dinero = esq.DineroEnFicha(
+        ve_montos=ve_montos,
+        al_dia=fichas.esta_al_dia(db, cliente_id) if ve_al_dia else None,
+        ventas=[esq.VentaEnFicha(**v) for v in ventas] if ve_ventas else [],
+        pagos=[esq.PagoEnFicha(**p) for p in fichas.pagos_de(db, cliente_id)] if ve_montos else [],
+        total_pactado=sum(v['valor_pactado'] for v in ventas) if ve_montos else None,
+        total_pagado=sum(v['pagado'] for v in ventas) if ve_montos else None,
+        saldo=sum(v['saldo'] for v in ventas) if ve_montos else None)
+    # Sin permiso de montos, la venta se ve pero sin cifras: saber que el
+    # cliente compro el premium no es saber cuanto pago.
+    if ve_ventas and not ve_montos:
+        dinero.ventas = [v.model_copy(update={'valor_pactado': 0, 'pagado': 0, 'saldo': 0})
+                         for v in dinero.ventas]
 
     return esq.Ficha360(
         cliente=detalle_cliente(cliente_id, actor, db),
@@ -59,7 +92,16 @@ def ficha_360(cliente_id: int, actor: Usuarios = Depends(requiere('clientes.ver'
                                tipo=x.tipo, inicia_en=x.inicia_en, estado=x.estado,
                                sede=x.sede.nombre if x.sede else None) for x in citas],
         cronologia=[esq.SucesoSalida(**s.__dict__) for s in fichas.cronologia(db, cliente_id)],
-        ve_tramites=ve_tramites)
+        oportunidades=[esq.OportunidadEnFicha(**o)
+                       for o in fichas.oportunidades_de(db, cliente_id)] if ve_oportunidades else [],
+        dinero=dinero,
+        tareas=[esq.TareaEnFicha(**t) for t in fichas.tareas_de(db, cliente_id)] if ve_trabajo else [],
+        alertas=[esq.AlertaEnFicha(**a) for a in fichas.alertas_de(db, cliente_id)] if ve_trabajo else [],
+        documentos=[esq.DocumentoEnFicha(**d) for d in
+                    fichas.documentos_de(db, cliente_id, ve_reservados=ve_reservados)],
+        ve_tramites=ve_tramites,
+        ve_oportunidades=ve_oportunidades,
+        ve_trabajo=ve_trabajo)
 
 
 @router.post('/clientes/{cliente_id}/notas', response_model=esq.NotaSalida,

@@ -13,6 +13,7 @@ import { aInstanteBogota, formatearFechaHora } from '../lib/formato'
 
 type Alerta = Esquemas['AlertaSalida']
 type TipoAlerta = Esquemas['TipoAlertaSalida']
+type Canal = TipoAlerta['canal']
 type Severidad = Alerta['severidad']
 
 const COLOR_SEVERIDAD: Record<Severidad, string> = { alta: 'red', media: 'yellow', baja: 'gray' }
@@ -305,7 +306,9 @@ function AjustarTipo({ tipo, cerrar }: { tipo: TipoAlerta; cerrar: () => void })
   const [valor, setValor] = useState(String(tipo.anticipacion_valor))
   const [unidad, setUnidad] = useState(tipo.anticipacion_unidad)
   const [severidad, setSeveridad] = useState(tipo.severidad)
-  const [canal, setCanal] = useState(tipo.canal)
+  // El tipo sale del contrato de la API y no de `string`: asi el dia que se
+  // agregue un canal, el compilador avisa aqui en vez de fallar al guardar.
+  const [canal, setCanal] = useState<Canal>(tipo.canal as Canal)
   const [rol, setRol] = useState(tipo.destinatario_rol_id ? String(tipo.destinatario_rol_id) : null)
   const [reps, setReps] = useState(tipo.repeticiones.join(', '))
 
@@ -357,12 +360,13 @@ function AjustarTipo({ tipo, cerrar }: { tipo: TipoAlerta; cerrar: () => void })
           <Select label="Canal" data={[
             { value: 'interna', label: 'interna' }, { value: 'correo', label: 'correo' },
             { value: 'whatsapp', label: 'whatsapp' }]}
-            value={canal} onChange={(v) => v && setCanal(v)} />
+            value={canal} onChange={(v) => v && setCanal(v as Canal)} />
           {/* El filtro no sobra: una opción sin `value` se vuelve "undefined",
               dos se vuelven dos "undefined", y Mantine tumba la página entera
               por opciones repetidas. Mejor un desplegable corto que una
               pantalla en blanco. */}
-          <Select label="Le llega a" value={rol} onChange={setRol} clearable
+          <Select label="Le llega a" value={rol}
+            onChange={(v) => setRol(v === null ? null : String(v))} clearable
             data={(roles.data ?? [])
               .filter((r) => r.id != null)
               .map((r) => ({ value: String(r.id), label: r.nombre }))}

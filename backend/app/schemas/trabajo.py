@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field
 EstadoTarea = Literal['pendiente', 'en_curso', 'hecha', 'cancelada']
 Prioridad = Literal['baja', 'media', 'alta']
 EstadoAlerta = Literal['nueva', 'vista', 'resuelta', 'pospuesta']
+#: Un canal es un canal entre y salga. Declararlo `str` a la salida dejaba que
+#: la pantalla lo tratara como texto libre y el contrato como lista cerrada,
+#: y los dos podian separarse sin que nada avisara.
+Canal = Literal['interna', 'correo', 'whatsapp']
 Severidad = Literal['baja', 'media', 'alta']
 
 
@@ -130,7 +134,7 @@ class TipoAlertaSalida(BaseModel):
     anticipacion_unidad: Literal['horas', 'dias', 'dias_habiles']
     repeticiones: list[int]
     severidad: Severidad
-    canal: str
+    canal: Canal
     destinatario_rol_id: int | None = None
     destinatario_rol: str | None = Field(
         default=None, description='A quién le llega: el nombre del rol, para mostrarlo')
@@ -153,6 +157,6 @@ class CambiarTipoAlerta(BaseModel):
         default=None, max_length=10,
         description='A los cuántos días vuelve a avisar: [7, 15] insiste dos veces')
     severidad: Severidad | None = None
-    canal: Literal['interna', 'correo', 'whatsapp'] | None = None
+    canal: Canal | None = None
     destinatario_rol_id: int | None = None
     activo: bool | None = None

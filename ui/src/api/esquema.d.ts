@@ -1316,8 +1316,11 @@ export interface paths {
         };
         /**
          * Ficha 360
-         * @description RF-005: el cliente, quiénes viajan con él, sus trámites, sus próximas
-         *     citas y la cronología, en una sola pantalla.
+         * @description RF-005: todo lo del cliente en una sola pantalla.
+         *
+         *     Las nueve cosas que pide el requisito: oportunidades, ventas, trámites,
+         *     pagos, saldo, tareas, alertas, documentos y cronología. Antes había dos, y
+         *     lo demás estaba repartido entre siete pantallas distintas.
          */
         get: operations["ficha_360_api_v1_clientes__cliente_id__ficha_get"];
         put?: never;
@@ -2646,6 +2649,24 @@ export interface components {
             /** Autorizado Por */
             autorizado_por: number;
         };
+        /** AlertaEnFicha */
+        AlertaEnFicha: {
+            /** Id */
+            id: number;
+            /** Tipo */
+            tipo: string;
+            /** Mensaje */
+            mensaje: string;
+            /** Severidad */
+            severidad: string;
+            /** Estado */
+            estado: string;
+            /**
+             * Creada En
+             * Format: date-time
+             */
+            creada_en: string;
+        };
         /** AlertaSalida */
         AlertaSalida: {
             /** Id */
@@ -3518,6 +3539,65 @@ export interface components {
              */
             motivo: string;
         };
+        /**
+         * DineroEnFicha
+         * @description La plata del cliente, o solo si está al día, según quién pregunte.
+         *
+         *     Operaciones necesita saber si el cliente pagó el anticipo para arrancar el
+         *     trámite, y no tiene por qué ver cuánto (respuesta de la administradora del
+         *     29/09). Por eso `al_dia` se responde con `pagos.estado` y los montos con
+         *     `pagos.ver`: son dos permisos distintos y aquí se notan.
+         */
+        DineroEnFicha: {
+            /** Ve Montos */
+            ve_montos: boolean;
+            /**
+             * Al Dia
+             * @description Si no debe nada vencido. Sin montos, para quien no los ve
+             */
+            al_dia?: boolean | null;
+            /**
+             * Ventas
+             * @default []
+             */
+            ventas: components["schemas"]["VentaEnFicha"][];
+            /**
+             * Pagos
+             * @default []
+             */
+            pagos: components["schemas"]["PagoEnFicha"][];
+            /** Total Pactado */
+            total_pactado?: number | null;
+            /** Total Pagado */
+            total_pagado?: number | null;
+            /** Saldo */
+            saldo?: number | null;
+        };
+        /** DocumentoEnFicha */
+        DocumentoEnFicha: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /** Almacenamiento */
+            almacenamiento: string;
+            /** Url */
+            url: string | null;
+            /** Mime */
+            mime: string | null;
+            /** Restringido */
+            restringido: boolean;
+            /**
+             * Sobre
+             * @description De qué cuelga: el cliente, una persona o un trámite
+             */
+            sobre: string;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+        };
         /** DocumentoSalida */
         DocumentoSalida: {
             /** Id */
@@ -3717,7 +3797,11 @@ export interface components {
         };
         /**
          * Ficha360
-         * @description Todo lo que hoy está repartido entre tres archivos, en una sola respuesta.
+         * @description Todo lo que estaba repartido entre siete pantallas, en una sola respuesta.
+         *
+         *     Cada bloque viene vacío cuando el rol no puede verlo, y el campo `ve_*` lo
+         *     dice: la pantalla distingue «no hay» de «no le corresponde», que no son lo
+         *     mismo y confundirlos hace que alguien crea que un cliente no tiene ventas.
          */
         Ficha360: {
             cliente: components["schemas"]["ClienteDetalle"];
@@ -3738,10 +3822,42 @@ export interface components {
              */
             cronologia: components["schemas"]["SucesoSalida"][];
             /**
+             * Oportunidades
+             * @default []
+             */
+            oportunidades: components["schemas"]["OportunidadEnFicha"][];
+            dinero: components["schemas"]["DineroEnFicha"];
+            /**
+             * Tareas
+             * @default []
+             */
+            tareas: components["schemas"]["TareaEnFicha"][];
+            /**
+             * Alertas
+             * @default []
+             */
+            alertas: components["schemas"]["AlertaEnFicha"][];
+            /**
+             * Documentos
+             * @default []
+             */
+            documentos: components["schemas"]["DocumentoEnFicha"][];
+            /**
              * Ve Tramites
              * @description False si el rol no tiene permiso de ver trámites
              */
             ve_tramites: boolean;
+            /**
+             * Ve Oportunidades
+             * @default false
+             */
+            ve_oportunidades: boolean;
+            /**
+             * Ve Trabajo
+             * @description Tareas y alertas
+             * @default false
+             */
+            ve_trabajo: boolean;
         };
         /** FilaCarteraSalida */
         FilaCarteraSalida: {
@@ -4590,6 +4706,28 @@ export interface components {
             /** Proxima Accion Fecha */
             proxima_accion_fecha?: string | null;
         };
+        /** OportunidadEnFicha */
+        OportunidadEnFicha: {
+            /** Id */
+            id: number;
+            /** Estado */
+            estado: string;
+            /** Servicio */
+            servicio: string | null;
+            /** Pais */
+            pais: string | null;
+            /** Valor Estimado */
+            valor_estimado: number | null;
+            /** Proxima Accion */
+            proxima_accion: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha: string | null;
+            /**
+             * Creada En
+             * Format: date-time
+             */
+            creada_en: string;
+        };
         /** OportunidadSalida */
         OportunidadSalida: {
             /** Id */
@@ -4802,6 +4940,24 @@ export interface components {
             pagador_nombre?: string | null;
             /** Observacion */
             observacion?: string | null;
+        };
+        /** PagoEnFicha */
+        PagoEnFicha: {
+            /** Id */
+            id: number;
+            /** Negocio Id */
+            negocio_id: number | null;
+            /**
+             * Fecha
+             * Format: date
+             */
+            fecha: string;
+            /** Monto */
+            monto: number;
+            /** Medio */
+            medio: string | null;
+            /** Referencia */
+            referencia: string | null;
         };
         /** PagoSalida */
         PagoSalida: {
@@ -5423,6 +5579,21 @@ export interface components {
              */
             vence_en?: string | null;
         };
+        /** TareaEnFicha */
+        TareaEnFicha: {
+            /** Id */
+            id: number;
+            /** Titulo */
+            titulo: string;
+            /** Estado */
+            estado: string;
+            /** Prioridad */
+            prioridad: string;
+            /** Vence En */
+            vence_en: string | null;
+            /** Responsable */
+            responsable: string | null;
+        };
         /** TareaSalida */
         TareaSalida: {
             /** Id */
@@ -5505,8 +5676,11 @@ export interface components {
              * @enum {string}
              */
             severidad: "baja" | "media" | "alta";
-            /** Canal */
-            canal: string;
+            /**
+             * Canal
+             * @enum {string}
+             */
+            canal: "interna" | "correo" | "whatsapp";
             /** Destinatario Rol Id */
             destinatario_rol_id?: number | null;
             /**
@@ -5656,6 +5830,28 @@ export interface components {
             ultima_senal: string;
             /** Ventas */
             ventas: number;
+        };
+        /** VentaEnFicha */
+        VentaEnFicha: {
+            /** Id */
+            id: number;
+            /** Servicio */
+            servicio: string | null;
+            /**
+             * Fecha Venta
+             * Format: date
+             */
+            fecha_venta: string;
+            /** Personas */
+            personas: number;
+            /** Valor Pactado */
+            valor_pactado: number;
+            /** Pagado */
+            pagado: number;
+            /** Saldo */
+            saldo: number;
+            /** Estado Financiero */
+            estado_financiero: string;
         };
         /** VentaSalida */
         VentaSalida: {
