@@ -17,8 +17,10 @@ class MargenSalida(BaseModel):
     etiqueta: str
     ventas: int
     ingreso_bruto: float = Field(description='Pagos confirmados, sin la tasa consular')
+    reembolsos: float = Field(description='Plata que entro y se le devolvio al cliente')
     costo_medio: float = Field(description='Lo que se llevo la pasarela o el banco')
-    ingreso_neto: float = Field(description='Ingreso bruto menos el costo del medio de pago')
+    ingreso_neto: float = Field(
+        description='Ingreso bruto menos los reembolsos y el costo del medio de pago')
     comisiones: float
     gastos_directos: float = Field(description='Gastos cargados a la venta o a sus tramites')
     costo_servicio: float = Field(description='Lo que cuesta atender el servicio')

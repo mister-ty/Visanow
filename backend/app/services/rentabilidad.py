@@ -3,6 +3,7 @@
 La resta completa, en el orden en que se explica:
 
     recaudado
+  - lo que se le devolvio al cliente
   - lo que se llevo la pasarela o el banco  ->  INGRESO NETO
   - la comision de la vendedora
   - los gastos cargados a esa venta
@@ -31,12 +32,15 @@ agencia. Contarla como ingreso infla el margen justo en lo que no se gano, asi
 que entra en su propia columna (`recaudo_terceros`) y en el margen vale cero.
 Es el mismo criterio con el que `comisiones.py` la saca de la base de calculo.
 
-**El ingreso es lo que entro, no lo que se facturo.** Se lee
-`v_estado_financiero.neto_recibido`, que es la suma de los pagos confirmados ya
-descontado el costo del medio de pago. Una venta recien cerrada y sin pagar
-tiene margen negativo si ya genero gastos, y eso es la verdad: todavia no ha
-entrado un peso. Para leerlo en contexto, el detalle de la venta tambien muestra
-lo pactado y el saldo.
+**El ingreso es lo que entro y se quedo.** El punto de partida es
+`v_estado_financiero`: los pagos confirmados, menos lo que se llevo el medio de
+pago. Y menos los reembolsos, porque un reembolso es plata que entro y se
+devolvio: el pago sigue registrado —y tiene que seguir, ahi esta la historia—
+pero ese dinero ya no esta en la agencia. Sin restarlo, una venta reembolsada
+mostraria el margen completo de algo que se deshizo. Una venta recien cerrada y
+sin pagar tiene margen negativo si ya genero gastos, y eso es la verdad:
+todavia no ha entrado un peso. Para leerlo en contexto, el detalle de la venta
+tambien muestra lo pactado y el saldo.
 
 Nada de esto se guarda en ninguna columna: el margen se calcula al preguntar,
 igual que el saldo (RN-01). Lo unico que se guarda es lo que cuesta cada
@@ -73,6 +77,7 @@ class Margen:
     etiqueta: str
     ventas: int
     ingreso_bruto: float
+    reembolsos: float
     costo_medio: float
     ingreso_neto: float
     comisiones: float
@@ -125,6 +130,10 @@ _VENTA = """
       -- La tasa consular se aparta aqui: entra en su columna y no suma ingreso.
       case when s.tipo = 'recaudo_terceros' then 0
            else coalesce(ef.total_pagado, 0) end            as ingreso_bruto,
+      -- Plata que entro y se devolvio. El pago queda registrado, que es como
+      -- debe ser, pero ya no esta en la agencia.
+      case when s.tipo = 'recaudo_terceros' then 0
+           else coalesce(aj.reembolsado, 0) end             as reembolsos,
       -- Lo que se llevo la pasarela es la diferencia entre el bruto y el neto
       -- de la vista; no se vuelve a restar despues, porque ya esta descontado
       -- dentro del ingreso neto.
@@ -132,7 +141,8 @@ _VENTA = """
            else coalesce(ef.total_pagado, 0)
                 - coalesce(ef.neto_recibido, 0) end         as costo_medio,
       case when s.tipo = 'recaudo_terceros' then 0
-           else coalesce(ef.neto_recibido, 0) end           as ingreso_neto,
+           else coalesce(ef.neto_recibido, 0)
+                - coalesce(aj.reembolsado, 0) end           as ingreso_neto,
       case when s.tipo = 'recaudo_terceros' then coalesce(ef.total_pagado, 0)
            else 0 end                                       as recaudo_terceros,
       coalesce(co.comisiones, 0)              as comisiones,
@@ -141,6 +151,12 @@ _VENTA = """
     from negocios n
     join servicios s on s.id = n.servicio_id
     join v_estado_financiero ef on ef.negocio_id = n.id
+    -- Solo el reembolso: el descuento y la condonacion mueven el saldo, no la
+    -- plata, y el cargo sube lo que el cliente debe, que no es ingreso hasta
+    -- que lo pague.
+    left join lateral (
+      select sum(a.monto) as reembolsado from ajustes_negocio a
+       where a.negocio_id = n.id and a.tipo = 'reembolso') aj on true
     -- Las anuladas no se descuentan: una comision anulada es plata que no salio.
     left join lateral (
       select sum(c.monto) as comisiones from comisiones c
@@ -169,7 +185,8 @@ _MARGEN = 'ingreso_neto - comisiones - gastos_directos - costo_servicio'
 #: Las sumas, en el mismo orden que los campos de `Margen`.
 _SUMAS = f"""
       count(*),
-      coalesce(sum(ingreso_bruto), 0), coalesce(sum(costo_medio), 0),
+      coalesce(sum(ingreso_bruto), 0), coalesce(sum(reembolsos), 0),
+      coalesce(sum(costo_medio), 0),
       coalesce(sum(ingreso_neto), 0), coalesce(sum(comisiones), 0),
       coalesce(sum(gastos_directos), 0), coalesce(sum(costo_servicio), 0),
       coalesce(sum({_MARGEN}), 0), coalesce(sum(recaudo_terceros), 0)
@@ -210,9 +227,10 @@ def _porcentaje(margen: float, ingreso_neto: float) -> float | None:
 
 
 def _margen(clave: str, etiqueta: str, fila) -> Margen:
-    ventas, bruto, medio, neto, comis, gastos, costo, margen, terceros = fila
+    ventas, bruto, devuelto, medio, neto, comis, gastos, costo, margen, terceros = fila
     return Margen(clave=clave, etiqueta=etiqueta, ventas=int(ventas or 0),
-                  ingreso_bruto=_num(bruto), costo_medio=_num(medio), ingreso_neto=_num(neto),
+                  ingreso_bruto=_num(bruto), reembolsos=_num(devuelto),
+                  costo_medio=_num(medio), ingreso_neto=_num(neto),
                   comisiones=_num(comis), gastos_directos=_num(gastos),
                   costo_servicio=_num(costo), margen=_num(margen),
                   margen_pct=_porcentaje(_num(margen), _num(neto)),
@@ -272,9 +290,9 @@ def informe(db: Session, actor: Usuarios, f: Filtros) -> Informe:
 
 def _venta(fila) -> MargenVenta:
     base = _margen(str(fila.negocio_id), f'Venta {fila.negocio_id}',
-                   (1, fila.ingreso_bruto, fila.costo_medio, fila.ingreso_neto,
-                    fila.comisiones, fila.gastos_directos, fila.costo_servicio,
-                    fila.margen, fila.recaudo_terceros))
+                   (1, fila.ingreso_bruto, fila.reembolsos, fila.costo_medio,
+                    fila.ingreso_neto, fila.comisiones, fila.gastos_directos,
+                    fila.costo_servicio, fila.margen, fila.recaudo_terceros))
     return MargenVenta(**base.__dict__, negocio_id=fila.negocio_id,
                        fecha_venta=fila.fecha_venta, servicio=fila.servicio,
                        es_recaudo_de_terceros=bool(fila.es_recaudo_de_terceros),

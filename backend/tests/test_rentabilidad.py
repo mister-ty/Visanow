@@ -184,6 +184,45 @@ def test_un_gasto_de_la_casa_no_se_le_carga_a_ninguna_venta(cliente, finanzas, v
     assert _margen(cliente, finanzas, venta['id'])['margen'] == antes
 
 
+# ------------------------------------------------------------- los reembolsos
+
+def test_la_plata_devuelta_al_cliente_deja_de_ser_ingreso(cliente, finanzas, venta):
+    """Un reembolso es plata que entro y se devolvio.
+
+    El pago sigue registrado —ahi esta la historia de la venta— asi que lo
+    recaudado no baja. Si el margen se quedara con el recaudado, una venta
+    reembolsada mostraria la ganancia completa de algo que se deshizo.
+    """
+    devuelto = 600_000
+    r = cliente.post(f'/api/v1/ventas/{venta["id"]}/ajustes', headers=finanzas, json={
+        'tipo': 'reembolso', 'monto': devuelto,
+        'motivo': 'El consulado nego la cita y se devolvio parte'})
+    assert r.status_code == 201, r.text
+
+    m = _margen(cliente, finanzas, venta['id'])
+    assert m['ingreso_bruto'] == PACTADO, 'lo recaudado no se borra: el pago existio'
+    assert m['reembolsos'] == devuelto
+    assert m['ingreso_neto'] == NETO - devuelto
+    assert m['margen'] == MARGEN - devuelto
+
+
+def test_un_descuento_posterior_no_es_plata_que_salio(cliente, finanzas, venta):
+    """El descuento y la condonacion mueven el saldo, no la caja.
+
+    Bajarle el precio a un cliente no le cuesta nada a la agencia en el momento:
+    simplemente deja de esperar esa plata. Restarlo del margen seria contarlo
+    dos veces, porque el ingreso ya es solo lo que de verdad entro.
+    """
+    antes = _margen(cliente, finanzas, venta['id'])
+    r = cliente.post(f'/api/v1/ventas/{venta["id"]}/ajustes', headers=finanzas, json={
+        'tipo': 'descuento', 'monto': 200_000, 'motivo': 'Rebaja acordada despues'})
+    assert r.status_code == 201, r.text
+
+    despues = _margen(cliente, finanzas, venta['id'])
+    assert despues['reembolsos'] == 0
+    assert despues['margen'] == antes['margen'] == MARGEN
+
+
 # ------------------------------------------------------------------- los costos
 
 def test_el_costo_que_cuenta_es_el_que_regia_el_dia_de_la_venta(cliente, finanzas, venta, db):
