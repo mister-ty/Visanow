@@ -471,6 +471,31 @@ def test_el_resumen_dice_cuanto_falta_por_cuadrar(cliente, vendedora, finanzas, 
     assert r['sin_conciliar'] == {'cuantos': 1, 'total': 120000.0}
 
 
+# ------------------------- encontrar la línea del extracto por su referencia
+
+def test_la_bandeja_se_filtra_por_la_referencia_del_comprobante(cliente, finanzas):
+    """RF-029. Cuando el cliente manda el pantallazo, la referencia es el único
+    dato del comprobante que también viene en el extracto: el nombre no sirve,
+    porque muchas veces consigna otra persona, y en el extracto real 182 de 192
+    líneas dicen apenas «TRANSFERENCIA CTA SUC VIRTUAL».
+
+    Sin este filtro había que buscar la línea a ojo entre las 192 del mes.
+    """
+    importar(cliente, finanzas, [
+        dict(mov('2026-02-10', 150000, fila=1), referencia='9988776655'),
+        dict(mov('2026-02-11', 250000, fila=2), referencia='1122334455'),
+    ])
+
+    r = cliente.get('/api/v1/conciliacion/movimientos?referencia=99887', headers=finanzas).json()
+    assert r['total'] == 1, f'el filtro no se aplicó, devolvió todo el extracto: {r}'
+    assert r['items'][0]['referencia'] == '9988776655'
+    assert r['suma'] == 150000, 'la suma tiene que ser la de lo filtrado'
+
+    vacio = cliente.get('/api/v1/conciliacion/movimientos?referencia=00000',
+                        headers=finanzas).json()
+    assert vacio['total'] == 0 and vacio['items'] == []
+
+
 # -------------------------------------------------------------- permisos
 
 def test_operaciones_no_cuadra_el_banco(cliente, usuario):

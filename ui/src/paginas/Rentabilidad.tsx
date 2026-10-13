@@ -39,31 +39,33 @@ function Resta({ m }: { m: Margen }) {
   return (
     <Card withBorder padding="sm">
       <Text fw={600} mb="xs">{m.etiqueta}</Text>
-      <Table>
-        <Table.Tbody>
-          {filas.map((f) => (
-            <Table.Tr key={f.etiqueta}>
-              <Table.Td>
-                <Text size="sm" fw={f.tipo === 'suma' ? 600 : 400}>
-                  {f.tipo === 'sale' ? '− ' : ''}{f.etiqueta}
-                </Text>
-              </Table.Td>
+      <Table.ScrollContainer minWidth={1080}>
+        <Table>
+          <Table.Tbody>
+            {filas.map((f) => (
+              <Table.Tr key={f.etiqueta}>
+                <Table.Td>
+                  <Text size="sm" fw={f.tipo === 'suma' ? 600 : 400}>
+                    {f.tipo === 'sale' ? '− ' : ''}{f.etiqueta}
+                  </Text>
+                </Table.Td>
+                <Table.Td ta="right">
+                  <Text size="sm" fw={f.tipo === 'suma' ? 600 : 400}
+                    c={f.tipo === 'sale' ? 'dimmed' : undefined}>
+                    {formatearPesos(f.valor)}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>))}
+            <Table.Tr>
+              <Table.Td><Text fw={700}>= Margen</Text></Table.Td>
               <Table.Td ta="right">
-                <Text size="sm" fw={f.tipo === 'suma' ? 600 : 400}
-                  c={f.tipo === 'sale' ? 'dimmed' : undefined}>
-                  {formatearPesos(f.valor)}
-                </Text>
+                <Text fw={700} c={colorMargen(m.margen)}>{formatearPesos(m.margen)}</Text>
+                <Text size="xs" c="dimmed">{porcentaje(m.margen_pct)} del ingreso neto</Text>
               </Table.Td>
-            </Table.Tr>))}
-          <Table.Tr>
-            <Table.Td><Text fw={700}>= Margen</Text></Table.Td>
-            <Table.Td ta="right">
-              <Text fw={700} c={colorMargen(m.margen)}>{formatearPesos(m.margen)}</Text>
-              <Text size="xs" c="dimmed">{porcentaje(m.margen_pct)} del ingreso neto</Text>
-            </Table.Td>
-          </Table.Tr>
-        </Table.Tbody>
-      </Table>
+            </Table.Tr>
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
       {m.recaudo_terceros > 0 && (
         <Alert color="gray" mt="xs" variant="light">
           <Text size="xs">

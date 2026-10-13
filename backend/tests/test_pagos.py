@@ -507,3 +507,53 @@ def test_operaciones_tampoco_ve_el_corte_por_edades(cliente, usuario, deudor):
     informe de cartera por edades es contabilidad."""
     cab = entrar(cliente, usuario('operaciones'))
     assert cliente.get('/api/v1/cartera/antiguedad', headers=cab).status_code == 403
+# -------------------------------- buscar un pago por su referencia (RF-029)
+
+def test_los_pagos_se_filtran_por_la_referencia_del_comprobante(cliente, finanzas, venta):
+    """RF-029. La pregunta frecuente sobre un pago no es «cuáles hubo en
+    octubre» sino «¿llegó este?», con el comprobante del cliente a la vista.
+
+    Antes la pantalla pintaba la columna «Referencia» pero no se podía filtrar
+    por ella: había que recorrer la lista con los ojos o adivinar la fecha.
+    """
+    for ref in ('BC-11112222', 'NEQUI-33334444'):
+        assert cliente.post('/api/v1/pagos', headers=finanzas, json={
+            'negocio_id': venta['id'], 'monto_bruto': 100000,
+            'referencia': ref}).status_code == 201
+
+    r = cliente.get('/api/v1/pagos?referencia=nequi', headers=finanzas).json()
+    assert r['total'] == 1, f'el filtro no se aplicó, devolvió todo: {r}'
+    assert r['items'][0]['referencia'] == 'NEQUI-33334444'
+
+    # Por un pedazo del número, que es como la gente se acuerda de él
+    r = cliente.get('/api/v1/pagos?referencia=1112', headers=finanzas).json()
+    assert [p['referencia'] for p in r['items']] == ['BC-11112222']
+
+
+def test_un_pedazo_que_no_existe_no_devuelve_la_lista_entera(cliente, finanzas, venta):
+    """El daño silencioso de un filtro que no se aplica es devolver todo: quien
+    busca cree que ese pago sí llegó porque ve pagos en la pantalla."""
+    cliente.post('/api/v1/pagos', headers=finanzas,
+                 json={'negocio_id': venta['id'], 'monto_bruto': 100000, 'referencia': 'BC-999'})
+    r = cliente.get('/api/v1/pagos?referencia=ZZZ-000', headers=finanzas).json()
+    assert r['total'] == 0 and r['items'] == []
+
+
+def test_la_referencia_esta_indexada_para_no_recorrer_la_tabla(db):
+    """Buscar por un pedazo de la referencia es un `ilike '%...%'`, y para esa
+    pregunta un índice corriente no sirve de nada: PostgreSQL no lo puede usar y
+    recorre la tabla fila por fila. Por eso va indexada por trigramas, la misma
+    técnica con la que ya se buscan los nombres (migración 0004).
+
+    Hoy son 583 pagos con referencia y el recorrido no se siente. El problema es
+    que esa cuenta solo crece y la consulta se dispara con cada letra que
+    alguien escribe en el buscador: es la clase de lentitud que no se nota el
+    día que se escribe y después nadie sabe de dónde salió.
+    """
+    for tabla in ('pagos', 'movimientos_banco'):
+        definicion = db.scalar(
+            text('select indexdef from pg_indexes '
+                 "where schemaname = 'public' and indexname = :i"),
+            {'i': f'ix_{tabla}_referencia'})
+        assert definicion, f'{tabla}.referencia quedó sin índice'
+        assert 'gin_trgm_ops' in definicion, definicion

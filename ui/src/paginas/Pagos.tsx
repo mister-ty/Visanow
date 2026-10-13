@@ -2,11 +2,12 @@ import {
   Alert, Badge, Button, Card, Center, Group, Loader, Modal, NumberInput, Select, SimpleGrid, Stack,
   Switch, Table, Tabs, Text, TextInput, Textarea, Title,
 } from '@mantine/core'
+import { useDebouncedValue } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconPlus } from '@tabler/icons-react'
+import { IconPlus, IconSearch } from '@tabler/icons-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { BotonExportar } from '../componentes/BotonExportar'
@@ -60,6 +61,11 @@ export function Pagos() {
   const { puede } = useSesion()
   const [registrando, setRegistrando] = useState(false)
   const [ventaAbierta, setVentaAbierta] = useState<number | null>(null)
+  // El buscador global trae acá con la referencia puesta (RF-029): si alguien
+  // llega buscando un pago, la pantalla tiene que abrir en la lista de pagos y
+  // no en la cartera, o parecería que no encontró nada.
+  const [params] = useSearchParams()
+  const referenciaBuscada = params.get('referencia') ?? ''
 
   const sinAsignar = useQuery({
     queryKey: ['pagos', 'sin-asignar-conteo'],
@@ -83,7 +89,7 @@ export function Pagos() {
           </Button>)}
       </Group>
 
-      <Tabs defaultValue="cartera" keepMounted={false}>
+      <Tabs defaultValue={referenciaBuscada ? 'pagos' : 'cartera'} keepMounted={false}>
         <Tabs.List>
           <Tabs.Tab value="cartera">Cartera</Tabs.Tab>
           <Tabs.Tab value="bandeja"
@@ -96,7 +102,9 @@ export function Pagos() {
         <Tabs.Panel value="bandeja" pt="md">
           <TablaPagos soloSinAsignar abrirVenta={setVentaAbierta} />
         </Tabs.Panel>
-        <Tabs.Panel value="pagos" pt="md"><TablaPagos abrirVenta={setVentaAbierta} /></Tabs.Panel>
+        <Tabs.Panel value="pagos" pt="md">
+          <TablaPagos abrirVenta={setVentaAbierta} referenciaInicial={referenciaBuscada} />
+        </Tabs.Panel>
       </Tabs>
 
       <ModalPago abierto={registrando} cerrar={() => setRegistrando(false)} />
@@ -294,16 +302,21 @@ function Tarjeta({ titulo, valor, sub, color }: {
 
 // -------------------------------------------------------------------- pagos
 
-function TablaPagos({ soloSinAsignar, abrirVenta }: {
-  soloSinAsignar?: boolean; abrirVenta: (id: number) => void
+function TablaPagos({ soloSinAsignar, abrirVenta, referenciaInicial = '' }: {
+  soloSinAsignar?: boolean; abrirVenta: (id: number) => void; referenciaInicial?: string
 }) {
   const { puede } = useSesion()
   const [asignando, setAsignando] = useState<Pago | null>(null)
+  const [referencia, setReferencia] = useState(referenciaInicial)
+  const [buscada] = useDebouncedValue(referencia.trim(), 300)
+  const consulta = {
+    sin_asignar: !!soloSinAsignar,
+    ...(buscada ? { referencia: buscada } : {}),
+    tamano: 100,
+  }
   const pagos = useQuery({
-    queryKey: ['pagos', { soloSinAsignar: !!soloSinAsignar }],
-    queryFn: () => exigir(api.GET('/api/v1/pagos', {
-      params: { query: { sin_asignar: !!soloSinAsignar, tamano: 100 } },
-    })),
+    queryKey: ['pagos', consulta],
+    queryFn: () => exigir(api.GET('/api/v1/pagos', { params: { query: consulta } })),
     placeholderData: keepPreviousData,
   })
 
@@ -314,6 +327,11 @@ function TablaPagos({ soloSinAsignar, abrirVenta }: {
         <Alert color="orange" variant="light">
           Estos pagos entraron sin saberse de qué venta son. Mientras no tengan dueño no bajan ningún saldo.
         </Alert>)}
+      {/* El filtro que responde «¿llegó este pago?» con el comprobante del
+          cliente a la vista: se pega la referencia y listo (RF-029). */}
+      <TextInput w={{ base: '100%', sm: 320 }} value={referencia} label="Referencia del comprobante"
+        placeholder="Un pedazo basta" leftSection={<IconSearch size={16} />}
+        onChange={(e) => setReferencia(e.currentTarget.value)} />
       <Card withBorder padding={0}>
         <Table.ScrollContainer minWidth={820}>
           <Table verticalSpacing="sm" highlightOnHover>
@@ -352,7 +370,9 @@ function TablaPagos({ soloSinAsignar, abrirVenta }: {
               {pagos.data?.items.length === 0 && (
                 <Table.Tr><Table.Td colSpan={6}>
                   <Text size="sm" c="dimmed" ta="center" py="lg">
-                    {soloSinAsignar ? 'No hay pagos por identificar.' : 'Todavía no hay pagos registrados.'}
+                    {buscada
+                      ? `Ningún pago con la referencia «${buscada}».`
+                      : soloSinAsignar ? 'No hay pagos por identificar.' : 'Todavía no hay pagos registrados.'}
                   </Text>
                 </Table.Td></Table.Tr>)}
             </Table.Tbody>

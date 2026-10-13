@@ -8,7 +8,8 @@ tenga a mano en ese momento (un teléfono, una cédula, un pasaporte).
 import pytest
 from sqlalchemy import select, text
 
-from app.models.esquema import Paises
+from app.core import seguridad as seg
+from app.models.esquema import Casos, Paises, Servicios
 from tests.conftest import entrar
 
 
@@ -16,6 +17,11 @@ from tests.conftest import entrar
 def comercial(cliente, usuario):
     p = usuario('comercial')
     return entrar(cliente, p), p
+
+
+@pytest.fixture
+def finanzas(cliente, usuario):
+    return entrar(cliente, usuario('finanzas'))
 
 
 @pytest.fixture
@@ -282,6 +288,236 @@ def test_una_sola_letra_no_dispara_la_busqueda(cliente, comercial):
 def test_la_busqueda_exige_permiso(cliente, usuario):
     r = cliente.get('/api/v1/buscar', params={'q': 'Restrepo'})
     assert r.status_code == 401
+
+
+# ------------------------------------------------------------ el DS-160 (RF-029)
+
+def _marcar_ds160(db, caso_id: int, numero: str) -> None:
+    """Pone el DS-160 como lo pone la importación del SaaS, que es la única
+    parte del sistema que lo escribe: el número cifrado y su índice ciego al
+    lado (ver `services/saas.py`). El número en claro no se guarda nunca."""
+    caso = db.get(Casos, caso_id)
+    caso.ds160_numero_cifrado = seg.cifrar(numero)
+    caso.ds160_hash = seg.indice_ciego(numero)
+    db.commit()
+
+
+def _tramite_con_ds160(cliente, db, usuario, familia, cab_comercial, *,
+                       id_externo='VN-2026-9001', ds160='AA0099887766', responsable=None):
+    """Un trámite con n.º de solicitud del SaaS y DS-160, que son las dos cosas
+    por las que RF-029 pide encontrarlo. Lo abre operaciones, que es quien
+    tramita; la comercial vende."""
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    persona = ficha(cliente, cab_comercial, familia)['cliente']['grupos'][0]['solicitantes'][0]
+    cuerpo = {'solicitante_id': persona['id'], 'pais_id': pais, 'id_externo': id_externo}
+    if responsable is not None:
+        cuerpo['responsable_id'] = responsable
+    r = cliente.post('/api/v1/casos', headers=entrar(cliente, usuario('operaciones')), json=cuerpo)
+    assert r.status_code == 201, r.text
+    _marcar_ds160(db, r.json()['id'], ds160)
+    return r.json()
+
+
+@pytest.mark.parametrize('consulta', [
+    'AA0099887766',
+    'aa0099887766',          # en minúsculas, como sale de copiar y pegar
+    'AA 0099 887766',        # con los espacios con que lo lee la gente
+])
+def test_el_ds160_encuentra_el_tramite_aunque_se_escriba_distinto(
+        cliente, comercial, familia, db, usuario, consulta):
+    """El DS-160 está cifrado: se busca por su índice ciego, que normaliza el
+    valor en mayúsculas y sin espacios. Así el asesor lo escribe como le quede
+    cómodo y encuentra lo mismo.
+
+    Esta parte de RF-029 estaba en el código sin una sola prueba que la
+    sostuviera: funcionaba, pero nada avisaba si se rompía.
+    """
+    cab, _ = comercial
+    caso = _tramite_con_ds160(cliente, db, usuario, familia, cab)
+    hallado = [x for x in buscar(cliente, cab, consulta) if x['tipo'] == 'tramite']
+    assert [x['id'] for x in hallado] == [caso['id']], f'«{consulta}» no lo encontró: {hallado}'
+    assert hallado[0]['coincidio_por'] == 'DS-160'
+    assert hallado[0]['ruta'] == f'/casos/{caso["id"]}'
+
+
+def test_un_ds160_parecido_no_cuenta(cliente, comercial, familia, db, usuario):
+    """El índice ciego solo permite la búsqueda exacta, y eso acá es lo correcto:
+    un dígito de diferencia es otro formulario, de otra persona."""
+    cab, _ = comercial
+    _tramite_con_ds160(cliente, db, usuario, familia, cab)
+    assert [x for x in buscar(cliente, cab, 'AA0099887767') if x['tipo'] == 'tramite'] == []
+
+
+# --------------------------------------------- el alcance en el buscador (RNF-03)
+
+def test_el_buscador_no_entrega_tramites_ajenos_a_quien_solo_ve_los_suyos(
+        cliente, comercial, familia, db, usuario):
+    """RNF-03, por la puerta del buscador.
+
+    El alcance ya se respetaba en el tablero y al abrir un trámite por su URL,
+    pero el buscador no recibía ni quién estaba buscando: quien tiene «solo los
+    trámites asignados» escribía el n.º de solicitud o el DS-160 y encontraba
+    trámites de otros, con el nombre del viajero en el resultado, y desde ahí
+    los abría. El control de acceso vale en todas las puertas o no vale.
+    """
+    from app.services import usuarios as servicio_usuarios
+
+    cab, _ = comercial
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ajeno = usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, ajeno.u.id, alcance='asignados')
+    db.commit()
+
+    caso = _tramite_con_ds160(cliente, db, usuario, familia, cab, responsable=dueno.u.id)
+    # El trámite se crea con el dueño como responsable; el ajeno no tiene nada
+    cab_ajeno = entrar(cliente, ajeno)
+    for consulta in ('VN-2026-9001', 'AA0099887766'):
+        hallado = [x for x in buscar(cliente, cab_ajeno, consulta) if x['tipo'] == 'tramite']
+        assert hallado == [], f'«{consulta}» le entregó un trámite ajeno: {hallado}'
+
+    # Y no es que el buscador se haya quedado mudo: el responsable sí los encuentra
+    cab_dueno = entrar(cliente, dueno)
+    for consulta, por in (('VN-2026-9001', 'n.º de solicitud'), ('AA0099887766', 'DS-160')):
+        hallado = [x for x in buscar(cliente, cab_dueno, consulta) if x['tipo'] == 'tramite']
+        assert [x['id'] for x in hallado] == [caso['id']], f'«{consulta}»: {hallado}'
+        assert hallado[0]['coincidio_por'] == por
+
+
+def test_a_quien_le_quitaron_ver_tramites_el_buscador_no_se_los_entrega(
+        cliente, comercial, familia, db, usuario):
+    """Los permisos son datos: a un rol se le puede quitar «ver trámites» desde
+    la administración, y la ficha del cliente ya lo respeta —responde sin la
+    parte operativa—. El buscador tenía que respetarlo igual, o sería la rendija
+    que deja sin efecto a lo otro: se escribe el n.º de solicitud y aparece el
+    trámite con el nombre del viajero.
+    """
+    cab, _ = comercial
+    _tramite_con_ds160(cliente, db, usuario, familia, cab)
+
+    db.execute(text("""
+        delete from roles_permisos
+         where rol_id = (select id from roles where codigo = 'solo_lectura')
+           and permiso_id in (select id from permisos where codigo = 'casos.ver')"""))
+    db.commit()
+
+    cab_lectura = entrar(cliente, usuario('solo_lectura'))
+    for consulta in ('VN-2026-9001', 'AA0099887766'):
+        hallado = [x for x in buscar(cliente, cab_lectura, consulta) if x['tipo'] == 'tramite']
+        assert hallado == [], f'«{consulta}» entregó un trámite sin permiso: {hallado}'
+    # Lo demás del buscador le sigue sirviendo: el cliente sí lo puede ver
+    assert [x['id'] for x in buscar(cliente, cab_lectura, 'Restrepo')
+            if x['tipo'] == 'cliente'] == [familia]
+
+
+def test_colaborar_en_un_tramite_tambien_deja_encontrarlo_en_el_buscador(
+        cliente, comercial, familia, db, usuario):
+    """Ser colaborador tiene que servir también acá (RF-026). Si el alcance del
+    buscador mirara solo al responsable, a quien lo pusieron a ayudar le diría
+    que ese trámite no existe mientras lo ve en su propia lista de trabajo."""
+    from app.services import usuarios as servicio_usuarios
+
+    cab, _ = comercial
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ayuda = usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, ayuda.u.id, alcance='asignados')
+    db.commit()
+
+    caso = _tramite_con_ds160(cliente, db, usuario, familia, cab, responsable=dueno.u.id)
+    cab_ayuda = entrar(cliente, ayuda)
+    assert [x for x in buscar(cliente, cab_ayuda, 'VN-2026-9001') if x['tipo'] == 'tramite'] == []
+
+    r = cliente.post(f'/api/v1/casos/{caso["id"]}/colaboradores', headers=entrar(cliente, dueno),
+                     json={'usuario_id': ayuda.u.id})
+    assert r.status_code == 201, r.text
+    hallado = [x for x in buscar(cliente, cab_ayuda, 'VN-2026-9001') if x['tipo'] == 'tramite']
+    assert [x['id'] for x in hallado] == [caso['id']]
+
+
+# ------------------------------------------- la referencia de pago (RF-029)
+
+@pytest.fixture
+def pago_con_referencia(cliente, comercial, familia, finanzas, db):
+    """Una venta de la familia con un pago encima, como entra de verdad: el
+    comprobante que el cliente manda por WhatsApp trae una referencia, y es lo
+    único de ese comprobante que se puede buscar."""
+    cab, _ = comercial
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    servicio = db.scalar(select(Servicios.id).where(Servicios.codigo == 'asesoria_usa'))
+    lead = cliente.post('/api/v1/oportunidades', headers=cab, json={
+        'cliente_id': familia, 'servicio_id': servicio, 'pais_id': pais,
+        'proxima_accion': 'Cotizar'}).json()
+    venta = cliente.post(f'/api/v1/oportunidades/{lead["id"]}/ganar', headers=cab, json={})
+    assert venta.status_code == 201, venta.text
+    r = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': venta.json()['id'], 'monto_bruto': 350000, 'fecha': '2026-10-05',
+        'referencia': 'BC-00123456789'})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_el_pago_se_encuentra_por_la_referencia_del_comprobante(
+        cliente, finanzas, pago_con_referencia):
+    """RF-029: «ya pagué, el comprobante dice BC-00123456789».
+
+    Era la última parte del requisito que no existía en ninguna capa: la caja de
+    búsqueda la nombraba en su texto de ayuda y no la buscaba.
+    """
+    hallado = [x for x in buscar(cliente, finanzas, 'BC-00123456789') if x['tipo'] == 'pago']
+    assert len(hallado) == 1, f'no encontró el pago: {hallado}'
+    assert hallado[0]['id'] == pago_con_referencia['id']
+    assert hallado[0]['coincidio_por'] == 'referencia de pago'
+    assert 'Lucía Restrepo Ángel' in hallado[0]['titulo'], 'tiene que decir de quién es'
+    assert 'BC-00123456789' in hallado[0]['detalle']
+    assert hallado[0]['ruta'].startswith('/pagos?referencia=')
+
+
+@pytest.mark.parametrize('consulta', [
+    '00123456789',           # solo los dígitos del comprobante
+    'bc-0012',               # en minúsculas
+    '123456',                # un pedazo de la mitad
+])
+def test_la_referencia_se_encuentra_por_un_pedazo_y_sin_distinguir_mayusculas(
+        cliente, finanzas, pago_con_referencia, consulta):
+    """Nadie copia la referencia completa: se acuerda de los últimos dígitos, o
+    pega un trozo del mensaje del banco."""
+    hallado = [x for x in buscar(cliente, finanzas, consulta) if x['tipo'] == 'pago']
+    assert [x['id'] for x in hallado] == [pago_con_referencia['id']], f'«{consulta}»: {hallado}'
+
+
+def test_el_pago_sin_dueno_tambien_se_encuentra_por_su_referencia(cliente, finanzas):
+    """Es el que más importa. Un pago que llegó suelto está en la bandeja de no
+    identificados sin nombre de cliente, así que la referencia es lo único por
+    donde agarrarlo: encontrarlo es lo que permite asignárselo al cliente que
+    está llamando (RF-043)."""
+    r = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'monto_bruto': 200000, 'fecha': '2026-10-06', 'referencia': 'NEQUI-778899'})
+    assert r.status_code == 201, r.text
+    hallado = [x for x in buscar(cliente, finanzas, 'NEQUI-778899') if x['tipo'] == 'pago']
+    assert [x['id'] for x in hallado] == [r.json()['id']], hallado
+    assert 'sin identificar' in hallado[0]['titulo']
+
+
+def test_quien_no_ve_la_contabilidad_no_encuentra_pagos_por_el_buscador(
+        cliente, usuario, pago_con_referencia):
+    """Ver plata es un permiso, no un alcance: los pagos no cuelgan de un
+    responsable. A operaciones se le oculta la contabilidad a propósito
+    (respuesta de la administradora del 29/09), y el buscador no puede ser la
+    rendija por donde empiece a ver montos y nombres de pagadores."""
+    cab = entrar(cliente, usuario('operaciones'))
+    assert cliente.get('/api/v1/pagos', headers=cab).status_code == 403
+    assert [x for x in buscar(cliente, cab, 'BC-00123456789') if x['tipo'] == 'pago'] == []
+
+
+def test_el_comodin_de_sql_no_se_cuela_por_la_caja_de_busqueda(
+        cliente, finanzas, pago_con_referencia):
+    """El `%` y el `_` son comodines en SQL. Sin escaparlos, escribir «%» en el
+    buscador pediría los pagos de todo el mundo, y es lo primero que alguien
+    escribe por accidente al buscar «50% del anticipo»."""
+    assert [x for x in buscar(cliente, finanzas, '%%') if x['tipo'] == 'pago'] == []
+    assert [x for x in buscar(cliente, finanzas, 'BC-%') if x['tipo'] == 'pago'] == []
+    assert [x for x in buscar(cliente, finanzas, 'BC_0') if x['tipo'] == 'pago'] == []
 
 
 # ------------------------------------------- el historial en idioma de la gente

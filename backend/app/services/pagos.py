@@ -43,6 +43,22 @@ def _hoy() -> dt.date:
     return dt.datetime.now(BOGOTA).date()
 
 
+def referencia_contiene(columna, texto: str):
+    """Busca una referencia por pedazo, sin distinguir mayúsculas (RF-029).
+
+    Nadie copia la referencia completa: lo normal es acordarse de los últimos
+    dígitos del comprobante, o pegar un trozo del mensaje del banco. Así que se
+    busca por pedazo y no por igualdad.
+
+    El `%` y el `_` que venga escrito se escapan antes de entrar a la consulta:
+    en SQL son comodines, así que sin esto quien escribe «100%» en el buscador
+    estaría pidiendo «cualquier cosa que tenga 100», y quien escribe solo «%»
+    se traería los pagos de todo el mundo.
+    """
+    escapado = texto.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    return columna.ilike(f'%{escapado}%', escape='\\')
+
+
 def parametro(db: Session, clave: str, por_defecto):
     p = db.get(Parametros, clave)
     return p.valor if p is not None else por_defecto
@@ -209,13 +225,23 @@ def cambiar_estado(db: Session, actor: Usuarios, pago_id: int, estado: str,
 
 def listar(db: Session, *, negocio_id: int | None = None, sin_asignar: bool = False,
            desde: dt.date | None = None, hasta: dt.date | None = None,
+           referencia: str | None = None,
            pagina: int = 1, tamano: int = 50) -> tuple[int, list[Pagos]]:
+    """La lista de pagos, con los filtros de la pantalla.
+
+    `referencia` existe porque la pregunta más frecuente sobre un pago no es
+    «cuáles hubo en octubre» sino «¿llegó este?», con el comprobante del
+    cliente a la vista (RF-029). Sin este filtro había que recorrer la lista
+    con los ojos.
+    """
     consulta: Select = select(Pagos).options(selectinload(Pagos.negocio),
                                              selectinload(Pagos.medio_pago))
     if negocio_id:
         consulta = consulta.where(Pagos.negocio_id == negocio_id)
     if sin_asignar:
         consulta = consulta.where(Pagos.negocio_id.is_(None))
+    if referencia := (referencia or '').strip():
+        consulta = consulta.where(referencia_contiene(Pagos.referencia, referencia))
     if desde:
         consulta = consulta.where(Pagos.fecha >= desde)
     if hasta:

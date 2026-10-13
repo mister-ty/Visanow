@@ -62,7 +62,7 @@ class NotaSalida(BaseModel):
 
 
 class ResultadoBusqueda(BaseModel):
-    tipo: Literal['cliente', 'solicitante', 'tramite']
+    tipo: Literal['cliente', 'solicitante', 'tramite', 'pago']
     id: int
     titulo: str
     detalle: str

@@ -1260,7 +1260,8 @@ class Pagos(Base):
         ForeignKeyConstraint(['negocio_id'], ['negocios.id'], name='pagos_negocio_id_fkey'),
         ForeignKeyConstraint(['registrado_por'], ['usuarios.id'], name='pagos_registrado_por_fkey'),
         PrimaryKeyConstraint('id', name='pagos_pkey'),
-        Index('ix_pagos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)')
+        Index('ix_pagos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)'),
+        Index('ix_pagos_referencia', 'referencia', postgresql_using='gin', postgresql_where='(referencia IS NOT NULL)')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1534,6 +1535,7 @@ class MovimientosBanco(Base):
         PrimaryKeyConstraint('id', name='movimientos_banco_pkey'),
         Index('ix_movimientos_banco_bandeja', 'estado', 'fecha'),
         Index('ix_movimientos_banco_cruce', 'valor', 'fecha', postgresql_where="((estado)::text = 'sin_conciliar'::text)"),
+        Index('ix_movimientos_banco_referencia', 'referencia', postgresql_using='gin', postgresql_where='(referencia IS NOT NULL)'),
         Index('ux_movimientos_banco_huella', 'huella', unique=True),
         Index('ux_movimientos_banco_pago', 'pago_id', postgresql_where="((pago_id IS NOT NULL) AND ((estado)::text = 'conciliado'::text))", unique=True)
     )

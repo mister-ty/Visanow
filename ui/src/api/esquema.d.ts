@@ -1293,6 +1293,10 @@ export interface paths {
         /**
          * Buscar
          * @description Una sola caja de búsqueda para todo el sistema (RF-029).
+         *
+         *     Quién busca va al servicio, porque la respuesta depende de eso: el alcance
+         *     del usuario y sus permisos deciden qué trámites y qué pagos puede encontrar
+         *     (RNF-03).
          */
         get: operations["buscar_api_v1_buscar_get"];
         put?: never;
@@ -1470,7 +1474,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Listar */
+        /**
+         * Listar
+         * @description Los pagos, con los filtros de la pantalla.
+         *
+         *     Buscar por referencia es la forma de responder «¿llegó este pago?» con el
+         *     comprobante del cliente a la vista, sin tener que adivinar la fecha.
+         */
         get: operations["listar_api_v1_pagos_get"];
         put?: never;
         /**
@@ -5092,7 +5102,7 @@ export interface components {
              * Tipo
              * @enum {string}
              */
-            tipo: "cliente" | "solicitante" | "tramite";
+            tipo: "cliente" | "solicitante" | "tramite" | "pago";
             /** Id */
             id: number;
             /** Titulo */
@@ -7095,6 +7105,8 @@ export interface operations {
                 desde?: string | null;
                 hasta?: string | null;
                 banco?: string | null;
+                /** @description La referencia del comprobante, o un pedazo de ella */
+                referencia?: string | null;
                 pagina?: number;
                 tamano?: number;
             };
@@ -8027,7 +8039,7 @@ export interface operations {
     buscar_api_v1_buscar_get: {
         parameters: {
             query: {
-                /** @description Nombre, teléfono, documento, correo, pasaporte, DS-160 o n.º de solicitud del SaaS */
+                /** @description Nombre, teléfono, documento, correo, pasaporte, DS-160, n.º de solicitud del SaaS o referencia de pago */
                 q: string;
             };
             header?: never;
@@ -8395,6 +8407,8 @@ export interface operations {
                 sin_asignar?: boolean;
                 desde?: string | null;
                 hasta?: string | null;
+                /** @description La referencia del comprobante, o un pedazo de ella (RF-029) */
+                referencia?: string | null;
                 pagina?: number;
                 tamano?: number;
             };
