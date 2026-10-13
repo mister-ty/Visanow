@@ -33,8 +33,15 @@ from sqlalchemy.orm import Session
 from app.core.deps import permisos_de_rol
 from app.core.errores import Conflicto, Invalido, Prohibido
 from app.models.esquema import Exportaciones, Usuarios
+from app.services.cartera import ETIQUETA_TRAMO
 
 BOGOTA = ZoneInfo('America/Bogota')
+
+# El archivo de cartera dice «31 a 60 días» y no «31_60»: lo abre contabilidad,
+# no un programador. Los nombres se toman de un solo lugar para que la pantalla
+# y el archivo llamen igual al mismo tramo.
+TRAMO_EN_PALABRAS = 'case v.tramo_mora ' + ' '.join(
+    f"when '{codigo}' then '{nombre}'" for codigo, nombre in ETIQUETA_TRAMO.items()) + ' end'
 FORMATOS = ('xlsx', 'csv')
 # Una exportacion sin tope es una forma de vaciar la base en una peticion. Con
 # 866 personas hoy no se nota; el tope es para el dia que si.
@@ -127,9 +134,14 @@ RECURSOS: dict[str, Recurso] = {
 
     'cartera': Recurso(
         nombre='cartera', permiso='pagos.exportar',
-        sql="""select n.id as venta, c.nombre as cliente, s.nombre as servicio,
+        # El tramo sale de la vista y no de un CASE escrito aquí: el archivo que
+        # se manda a contabilidad tiene que partir la cartera por los mismos
+        # cortes que la pantalla, o los dos informes no se van a poder comparar.
+        sql=f"""select n.id as venta, c.nombre as cliente, s.nombre as servicio,
                       n.fecha_venta, v.valor_pactado, v.total_pagado, v.saldo,
-                      v.vencido, v.por_vencer, v.dias_mora, u.nombre as vendedor
+                      v.vencido, v.por_vencer, v.dias_mora,
+                      {TRAMO_EN_PALABRAS} as tramo_mora,
+                      v.proximo_vencimiento, u.nombre as vendedor
                  from v_cartera v
                  join negocios n on n.id = v.negocio_id
                  join clientes c on c.id = n.cliente_id
@@ -143,6 +155,8 @@ RECURSOS: dict[str, Recurso] = {
             Columna('valor_pactado', 'Valor'), Columna('total_pagado', 'Pagado'),
             Columna('saldo', 'Saldo'), Columna('vencido', 'Vencido'),
             Columna('por_vencer', 'Por vencer'), Columna('dias_mora', 'Días de mora'),
+            Columna('tramo_mora', 'Edad de la mora'),
+            Columna('proximo_vencimiento', 'Próximo vencimiento'),
             Columna('vendedor', 'Vendedor')]),
 
     'pagos': Recurso(

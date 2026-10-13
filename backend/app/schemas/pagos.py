@@ -5,6 +5,11 @@ from pydantic import BaseModel, Field
 
 TipoAjuste = Literal['reembolso', 'cargo', 'descuento', 'condonacion']
 EstadoPago = Literal['confirmado', 'pendiente', 'no_identificado', 'reversado', 'duplicado']
+#: Los cortes de antigüedad de la contabilidad colombiana. Se escriben acá
+#: también para que un tramo mal digitado en el filtro se devuelva como error en
+#: vez de contestar una lista vacía, que se leería como «este cliente no debe
+#: nada».
+TramoMora = Literal['al_dia', '1_30', '31_60', '61_90', 'mas_90']
 
 
 class PagoCrear(BaseModel):
@@ -106,6 +111,7 @@ class FilaCarteraSalida(BaseModel):
     cliente_id: int
     cliente: str
     servicio: str
+    servicio_id: int
     fecha_venta: date
     vendedor: str | None
     valor_pactado: float
@@ -115,6 +121,9 @@ class FilaCarteraSalida(BaseModel):
     vencido: float
     por_vencer: float
     dias_vencido: int
+    tramo: TramoMora = Field(description='El atraso en el corte de la contabilidad')
+    proximo_vencimiento: date | None = Field(
+        default=None, description='La próxima cuota que todavía no es exigible')
     moneda: str
 
 
@@ -131,7 +140,18 @@ class ResumenCartera(BaseModel):
     cobrado: float
     cartera: float
     vencido: float
+    por_vencer: float = Field(description='El saldo que todavía no es exigible')
     ventas_con_saldo: int
+
+
+class TramoAntiguedad(BaseModel):
+    """Una fila del informe de cartera por edades."""
+    tramo: TramoMora
+    etiqueta: str
+    cuantas: int
+    saldo: float
+    vencido: float
+    por_vencer: float
 
 
 class PorEstado(BaseModel):
