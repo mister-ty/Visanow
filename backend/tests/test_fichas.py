@@ -384,6 +384,32 @@ def test_el_buscador_no_entrega_tramites_ajenos_a_quien_solo_ve_los_suyos(
         assert hallado[0]['coincidio_por'] == por
 
 
+def test_a_quien_le_quitaron_ver_tramites_el_buscador_no_se_los_entrega(
+        cliente, comercial, familia, db, usuario):
+    """Los permisos son datos: a un rol se le puede quitar «ver trámites» desde
+    la administración, y la ficha del cliente ya lo respeta —responde sin la
+    parte operativa—. El buscador tenía que respetarlo igual, o sería la rendija
+    que deja sin efecto a lo otro: se escribe el n.º de solicitud y aparece el
+    trámite con el nombre del viajero.
+    """
+    cab, _ = comercial
+    _tramite_con_ds160(cliente, db, usuario, familia, cab)
+
+    db.execute(text("""
+        delete from roles_permisos
+         where rol_id = (select id from roles where codigo = 'solo_lectura')
+           and permiso_id in (select id from permisos where codigo = 'casos.ver')"""))
+    db.commit()
+
+    cab_lectura = entrar(cliente, usuario('solo_lectura'))
+    for consulta in ('VN-2026-9001', 'AA0099887766'):
+        hallado = [x for x in buscar(cliente, cab_lectura, consulta) if x['tipo'] == 'tramite']
+        assert hallado == [], f'«{consulta}» entregó un trámite sin permiso: {hallado}'
+    # Lo demás del buscador le sigue sirviendo: el cliente sí lo puede ver
+    assert [x['id'] for x in buscar(cliente, cab_lectura, 'Restrepo')
+            if x['tipo'] == 'cliente'] == [familia]
+
+
 def test_colaborar_en_un_tramite_tambien_deja_encontrarlo_en_el_buscador(
         cliente, comercial, familia, db, usuario):
     """Ser colaborador tiene que servir también acá (RF-026). Si el alcance del

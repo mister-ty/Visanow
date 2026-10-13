@@ -162,13 +162,18 @@ def buscar_global(db: Session, texto: str, *, actor: Usuarios | None = None,
     Recibe quién está buscando, y no por cortesía: el buscador devuelve trámites
     y pagos, que son cosas que no todo el mundo puede ver. Un buscador que
     responde lo mismo para todos es una puerta de atrás a lo que la pantalla
-    sí protege.
+    sí protege. Sin actor no devuelve ni trámites ni pagos: de los dos lados, lo
+    seguro es no mostrar.
     """
     texto = (texto or '').strip()
     if len(texto) < 2:
         return []
     digitos = ''.join(c for c in texto if c.isdigit())
     resultados: list[Resultado] = []
+    # Qué tiene permitido ver quien busca. Se pregunta una sola vez: el buscador
+    # responde a cada letra que alguien escribe, así que no es el lugar para
+    # repetir consultas de permisos.
+    permisos = permisos_de_rol(db, actor.rol_id) if actor is not None else set()
 
     consulta: Select = (select(Clientes).where(Clientes.fusionado_en_id.is_(None)))
     condiciones = [Clientes.nombre_busqueda.like(_patron(texto)),
@@ -210,30 +215,35 @@ def buscar_global(db: Session, texto: str, *, actor: Usuarios | None = None,
             ruta=f'/clientes/{cliente_id}',
             coincidio_por='pasaporte' if s.pasaporte_indice == indice else 'nombre'))
 
-    # Trámites: por número de solicitud del SaaS o por número de DS-160 (cifrado)
-    de_tramite = (select(Casos)
-                  .where(or_(Casos.id_externo == texto, Casos.ds160_hash == indice))
-                  .options(selectinload(Casos.solicitante), selectinload(Casos.estado)))
-    # El alcance es control de acceso (RNF-03), no un filtro de pantalla, así
-    # que vale aquí también. Faltaba: quien solo ve los trámites que le
-    # asignaron encontraba por este buscador —escribiendo el n.º de solicitud o
-    # el DS-160— trámites que no son suyos, y desde el resultado los abría. Era
-    # el mismo hueco que ya se cerró en el tablero, pero por la puerta del
-    # buscador.
-    limite_alcance = serv_casos.alcance_de(actor)
-    if limite_alcance is not None:
-        de_tramite = de_tramite.where(limite_alcance)
-    for caso in db.scalars(de_tramite.limit(limite)):
-        resultados.append(Resultado(
-            tipo='tramite', id=caso.id, titulo=f'Trámite de {caso.solicitante.nombre}',
-            detalle=caso.estado.nombre, ruta=f'/casos/{caso.id}',
-            coincidio_por='n.º de solicitud' if caso.id_externo == texto else 'DS-160'))
+    # Trámites: por número de solicitud del SaaS o por número de DS-160 (cifrado).
+    # Ver trámites es un permiso, y a un rol se le puede quitar desde la
+    # administración: la ficha del cliente ya lo respeta —responde sin la parte
+    # operativa y lo dice en `ve_tramites`—, y el buscador tenía que respetarlo
+    # igual, o sería la rendija que deja sin efecto a lo otro.
+    if 'casos.ver' in permisos:
+        de_tramite = (select(Casos)
+                      .where(or_(Casos.id_externo == texto, Casos.ds160_hash == indice))
+                      .options(selectinload(Casos.solicitante), selectinload(Casos.estado)))
+        # Y el alcance es control de acceso (RNF-03), no un filtro de pantalla,
+        # así que vale aquí también. Faltaba: quien solo ve los trámites que le
+        # asignaron encontraba por este buscador —escribiendo el n.º de
+        # solicitud o el DS-160— trámites que no son suyos, y desde el resultado
+        # los abría. Era el mismo hueco que ya se cerró en el tablero, pero por
+        # la puerta del buscador.
+        limite_alcance = serv_casos.alcance_de(actor)
+        if limite_alcance is not None:
+            de_tramite = de_tramite.where(limite_alcance)
+        for caso in db.scalars(de_tramite.limit(limite)):
+            resultados.append(Resultado(
+                tipo='tramite', id=caso.id, titulo=f'Trámite de {caso.solicitante.nombre}',
+                detalle=caso.estado.nombre, ruta=f'/casos/{caso.id}',
+                coincidio_por='n.º de solicitud' if caso.id_externo == texto else 'DS-160'))
 
-    resultados.extend(_pagos_por_referencia(db, texto, actor=actor, limite=limite))
+    resultados.extend(_pagos_por_referencia(db, texto, permisos=permisos, limite=limite))
     return resultados[: limite * 2]
 
 
-def _pagos_por_referencia(db: Session, texto: str, *, actor: Usuarios | None,
+def _pagos_por_referencia(db: Session, texto: str, *, permisos: set[str],
                           limite: int) -> list[Resultado]:
     """El pago, por la referencia del comprobante (RF-029).
 
@@ -250,7 +260,7 @@ def _pagos_por_referencia(db: Session, texto: str, *, actor: Usuarios | None,
     sacarlos por el buscador. Sin esto, operaciones —que a propósito no ve la
     contabilidad— habría empezado a ver montos de clientes aquí.
     """
-    if actor is None or 'pagos.ver' not in permisos_de_rol(db, actor.rol_id):
+    if 'pagos.ver' not in permisos:
         return []
 
     salida: list[Resultado] = []
