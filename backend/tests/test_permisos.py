@@ -1,8 +1,11 @@
 """Actividad 2.1 — roles y permisos (RNF-03) y criterio de aceptación 9."""
 import pytest
+from sqlalchemy import select, text
 
+from app import seed
 from app.core.deps import requiere
-from app.core.errores import Prohibido
+from app.core.errores import Conflicto, Prohibido
+from app.models.esquema import Roles
 from app.services import usuarios as servicio
 from tests.conftest import entrar
 
@@ -144,3 +147,261 @@ def test_operaciones_no_ve_la_contabilidad(cliente, usuario):
     assert 'casos.editar' in roles['operaciones'], 'lo demás sigue igual'
     # Quien cobra sí necesita los montos
     assert 'pagos.ver' in roles['comercial'] and 'pagos.ver' in roles['finanzas']
+
+
+# ------------------------- la matriz de permisos se configura, no solo se mira
+
+def _rol(cliente, cab, codigo: str) -> dict:
+    roles = {r['codigo']: r for r in cliente.get('/api/v1/roles', headers=cab).json()}
+    return roles[codigo]
+
+
+def _conceder(db, rol: str, *codigos: str) -> None:
+    """Deja un estado de partida que la administradora pudo haber configurado."""
+    db.execute(text("""insert into roles_permisos (rol_id, permiso_id)
+                       select r.id, p.id from roles r, permisos p
+                        where r.codigo = :rol and p.codigo = any(:codigos)
+                       on conflict do nothing"""), {'rol': rol, 'codigos': list(codigos)})
+    db.commit()
+
+
+def test_solo_la_administradora_nace_con_la_llave_de_los_permisos(cliente, usuario):
+    """Quien reescribe la matriz puede darse cualquier permiso del sistema. Eso
+    arranca en un solo rol; prestarlo es una decisión, no el estado inicial."""
+    cab = entrar(cliente, usuario('administradora'))
+    roles = {r['codigo']: set(r['permisos'])
+             for r in cliente.get('/api/v1/roles', headers=cab).json()}
+    assert {r for r, p in roles.items() if 'usuarios.permisos' in p} == {'administradora'}
+    assert 'usuarios.ver' in roles['solo_lectura'], 'mirar la matriz no es poder cambiarla'
+
+
+def test_el_catalogo_de_permisos_se_puede_consultar_para_escogerlos(cliente, usuario):
+    """Sin catálogo hay que acordarse de memoria de los códigos, y un código mal
+    escrito es un permiso que nadie recibe y que nadie nota hasta que estorba."""
+    cab = entrar(cliente, usuario('administradora'))
+    r = cliente.get('/api/v1/permisos', headers=cab)
+    assert r.status_code == 200, r.text
+    catalogo = {p['codigo']: p for p in r.json()}
+    assert len(catalogo) > 70, catalogo
+    assert 'casos.ver' in catalogo
+    assert catalogo['usuarios.permisos']['modulo'] == 'usuarios', 'se agrupa por módulo'
+    assert all(p['nombre'] for p in catalogo.values()), 'cada casilla necesita su nombre'
+
+
+def test_la_administradora_cambia_lo_que_puede_hacer_un_rol(cliente, usuario):
+    """RF-077 pide «gestionar permisos». Mientras la matriz solo se consulte,
+    mover un permiso exige editar código Python y volver a desplegar."""
+    cab = entrar(cliente, usuario('administradora'))
+    rol = _rol(cliente, cab, 'comercial')
+    assert 'pagos.ver' in rol['permisos']
+    quedan = sorted((set(rol['permisos']) - {'pagos.ver'}) | {'casos.editar'})
+
+    r = cliente.put(f"/api/v1/roles/{rol['id']}/permisos", headers=cab,
+                    json={'permisos': quedan})
+    assert r.status_code == 200, r.text
+    assert r.json()['permisos'] == quedan
+    assert set(_rol(cliente, cab, 'comercial')['permisos']) == set(quedan), 'quedó guardado'
+
+
+def test_quitarle_un_permiso_a_un_rol_se_lo_quita_ya_a_quien_lo_tenga(cliente, usuario):
+    """Los permisos se consultan en cada solicitud y no viajan en el token: el
+    cambio alcanza a quien esté con la pantalla abierta, sin volver a entrar.
+    Por eso es un cambio que hay que pensar antes de guardarlo."""
+    cab = entrar(cliente, usuario('administradora'))
+    p = usuario('comercial')
+    suyo = entrar(cliente, p)
+    assert cliente.get('/api/v1/casos', headers=suyo).status_code == 200
+
+    rol = _rol(cliente, cab, 'comercial')
+    r = cliente.put(f"/api/v1/roles/{rol['id']}/permisos", headers=cab,
+                    json={'permisos': [c for c in rol['permisos'] if c != 'casos.ver']})
+    assert r.status_code == 200, r.text
+
+    assert 'casos.ver' not in cliente.get('/api/v1/auth/yo', headers=suyo).json()['permisos']
+    assert cliente.get('/api/v1/casos', headers=suyo).status_code == 403
+
+
+def test_nadie_se_puede_quitar_a_si_misma_la_llave_de_los_permisos(cliente, usuario):
+    """Si se la quita no le queda forma de devolvérsela: la instalación se
+    arregla entrando a la base de datos por fuera del sistema."""
+    cab = entrar(cliente, usuario('administradora'))
+    rol = _rol(cliente, cab, 'administradora')
+    assert 'usuarios.permisos' in rol['permisos']
+
+    r = cliente.put(f"/api/v1/roles/{rol['id']}/permisos", headers=cab,
+                    json={'permisos': [c for c in rol['permisos'] if c != 'usuarios.permisos']})
+    assert r.status_code == 403, r.text
+    assert r.json()['codigo'] == 'autoedicion'
+    assert 'usuarios.permisos' in _rol(cliente, cab, 'administradora')['permisos'], 'nada cambió'
+
+
+def test_otro_rol_con_la_llave_no_puede_cerrarle_la_puerta_a_la_administradora(
+        cliente, usuario, db):
+    """La llave se puede prestar. El rol administradora es la última puerta:
+    quien la recibió prestada no puede usarla para dejar afuera a quien se la dio."""
+    _conceder(db, 'finanzas', 'usuarios.permisos')
+    prestada = entrar(cliente, usuario('finanzas'))
+    admin = entrar(cliente, usuario('administradora'))
+    rol = _rol(cliente, admin, 'administradora')
+
+    r = cliente.put(f"/api/v1/roles/{rol['id']}/permisos", headers=prestada,
+                    json={'permisos': ['casos.ver']})
+    assert r.status_code == 403, r.text
+    assert r.json()['codigo'] == 'requiere_admin'
+    assert 'usuarios.permisos' in _rol(cliente, admin, 'administradora')['permisos']
+
+
+def test_el_servicio_no_deja_la_instalacion_sin_nadie_que_gestione_permisos(db, usuario):
+    """Defensa en profundidad: la ruta ya lo impide por otros dos caminos, pero
+    el servicio no puede ser el que apague la última luz. Punto de partida: la
+    llave se le prestó a finanzas y el rol administradora ya no la tiene."""
+    _conceder(db, 'finanzas', 'usuarios.permisos')
+    db.execute(text("""delete from roles_permisos
+          where rol_id = (select id from roles where codigo = 'administradora')
+            and permiso_id = (select id from permisos where codigo = 'usuarios.permisos')"""))
+    db.commit()
+    actor = usuario('administradora').u
+    finanzas = db.scalar(select(Roles.id).where(Roles.codigo == 'finanzas'))
+    sin_la_llave = sorted(servicio.permisos_de_rol(db, finanzas) - {'usuarios.permisos'})
+
+    with pytest.raises(Conflicto) as e:
+        servicio.fijar_permisos(db, actor, finanzas, sin_la_llave)
+    assert e.value.codigo == 'ultimo_gestor_permisos'
+    assert 'usuarios.permisos' in servicio.permisos_de_rol(db, finanzas), 'no se guardó nada'
+
+
+def test_usuarios_editar_no_alcanza_para_reescribir_la_matriz(cliente, usuario, db):
+    """Cambiarle el perfil a una persona es escoger entre los que ya existen;
+    redefinir el perfil es poder darse cualquier permiso. No es la misma
+    facultad, y el día que dar de alta cuentas se delegue, esta no se va con ella."""
+    _conceder(db, 'finanzas', 'usuarios.ver', 'usuarios.crear', 'usuarios.editar')
+    cab = entrar(cliente, usuario('finanzas'))
+    otra = usuario('comercial').u
+    assert cliente.patch(f'/api/v1/usuarios/{otra.id}', headers=cab,
+                         json={'nombre': 'Nombre nuevo'}).status_code == 200, 'sí gestiona cuentas'
+
+    rol = _rol(cliente, cab, 'comercial')
+    r = cliente.put(f"/api/v1/roles/{rol['id']}/permisos", headers=cab,
+                    json={'permisos': ['casos.ver']})
+    assert r.status_code == 403, r.text
+    assert r.json()['codigo'] == 'sin_permiso'
+
+
+def test_quien_puede_reescribir_la_matriz_necesita_doble_factor(db, usuario):
+    """Con la llave maestra se llega a cualquier otro permiso: pedir solo la
+    contraseña para usarla sería dejar la puerta de atrás abierta (RNF-02)."""
+    p = usuario('apoyo_externo', con_mfa=False)
+    assert servicio.exige_mfa(db, p.u) is False, 'hoy no le hace falta'
+    _conceder(db, 'apoyo_externo', 'usuarios.permisos')
+    assert servicio.exige_mfa(db, p.u) is True
+
+
+def test_un_permiso_que_no_existe_se_rechaza_diciendo_cual(cliente, usuario):
+    """Un código mal escrito no puede quedar guardado como si no fuera nada: el
+    rol se quedaría sin el permiso que la administradora creyó haberle dado."""
+    cab = entrar(cliente, usuario('administradora'))
+    rol = _rol(cliente, cab, 'comercial')
+    r = cliente.put(f"/api/v1/roles/{rol['id']}/permisos", headers=cab,
+                    json={'permisos': ['casos.ver', 'casos.borrar']})
+    assert r.status_code == 422, r.text
+    assert r.json()['codigo'] == 'permiso_inexistente'
+    assert 'casos.borrar' in r.json()['detalle'], 'tiene que decir cuál para poder corregirlo'
+
+
+def test_un_rol_que_no_existe_se_rechaza_con_el_error_del_dominio(cliente, usuario):
+    cab = entrar(cliente, usuario('administradora'))
+    r = cliente.put('/api/v1/roles/9999/permisos', headers=cab, json={'permisos': []})
+    assert r.status_code == 404, r.text
+    assert r.json()['codigo'] == 'noencontrado', 'el 404 lo da el servicio, no la ruta ausente'
+
+
+def test_un_id_de_rol_disparatado_responde_404_y_no_un_error_del_servidor(cliente, usuario):
+    """roles.id es un smallint: preguntar por un numero mas grande reventaba la
+    consulta y la peticion terminaba en un error del servidor. Un id que no
+    cabe tampoco puede existir, asi que la respuesta es la misma que para
+    cualquier otro rol que no esta."""
+    cab = entrar(cliente, usuario('administradora'))
+    r = cliente.put('/api/v1/roles/99999/permisos', headers=cab, json={'permisos': []})
+    assert r.status_code == 404, r.text
+    assert r.json()['codigo'] == 'noencontrado'
+
+
+def test_el_cambio_de_permisos_queda_en_auditoria_con_el_antes_y_el_despues(
+        cliente, usuario, db):
+    """Quitarle un permiso a un rol afecta de inmediato a todo el que lo tenga.
+    El día que alguien pregunte «¿por qué ya no puedo?», la respuesta tiene que
+    estar escrita y no haber que reconstruirla."""
+    cab = entrar(cliente, usuario('administradora'))
+    rol = _rol(cliente, cab, 'solo_lectura')
+    r = cliente.put(f"/api/v1/roles/{rol['id']}/permisos", headers=cab,
+                    json={'permisos': [c for c in rol['permisos'] if c != 'pagos.ver']})
+    assert r.status_code == 200, r.text
+
+    fila = db.execute(text("""select antes, despues from auditoria
+                               where entidad = 'roles_permisos' and entidad_id = :rol
+                               order by id desc limit 1"""), {'rol': rol['id']}).first()
+    assert fila is not None, 'sin auditoría nadie puede responder por el cambio'
+    antes, despues = fila
+    assert 'pagos.ver' in antes['permisos'], 'lo que el rol podía hacer antes'
+    assert 'pagos.ver' not in despues['permisos'], 'y lo que puede hacer ahora'
+    assert despues['quitados'] == ['pagos.ver'], 'el resumen, para no comparar a ojo'
+    assert despues['agregados'] == []
+
+
+def test_guardar_la_misma_matriz_no_ensucia_la_auditoria(cliente, usuario, db):
+    """Abrir la pantalla y guardar sin tocar nada no es un cambio: si cada
+    guardado dejara un registro, lo que importa se perdería entre el ruido."""
+    cab = entrar(cliente, usuario('administradora'))
+    rol = _rol(cliente, cab, 'comercial')
+    r = cliente.put(f"/api/v1/roles/{rol['id']}/permisos", headers=cab,
+                    json={'permisos': rol['permisos']})
+    assert r.status_code == 200, r.text
+    assert db.scalar(text("""select count(*) from auditoria
+                              where entidad = 'roles_permisos' and entidad_id = :rol"""),
+                     {'rol': rol['id']}) == 0
+
+
+# ----------------- el despliegue no le deshace a la administradora lo que hizo
+
+def _cursor(db):
+    """Un cursor psycopg sobre la MISMA transacción de la prueba: así el seed ve
+    lo que se acaba de configurar y todo se deshace al terminar la prueba."""
+    return db.connection().connection.cursor()
+
+
+def test_el_proximo_despliegue_no_pisa_la_matriz_que_configuro_la_administradora(db):
+    """El seed corre en cada despliegue (paso 6 de la guía). Si vuelve a
+    repartir la matriz de seed.py, le deshace lo que decidió: le devuelve al rol
+    el permiso que le quitó, y a la semana nadie entiende por qué el comercial
+    volvió a ver los pagos."""
+    cur = _cursor(db)
+    cur.execute("""delete from roles_permisos
+          where rol_id = (select id from roles where codigo = 'comercial')
+            and permiso_id = (select id from permisos where codigo = 'pagos.ver')""")
+    cur.execute("""insert into roles_permisos (rol_id, permiso_id)
+                   select r.id, p.id from roles r, permisos p
+                    where r.codigo = 'comercial' and p.codigo = 'casos.editar'""")
+
+    seed.sembrar_matriz(cur, set())
+
+    comercial = db.scalar(select(Roles.id).where(Roles.codigo == 'comercial'))
+    quedaron = servicio.permisos_de_rol(db, comercial)
+    assert 'pagos.ver' not in quedaron, 'el despliegue le devolvió lo que se le quitó'
+    assert 'casos.editar' in quedaron, 'el despliegue le borró lo que se le dio'
+
+
+def test_un_permiso_nuevo_del_sistema_le_llega_a_la_administradora(db):
+    """Si el seed ya no reparte la matriz, lo que trae una versión nueva tiene
+    que llegarle al rol que los tiene todos: una función nueva no puede nacer
+    sin nadie que la pueda usar. A los demás los reparte la administradora."""
+    cur = _cursor(db)
+    cur.execute("""insert into permisos (codigo, nombre, modulo)
+                   values ('informes.ver', 'Ver informes', 'informes')""")
+
+    seed.sembrar_matriz(cur, {'informes.ver'})
+
+    cur.execute("""select r.codigo from roles r
+                     join roles_permisos rp on rp.rol_id = r.id
+                     join permisos p on p.id = rp.permiso_id
+                    where p.codigo = 'informes.ver'""")
+    assert [c for (c,) in cur.fetchall()] == ['administradora']

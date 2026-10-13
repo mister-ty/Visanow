@@ -2426,6 +2426,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/permisos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Permisos
+         * @description El catálogo completo de lo que se le puede dar a un rol.
+         *
+         *     Lo pide la pantalla de permisos para armar las casillas con nombres en
+         *     español. Verlo no es poder cambiarlo: para eso está el PUT de abajo.
+         */
+        get: operations["permisos_api_v1_permisos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles/{rol_id}/permisos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Fijar Permisos
+         * @description Cambia qué puede hacer un rol (RF-077).
+         *
+         *     Pide `usuarios.permisos` y no `usuarios.editar`: cambiarle el perfil a una
+         *     persona es escoger entre los que ya existen, y redefinir el perfil mismo es
+         *     poder darse cualquier permiso del sistema. No es la misma facultad, y el día
+         *     que la gestión de cuentas se delegue, esta no se va de regalo con ella.
+         */
+        put: operations["fijar_permisos_api_v1_roles__rol_id__permisos_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cotizar": {
         parameters: {
             query?: never;
@@ -4788,6 +4836,34 @@ export interface components {
              * @description Se muestra una sola vez. Entregarla por un canal seguro.
              */
             password_temporal: string;
+        };
+        /**
+         * PermisoSalida
+         * @description Una casilla de la pantalla de permisos. `modulo` es lo que la agrupa.
+         */
+        PermisoSalida: {
+            /** Codigo */
+            codigo: string;
+            /** Nombre */
+            nombre: string;
+            /** Modulo */
+            modulo: string;
+        };
+        /**
+         * PermisosDeRol
+         * @description Lo que el rol queda pudiendo hacer: la lista COMPLETA, no lo que se agrega.
+         *
+         *     Lo que no venga se le quita. Se guarda así, y no cambio por cambio, porque
+         *     la pantalla es una matriz de casillas y lo que manda es lo que quedó
+         *     marcado: dos personas ajustando a la vez no terminan con una matriz mitad y
+         *     mitad que nadie decidió.
+         */
+        PermisosDeRol: {
+            /**
+             * Permisos
+             * @description Códigos de permiso, como «casos.ver»
+             */
+            permisos: string[];
         };
         /** PlanCuotas */
         PlanCuotas: {
@@ -9826,6 +9902,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RolSalida"][];
+                };
+            };
+        };
+    };
+    permisos_api_v1_permisos_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermisoSalida"][];
+                };
+            };
+        };
+    };
+    fijar_permisos_api_v1_roles__rol_id__permisos_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rol_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermisosDeRol"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

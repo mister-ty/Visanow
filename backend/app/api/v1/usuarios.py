@@ -73,3 +73,31 @@ def asignables(_: Usuarios = Depends(requiere('casos.ver')), db: Session = Depen
 def roles(_: Usuarios = Depends(requiere('usuarios.ver')), db: Session = Depends(get_db)):
     return [esq.RolSalida(id=r.id, codigo=r.codigo, nombre=r.nombre, permisos=sorted(p))
             for r, p in servicio.listar_roles(db)]
+
+
+@router.get('/permisos', response_model=list[esq.PermisoSalida])
+def permisos(_: Usuarios = Depends(requiere('usuarios.ver')), db: Session = Depends(get_db)):
+    """El catálogo completo de lo que se le puede dar a un rol.
+
+    Lo pide la pantalla de permisos para armar las casillas con nombres en
+    español. Verlo no es poder cambiarlo: para eso está el PUT de abajo.
+    """
+    return [esq.PermisoSalida(codigo=p.codigo, nombre=p.nombre, modulo=p.modulo)
+            for p in servicio.catalogo_permisos(db)]
+
+
+@router.put('/roles/{rol_id}/permisos', response_model=esq.RolSalida)
+def fijar_permisos(rol_id: int, datos: esq.PermisosDeRol, request: Request,
+                   actor: Usuarios = Depends(requiere('usuarios.permisos')),
+                   db: Session = Depends(get_db)):
+    """Cambia qué puede hacer un rol (RF-077).
+
+    Pide `usuarios.permisos` y no `usuarios.editar`: cambiarle el perfil a una
+    persona es escoger entre los que ya existen, y redefinir el perfil mismo es
+    poder darse cualquier permiso del sistema. No es la misma facultad, y el día
+    que la gestión de cuentas se delegue, esta no se va de regalo con ella.
+    """
+    rol, permisos = servicio.fijar_permisos(db, actor, rol_id, datos.permisos,
+                                            ip=ip_cliente(request))
+    return esq.RolSalida(id=rol.id, codigo=rol.codigo, nombre=rol.nombre,
+                         permisos=sorted(permisos))
