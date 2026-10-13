@@ -353,6 +353,90 @@ class Carga(Migracion):
         return True
 
 
+#: Lo que cuelga de los datos migrados y hay que soltar antes de borrarlos.
+#:
+#: Cuando se escribio `limpiar` solo existian las seis tablas de abajo. Despues
+#: llegaron comisiones, alertas, tareas, conciliacion bancaria, cuotas,
+#: colaboradores y el historial de los tramites, todas apuntando a ventas, casos
+#: o pagos. Con eso, `limpiar` dejo de funcionar: la base rechaza el borrado por
+#: llave foranea y el mensaje no dice que hacer.
+#:
+#: Lo que se DESVINCULA (se pone en null) y lo que se BORRA no es lo mismo, y la
+#: diferencia importa:
+#:
+#: - `movimientos_banco` son filas del extracto del banco. Existen aunque
+#:   VisaNow no tenga ningun pago registrado, asi que se desvinculan y vuelven a
+#:   «sin conciliar». Borrarlas seria tirar el extracto.
+#: - Lo demas (comisiones, alertas, tareas, historial...) se calcula o se genera
+#:   a partir de lo migrado: sin la venta no significan nada, y se borra.
+DESVINCULAR = (
+    ('movimientos_banco', 'pago_id', "estado = 'sin_conciliar'"),
+)
+
+#: Se borra lo que dependa de una fila migrada, en orden de dependencia.
+#: La condicion dice como se llega desde esa tabla hasta lo migrado.
+DEPENDIENTES = (
+    ('casos_colaboradores', 'caso_id in (select id from casos where origen_archivo is not null)'),
+    ('casos_checklist', 'caso_id in (select id from casos where origen_archivo is not null)'),
+    ('casos_historial', 'caso_id in (select id from casos where origen_archivo is not null)'),
+    ('conflictos_sincronizacion', 'caso_id in (select id from casos where origen_archivo is not null)'),
+    ('importaciones_filas', 'caso_id in (select id from casos where origen_archivo is not null)'),
+    ('alertas', 'caso_id in (select id from casos where origen_archivo is not null) '
+                'or cita_id in (select id from citas where origen_archivo is not null) '
+                'or negocio_id in (select id from negocios where origen_archivo is not null)'),
+    ('tareas', 'caso_id in (select id from casos where origen_archivo is not null) '
+               'or negocio_id in (select id from negocios where origen_archivo is not null) '
+               'or cliente_id in (select id from clientes where origen_archivo is not null)'),
+    ('gastos', 'caso_id in (select id from casos where origen_archivo is not null) '
+               'or negocio_id in (select id from negocios where origen_archivo is not null)'),
+    ('comisiones', 'negocio_id in (select id from negocios where origen_archivo is not null)'),
+    ('cuotas_negocio', 'negocio_id in (select id from negocios where origen_archivo is not null)'),
+    ('ajustes_negocio', 'negocio_id in (select id from negocios where origen_archivo is not null)'),
+    ('oportunidades', 'cliente_id in (select id from clientes where origen_archivo is not null) '
+                      'or referido_por_cliente_id in (select id from clientes where origen_archivo is not null)'),
+    ('grupos', 'cliente_contacto_id in (select id from clientes where origen_archivo is not null)'),
+)
+
+#: Lo migrado, en orden inverso a sus dependencias entre si.
+MIGRADAS = ('pagos', 'citas', 'casos', 'negocios', 'solicitantes', 'clientes')
+
+def limpiar(db: Session) -> tuple[dict, dict]:
+    """Borra lo migrado y lo que cuelga de ello. NO hace commit.
+
+    Solo toca registros con `origen_archivo`, que es lo que la migracion creo:
+    lo que el equipo haya cargado a mano desde la aplicacion no tiene ese campo
+    y no se toca.
+
+    OJO con lo que esto se lleva: el historial de los tramites migrados
+    desaparece. RN-08 dice que el historial solo crece, y esta es la unica
+    excepcion, a proposito y a mano: volver a cargar es rehacer la migracion
+    desde cero, no editar un tramite. Si el equipo ya empezo a trabajar sobre
+    esos tramites, esto NO es lo que se quiere.
+    """
+    from sqlalchemy import text
+
+    db.execute(text('delete from migracion_filas'))
+    db.execute(text('delete from migracion_corridas'))
+
+    soltados = {}
+    for tabla, columna, extra in DESVINCULAR:
+        r = db.execute(text(
+            f'update {tabla} set {columna} = null, {extra} '
+            f'where {columna} in (select id from pagos where origen_archivo is not null)'))
+        soltados[tabla] = r.rowcount
+
+    borrados = {}
+    for tabla, condicion in DEPENDIENTES:
+        r = db.execute(text(f'delete from {tabla} where {condicion}'))
+        if r.rowcount:
+            borrados[tabla] = r.rowcount
+    for tabla in MIGRADAS:
+        r = db.execute(text(f'delete from {tabla} where origen_archivo is not null'))
+        borrados[tabla] = r.rowcount
+    db.flush()
+    return soltados, borrados
+
+
 def aplicar(db: Session, *, incluir_ventas_sin_cobro: bool = False,
             usuario_id: int | None = None) -> Resultado:
     c = Carga(db, incluir_ventas_sin_cobro=incluir_ventas_sin_cobro)

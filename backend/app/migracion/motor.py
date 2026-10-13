@@ -83,6 +83,9 @@ class Migracion:
         self.resolvedor = Resolvedor()
         self.leido: list[tuple[Hoja, Fila, Aporte]] = []
         self._catalogos()
+        #: Hojas del catalogo que el libro de hoy ya no trae. Se avisan arriba
+        #: del reporte: una hoja que falta no se nota en los totales.
+        self.hojas_ausentes: list = []
 
     def _catalogos(self) -> None:
         self.paises = {self._clave(n): i for i, n in self.db.execute(select(Paises.id, Paises.nombre))}
@@ -101,6 +104,13 @@ class Migracion:
 
     def leer(self) -> None:
         for hoja in fuentes.CATALOGO:
+            if not fuentes.existe(hoja):
+                # Que una hoja desaparezca del libro NO puede dejar inservible
+                # la carga entera: VisaNow reorganiza su Excel cada tanto. Pero
+                # tampoco se pasa por alto en silencio, porque puede ser un
+                # borrado por error y seria plata o tramites que no entran.
+                self.hojas_ausentes.append(hoja)
+                continue
             for fila, aporte in fuentes.recorrer(hoja):
                 self.leido.append((hoja, fila, aporte))
                 if aporte.persona:

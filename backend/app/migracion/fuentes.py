@@ -394,6 +394,25 @@ EXCLUIDAS = {
 }
 
 
+def existe(hoja) -> bool:
+    """Si el libro de hoy todavia trae esa hoja.
+
+    VisaNow reorganiza su Excel: hojas que se renombran, que se parten, que se
+    borran. Preguntarlo antes es lo que separa «esta hoja ya no esta» de «la
+    carga entera no corre».
+    """
+    import openpyxl
+
+    ruta = FUENTE / hoja.archivo
+    if not ruta.exists():
+        return False
+    libro = openpyxl.load_workbook(ruta, read_only=True)
+    try:
+        return hoja.nombre in libro.sheetnames
+    finally:
+        libro.close()
+
+
 def recorrer(hoja: Hoja):
     """Las filas de una hoja, ya convertidas en aportes."""
     ruta = FUENTE / hoja.archivo

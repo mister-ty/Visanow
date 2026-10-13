@@ -78,27 +78,25 @@ def _aplicar() -> int:
 
 
 def _limpiar() -> int:
-    """Borra lo migrado y nada más.
+    """Borra lo migrado y lo que cuelga de ello, y nada mas.
 
-    Solo toca registros con `origen_archivo`, que es lo que la migración creó:
-    lo que el equipo haya cargado a mano desde la aplicación no tiene ese campo
-    y no se toca. Sirve para repetir la carga mientras se depura con VisaNow.
+    La logica vive en `carga.limpiar`, que recibe la sesion: asi se puede probar
+    de verdad. Aqui solo se abre la sesion y se imprime lo que paso.
     """
-    from sqlalchemy import text
-
     from app.db.session import SesionLocal
+    from app.migracion.carga import limpiar
 
-    # En orden inverso a las dependencias
-    TABLAS = ('pagos', 'citas', 'casos', 'negocios', 'solicitantes', 'clientes')
     with SesionLocal() as db:
-        db.execute(text('delete from migracion_filas'))
-        db.execute(text('delete from migracion_corridas'))
-        borrados = {}
-        for tabla in TABLAS:
-            r = db.execute(text(f'delete from {tabla} where origen_archivo is not null'))
-            borrados[tabla] = r.rowcount
+        soltados, borrados = limpiar(db)
         db.commit()
+
     print()
+    if any(soltados.values()):
+        print('Desvinculado (no se borra, existe por su cuenta):')
+        for tabla, n in soltados.items():
+            if n:
+                print(f'  {tabla:.<30} {n:>8,}')
+        print()
     print('Borrado lo migrado (lo cargado a mano desde la aplicacion no se toca):')
     for tabla, n in borrados.items():
         print(f'  {tabla:.<30} {n:>8,}')
