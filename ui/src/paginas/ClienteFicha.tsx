@@ -15,6 +15,7 @@ import { Link as Enlace, useNavigate, useParams } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados, type Coincidencia } from '../componentes/AvisoDuplicados'
+import { Documentos } from '../componentes/Documentos'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora } from '../lib/formato'
 import { aSelect, type Opcion, porPais, useAsignables, useCatalogos } from '../lib/catalogos'
@@ -147,6 +148,11 @@ export function ClienteFicha() {
               })}>Unir a esta ficha</Button>
           ) : null} />
       )}
+
+      <Card withBorder padding="lg">
+        <Text fw={600} mb="sm">Archivos adjuntos</Text>
+        <Documentos entidad="cliente" entidadId={c.id} puedeEditar={puede('clientes.editar')} />
+      </Card>
 
       <Card withBorder padding="lg">
         <Group justify="space-between" mb="sm">

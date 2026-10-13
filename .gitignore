@@ -46,3 +46,6 @@ Thumbs.db
 
 # Copias de trabajo temporales de los agentes: no son del proyecto.
 .claude/worktrees/
+
+# Archivos subidos en desarrollo: datos de personas.
+almacenamiento_dev/

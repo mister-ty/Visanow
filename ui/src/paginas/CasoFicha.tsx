@@ -10,6 +10,7 @@ import {
   IconPencil, IconX,
 } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { Documentos } from '../componentes/Documentos'
 import { ModalMensaje } from '../componentes/ModalMensaje'
 import { useParams } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
@@ -176,7 +177,7 @@ export function CasoFicha() {
 
             <Card withBorder padding="lg">
               <Group justify="space-between" mb="sm">
-                <Text fw={600}>Documentos</Text>
+                <Text fw={600}>Documentos requeridos</Text>
                 <Badge variant="light" color={obligatoriosPendientes ? 'yellow' : 'teal'}>
                   {obligatoriosPendientes ? `${obligatoriosPendientes} obligatorio(s) pendiente(s)` : 'completo'}
                 </Badge>
@@ -192,6 +193,11 @@ export function CasoFicha() {
                 {c.checklist.length === 0 && (
                   <Text size="sm" c="dimmed">No hay checklist definido para este país y tipo de visa.</Text>)}
               </Stack>
+            </Card>
+
+            <Card withBorder padding="lg">
+              <Text fw={600} mb="sm">Archivos adjuntos</Text>
+              <Documentos entidad="caso" entidadId={c.id} puedeEditar={puedeEditar} />
             </Card>
 
             <Card withBorder padding="lg">

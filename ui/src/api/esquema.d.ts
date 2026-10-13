@@ -1099,6 +1099,120 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documentos/estado": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Estado
+         * @description La pantalla pregunta esto antes de ofrecer el botón de subir.
+         *
+         *     Ofrecer «subir archivo» donde el archivo se va a perder es peor que no
+         *     ofrecerlo: la persona cree que quedó guardado.
+         */
+        get: operations["estado_api_v1_documentos_estado_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documentos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar
+         * @description Los documentos de una ficha. Los restringidos solo para quien corresponde.
+         */
+        get: operations["listar_api_v1_documentos_get"];
+        put?: never;
+        /**
+         * Subir
+         * @description Sube un archivo y lo deja cifrado en disco.
+         *
+         *     Se lee entero en memoria a propósito: el tope son 25 MB y hay que calcular
+         *     la huella y cifrarlo de todos modos, así que no gana nada con ir por partes
+         *     y sí se complica el poder rechazarlo antes de escribir nada.
+         */
+        post: operations["subir_api_v1_documentos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documentos/enlace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enlazar
+         * @description Cuelga un documento que ya vive en otro lado, sin copiarlo.
+         */
+        post: operations["enlazar_api_v1_documentos_enlace_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documentos/{documento_id}/contenido": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Descargar
+         * @description El archivo. Queda registrado quién se lo llevó.
+         *
+         *     Siempre como adjunto y nunca en línea: un SVG o un HTML servido en línea se
+         *     ejecuta en el navegador de quien lo abre, con la sesión de esa persona.
+         */
+        get: operations["descargar_api_v1_documentos__documento_id__contenido_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documentos/{documento_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Eliminar
+         * @description Lo quita de la ficha y borra el archivo. No se puede deshacer.
+         */
+        delete: operations["eliminar_api_v1_documentos__documento_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/exportar/recursos": {
         parameters: {
             query?: never;
@@ -2319,7 +2433,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Salud */
+        /**
+         * Salud
+         * @description Que la aplicacion responde, que alcanza la base, y QUE VERSION es.
+         *
+         *     Lo ultimo no es un adorno. Despues de desplegar, la pregunta siempre es «¿ya
+         *     quedo lo que acabo de subir o sigue lo de antes?», y sin esto hay que ir a
+         *     buscarlo al tablero del proveedor. `RENDER_GIT_COMMIT` la pone Render sola;
+         *     fuera de Render no existe y sale «desconocida», que es la respuesta honesta.
+         *
+         *     No revela nada: el repositorio y sus commits ya se saben.
+         */
         get: operations["salud_salud_get"];
         put?: never;
         post?: never;
@@ -2444,6 +2568,25 @@ export interface components {
         AsignarPago: {
             /** Negocio Id */
             negocio_id: number;
+        };
+        /** Body_subir_api_v1_documentos_post */
+        Body_subir_api_v1_documentos_post: {
+            /** Entidad */
+            entidad: string;
+            /** Entidad Id */
+            entidad_id: number;
+            /**
+             * Archivo
+             * Format: binary
+             */
+            archivo: string;
+            /** Tipo */
+            tipo?: string | null;
+            /**
+             * Restringido
+             * @default false
+             */
+            restringido: boolean;
         };
         /** CambiarAlerta */
         CambiarAlerta: {
@@ -3227,6 +3370,36 @@ export interface components {
              */
             motivo: string;
         };
+        /** DocumentoSalida */
+        DocumentoSalida: {
+            /** Id */
+            id: number;
+            /** Entidad */
+            entidad: string;
+            /** Entidad Id */
+            entidad_id: number;
+            /** Nombre */
+            nombre: string;
+            /** Almacenamiento */
+            almacenamiento: string;
+            /** Tipo */
+            tipo: string | null;
+            /** Mime */
+            mime: string | null;
+            /** Url */
+            url: string | null;
+            /** Tamano Bytes */
+            tamano_bytes: number | null;
+            /** Restringido */
+            restringido: boolean;
+            /** Subido Por */
+            subido_por: number | null;
+            /**
+             * Creado En
+             * Format: date-time
+             */
+            creado_en: string;
+        };
         /** DuplicadoEntrada */
         DuplicadoEntrada: {
             /**
@@ -3234,6 +3407,24 @@ export interface components {
              * @description El movimiento bueno, del que este es repetido
              */
             duplicado_de_id: number;
+        };
+        /** EnlaceEntrada */
+        EnlaceEntrada: {
+            /** Entidad */
+            entidad: string;
+            /** Entidad Id */
+            entidad_id: number;
+            /** Nombre */
+            nombre: string;
+            /** Url */
+            url: string;
+            /** Tipo */
+            tipo?: string | null;
+            /**
+             * Restringido
+             * @default false
+             */
+            restringido: boolean;
         };
         /** EstadoFinancieroSalida */
         EstadoFinancieroSalida: {
@@ -3282,6 +3473,23 @@ export interface components {
             cuantos: number;
             /** Total */
             total: number;
+        };
+        /**
+         * EstadoSalida
+         * @description Si este servidor puede guardar archivos, para que la pantalla lo diga antes.
+         */
+        EstadoSalida: {
+            /** Se Pueden Subir */
+            se_pueden_subir: boolean;
+            /** Max Mb */
+            max_mb: number;
+            /** Tipos */
+            tipos: string[];
+            /**
+             * Motivo
+             * @description Por qué no se puede, cuando no se puede
+             */
+            motivo?: string | null;
         };
         /**
          * EstadoSincronizacion
@@ -7174,6 +7382,184 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LiquidacionSalida"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    estado_api_v1_documentos_estado_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstadoSalida"];
+                };
+            };
+        };
+    };
+    listar_api_v1_documentos_get: {
+        parameters: {
+            query: {
+                entidad: string;
+                entidad_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentoSalida"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    subir_api_v1_documentos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_subir_api_v1_documentos_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enlazar_api_v1_documentos_enlace_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnlaceEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentoSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    descargar_api_v1_documentos__documento_id__contenido_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    eliminar_api_v1_documentos__documento_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                documento_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
