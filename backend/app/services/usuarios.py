@@ -14,6 +14,15 @@ from app.services.auditoria import auditar, instantanea
 ALCANCES = {'todos', 'asignados', 'propios'}
 ROL_ADMIN = 'administradora'
 
+#: Quien tenga este permiso puede reescribir lo que puede hacer cualquier rol,
+#: incluido el suyo: es la llave maestra de la instalación, porque con ella se
+#: alcanza cualquier otro permiso. Está aparte de `usuarios.editar` a propósito
+#: —cambiarle el perfil a una persona es escoger entre los que ya existen;
+#: redefinir el perfil mismo es otra cosa— para que el día que la
+#: administración de cuentas se delegue en alguien más no se le entregue
+#: también la facultad de volverse administradora.
+PERMISO_MAESTRO = 'usuarios.permisos'
+
 # Quien tenga cualquiera de estos permisos debe usar doble factor (RNF-02),
 # sea cual sea su rol. Se decide por permisos y no por una lista de roles para
 # que un rol nuevo, o uno ampliado, no quede por fuera sin que nadie lo note:
@@ -23,6 +32,9 @@ ROL_ADMIN = 'administradora'
 PERMISOS_SENSIBLES = frozenset({
     'usuarios.ver', 'auditoria.ver', 'comisiones.ver', 'gastos.ver', 'ajustes.ver',
     'pagos.crear', 'pagos.editar', 'pagos.eliminar',
+    # Con la llave maestra se llega a todo lo demás: pedir solo la contraseña
+    # para usarla sería dejar la puerta de atrás abierta.
+    PERMISO_MAESTRO,
 })
 
 
@@ -64,9 +76,36 @@ def _proteger_admin(actor: Usuarios, objetivo: Usuarios | None = None, rol_nuevo
                         codigo='requiere_admin')
 
 
+def _proteger_rol_admin(actor: Usuarios, rol: Roles) -> None:
+    """Solo una administradora reescribe los permisos del rol administradora.
+
+    Ese rol es la última puerta de la instalación: mientras conserve «gestionar
+    permisos» —y siempre queda una administradora activa, de eso se encarga
+    `editar`— hay alguien que puede volver a abrir lo que se cerró por error. Si
+    desde otro rol se le pudiera recortar, quien reciba prestada la gestión de
+    permisos podría cerrarle la puerta justo a quien se la prestó.
+    """
+    if rol.codigo == ROL_ADMIN and actor.rol.codigo != ROL_ADMIN:
+        raise Prohibido('Solo una administradora puede cambiar los permisos del rol '
+                        'administradora.', codigo='requiere_admin')
+
+
 def _admins_activos(db: Session) -> int:
     return db.scalar(select(func.count()).select_from(Usuarios).join(Roles)
                      .where(Roles.codigo == ROL_ADMIN, Usuarios.activo.is_(True)))
+
+
+def _gestores_de_permisos_activos(db: Session) -> int:
+    """Cuántas personas activas podrían, ahora mismo, reescribir la matriz.
+
+    Si llega a cero la instalación se queda sin dueña: no hay pantalla que lo
+    arregle, hay que entrar a la base de datos por fuera del sistema.
+    """
+    return db.scalar(
+        select(func.count()).select_from(Usuarios)
+        .join(t_roles_permisos, t_roles_permisos.c.rol_id == Usuarios.rol_id)
+        .join(Permisos, Permisos.id == t_roles_permisos.c.permiso_id)
+        .where(Permisos.codigo == PERMISO_MAESTRO, Usuarios.activo.is_(True)))
 
 
 def listar(db: Session) -> list[Usuarios]:
@@ -75,6 +114,92 @@ def listar(db: Session) -> list[Usuarios]:
 
 def listar_roles(db: Session) -> list[tuple[Roles, set[str]]]:
     return [(r, permisos_de_rol(db, r.id)) for r in db.scalars(select(Roles).order_by(Roles.id))]
+
+
+def catalogo_permisos(db: Session) -> list[Permisos]:
+    """Todo lo que se le puede dar a un rol, agrupable por módulo.
+
+    La pantalla de permisos lo necesita para ofrecer casillas con nombres en
+    español: sin esto habría que acordarse de memoria de los códigos, y un
+    código mal escrito es un permiso que nadie recibe y nadie nota.
+    """
+    return list(db.scalars(select(Permisos).order_by(Permisos.modulo, Permisos.codigo)))
+
+
+def fijar_permisos(db: Session, actor: Usuarios, rol_id: int, codigos: list[str], *,
+                   ip: str | None = None) -> tuple[Roles, set[str]]:
+    """Reescribe qué puede hacer un rol (RF-077).
+
+    Llega la lista completa y no «agregue este, quite aquel»: la pantalla es una
+    matriz de casillas y guarda lo que la administradora dejó marcado. Lo que no
+    venga en la lista se le quita.
+
+    El cambio vale en el acto y para todas las personas que tengan ese rol,
+    estén o no con la pantalla abierta: los permisos se consultan en cada
+    solicitud y no viajan en el token. Quitarle «ver trámites» a operaciones se
+    lo quita en ese segundo a las cinco personas de operaciones. Por eso queda
+    en auditoría la lista de antes y la de después, además de lo que entró y lo
+    que salió: el día que alguien pregunte «¿por qué ya no puedo?», la
+    respuesta está ahí y no hay que reconstruirla.
+
+    Lo que no se deja hacer, porque deja la instalación sin dueña y solo se
+    arregla entrando a la base de datos por fuera del sistema:
+
+    - Quitarse a sí misma la llave de los permisos. Se lo pide a otra.
+    - Recortarle esa llave al rol administradora desde otro rol.
+    - Cualquier cambio que no deje ninguna persona activa capaz de gestionar
+      permisos. Las dos reglas de arriba ya lo impiden por su lado; esta es la
+      red por debajo, para que ningún camino nuevo pueda saltársela.
+    """
+    rol = db.get(Roles, rol_id)
+    if rol is None:
+        raise NoEncontrado('El rol no existe.')
+    _proteger_rol_admin(actor, rol)
+
+    pedidos = set(codigos)
+    por_codigo = {c: i for c, i in db.execute(select(Permisos.codigo, Permisos.id))}
+    desconocidos = sorted(pedidos - set(por_codigo))
+    if desconocidos:
+        raise Invalido(f'Estos permisos no existen: {", ".join(desconocidos)}.',
+                       codigo='permiso_inexistente')
+
+    antes = permisos_de_rol(db, rol_id)
+    if antes == pedidos:
+        # Guardar sin haber cambiado nada no es un cambio: no se audita, para
+        # que el registro no se llene de ruido y lo que quede se pueda leer.
+        return rol, antes
+
+    if (PERMISO_MAESTRO in antes and PERMISO_MAESTRO not in pedidos
+            and rol_id == actor.rol_id):
+        raise Prohibido(
+            'No puede quitarse a sí misma «gestionar permisos»: quedaría sin forma de '
+            'devolvérselo. Pídale el cambio a otra administradora.', codigo='autoedicion')
+
+    db.execute(t_roles_permisos.delete().where(t_roles_permisos.c.rol_id == rol_id))
+    if pedidos:
+        db.execute(t_roles_permisos.insert(),
+                   [{'rol_id': rol_id, 'permiso_id': por_codigo[c]} for c in sorted(pedidos)])
+    db.flush()
+
+    if _gestores_de_permisos_activos(db) == 0:
+        db.rollback()
+        raise Conflicto(
+            'Con este cambio no quedaría ninguna persona activa que pueda gestionar '
+            'permisos, y la instalación se quedaría sin dueña.',
+            codigo='ultimo_gestor_permisos')
+
+    # Las dos listas completas, y además el resumen de lo que entró y lo que
+    # salió: comparar a ojo dos listas de setenta permisos no se le puede pedir
+    # a nadie. De qué rol se trata lo dice `entidad_id`; el código del rol no se
+    # repite aquí porque la auditoría guarda solo lo que cambió y un dato igual
+    # a los dos lados se descarta.
+    auditar(db, operacion='update', entidad='roles_permisos', usuario_id=actor.id,
+            entidad_id=rol.id, antes={'permisos': sorted(antes)},
+            despues={'permisos': sorted(pedidos),
+                     'agregados': sorted(pedidos - antes), 'quitados': sorted(antes - pedidos)},
+            ip=ip)
+    db.commit()
+    return rol, pedidos
 
 
 def crear(db: Session, actor: Usuarios | None, *, nombre: str, email: str, rol: str,

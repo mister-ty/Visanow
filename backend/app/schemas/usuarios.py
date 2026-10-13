@@ -50,3 +50,21 @@ class RolSalida(BaseModel):
     codigo: str
     nombre: str
     permisos: list[str]
+
+
+class PermisoSalida(BaseModel):
+    """Una casilla de la pantalla de permisos. `modulo` es lo que la agrupa."""
+    codigo: str
+    nombre: str
+    modulo: str
+
+
+class PermisosDeRol(BaseModel):
+    """Lo que el rol queda pudiendo hacer: la lista COMPLETA, no lo que se agrega.
+
+    Lo que no venga se le quita. Se guarda así, y no cambio por cambio, porque
+    la pantalla es una matriz de casillas y lo que manda es lo que quedó
+    marcado: dos personas ajustando a la vez no terminan con una matriz mitad y
+    mitad que nadie decidió.
+    """
+    permisos: list[str] = Field(max_length=300, description='Códigos de permiso, como «casos.ver»')

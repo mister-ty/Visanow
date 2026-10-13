@@ -80,11 +80,19 @@ PERMISOS_EXTRA = [
     # el cliente pagó el anticipo no puede arrancar el trámite: este permiso
     # muestra si está al día, sin mostrar montos.
     ('pagos.estado', 'Ver si un cliente está al día, sin ver los montos', 'pagos'),
+    # Reescribir la matriz es la llave maestra (RF-077): con ella se alcanza
+    # cualquier otro permiso del sistema, incluido el propio. No puede ser parte
+    # de «usuarios.editar», que es con lo que se le cambia el perfil a una
+    # persona entre los que ya existen: el día que dar de alta cuentas se
+    # delegue en alguien más, no se le entrega también la facultad de volverse
+    # administradora. Es el mismo motivo de casos.excepcion.
+    ('usuarios.permisos', 'Cambiar qué puede hacer cada rol', 'usuarios'),
 ]
 
 # Qué puede hacer cada rol, por módulo. 'todo' = las cinco acciones.
 MATRIZ = {
-    'administradora': {m: 'todo' for m in MODULOS} | {'extra': ['casos.excepcion', 'pagos.estado']},
+    'administradora': {m: 'todo' for m in MODULOS} | {
+        'extra': ['casos.excepcion', 'pagos.estado', 'usuarios.permisos']},
     'comercial': {
         'clientes': ['ver', 'crear', 'editar'], 'solicitantes': ['ver', 'crear', 'editar'],
         'oportunidades': 'todo', 'negocios': ['ver', 'crear', 'editar'],
@@ -592,6 +600,51 @@ def sembrar_comisiones(cur) -> int:
     return n
 
 
+def _dar_permiso(cur, rol: str, permiso: str) -> int:
+    cur.execute("""insert into roles_permisos (rol_id, permiso_id)
+                   select r.id, p.id from roles r, permisos p
+                   where r.codigo=%s and p.codigo=%s
+                   on conflict do nothing""", (rol, permiso))
+    return cur.rowcount
+
+
+def sembrar_matriz(cur, permisos_nuevos: set[str]) -> tuple[int, str]:
+    """Reparte los permisos entre los roles sin pisar lo que ya se configuró.
+
+    Esto empezaba con «delete from roles_permisos» y volvía a insertar la MATRIZ
+    de este archivo. Mientras la matriz solo se podía cambiar editando código
+    daba igual; desde que la administradora la cambia desde la pantalla
+    (RF-077), significaba que el próximo despliegue le deshacía la decisión sin
+    avisarle: le devolvía al rol el permiso que le había quitado, y a la semana
+    siguiente nadie entendía por qué el comercial volvió a ver los pagos. Es el
+    mismo problema que ya se resolvió en alertas_tipos.
+
+    Así que la MATRIZ es el punto de partida de una instalación nueva, no la
+    verdad permanente:
+
+    - Si la tabla está vacía, es la primera vez: se reparte la MATRIZ completa.
+    - Si ya tiene filas, la matriz es de la administradora y el seed no la toca.
+      Lo único que sigue haciendo es dar de alta los permisos que trae una
+      versión nueva del sistema, y solo al rol administradora, que es el que los
+      tiene todos: una función nueva no puede nacer sin nadie que la pueda usar,
+      pero tampoco hay que repartirla a dedo desde aquí.
+    """
+    cur.execute('select count(*) from roles_permisos')
+    if cur.fetchone()[0] == 0:
+        n = 0
+        for rol, modulos in MATRIZ.items():
+            for modulo, acciones in modulos.items():
+                for accion in (ACCIONES if acciones == 'todo' else acciones):
+                    n += _dar_permiso(cur, rol, accion if modulo == 'extra'
+                                      else f'{modulo}.{accion}')
+        return n, 'instalación nueva: se repartió la matriz de la especificación'
+
+    n = sum(_dar_permiso(cur, 'administradora', p) for p in sorted(permisos_nuevos))
+    if n:
+        return n, 'permisos nuevos de esta versión, para la administradora'
+    return 0, 'ya configurada: no se toca'
+
+
 def main() -> None:
     cargar_env()
     url = os.environ['DATABASE_URL'].replace('postgresql+psycopg://', 'postgresql://')
@@ -602,6 +655,12 @@ def main() -> None:
             cur.execute("insert into roles (codigo, nombre) values (%s,%s) "
                         "on conflict (codigo) do nothing", (codigo, nombre))
         print(f'  roles                 {len(ROLES)}')
+
+        # Qué permisos conocía la base ANTES de esta corrida: lo que aparezca
+        # después es lo que trae esta versión del sistema, y es lo único que hay
+        # que repartir. La propia tabla lleva la cuenta, sin marcas aparte.
+        cur.execute('select codigo from permisos')
+        conocidos = {c for (c,) in cur.fetchall()}
 
         n = 0
         for modulo in MODULOS:
@@ -616,18 +675,10 @@ def main() -> None:
             n += 1
         print(f'  permisos              {n}')
 
-        cur.execute('delete from roles_permisos')
-        n = 0
-        for rol, modulos in MATRIZ.items():
-            for modulo, acciones in modulos.items():
-                for accion in (ACCIONES if acciones == 'todo' else acciones):
-                    codigo = accion if modulo == 'extra' else f'{modulo}.{accion}'
-                    cur.execute("""insert into roles_permisos (rol_id, permiso_id)
-                                   select r.id, p.id from roles r, permisos p
-                                   where r.codigo=%s and p.codigo=%s
-                                   on conflict do nothing""", (rol, codigo))
-                    n += cur.rowcount
-        print(f'  roles_permisos        {n}')
+        cur.execute('select codigo from permisos')
+        nuevos = {c for (c,) in cur.fetchall()} - conocidos
+        repartidos, porque = sembrar_matriz(cur, nuevos)
+        print(f'  roles_permisos        {repartidos}  ({porque})')
 
         print(f'  paises                {paises_desde_datos(cur)}')
 
