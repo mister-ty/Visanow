@@ -315,6 +315,17 @@ def test_un_rol_que_no_existe_se_rechaza_con_el_error_del_dominio(cliente, usuar
     assert r.json()['codigo'] == 'noencontrado', 'el 404 lo da el servicio, no la ruta ausente'
 
 
+def test_un_id_de_rol_disparatado_responde_404_y_no_un_error_del_servidor(cliente, usuario):
+    """roles.id es un smallint: preguntar por un numero mas grande reventaba la
+    consulta y la peticion terminaba en un error del servidor. Un id que no
+    cabe tampoco puede existir, asi que la respuesta es la misma que para
+    cualquier otro rol que no esta."""
+    cab = entrar(cliente, usuario('administradora'))
+    r = cliente.put('/api/v1/roles/99999/permisos', headers=cab, json={'permisos': []})
+    assert r.status_code == 404, r.text
+    assert r.json()['codigo'] == 'noencontrado'
+
+
 def test_el_cambio_de_permisos_queda_en_auditoria_con_el_antes_y_el_despues(
         cliente, usuario, db):
     """Quitarle un permiso a un rol afecta de inmediato a todo el que lo tenga.

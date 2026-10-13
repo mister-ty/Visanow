@@ -151,6 +151,12 @@ def fijar_permisos(db: Session, actor: Usuarios, rol_id: int, codigos: list[str]
       permisos. Las dos reglas de arriba ya lo impiden por su lado; esta es la
       red por debajo, para que ningún camino nuevo pueda saltársela.
     """
+    # roles.id es un smallint: preguntar por un número más grande no devuelve
+    # «no existe», revienta la consulta y la petición termina en un error del
+    # servidor. Un id que no cabe tampoco puede existir, así que se responde lo
+    # mismo que para cualquier otro rol inexistente.
+    if not (-32768 <= rol_id <= 32767):
+        raise NoEncontrado('El rol no existe.')
     rol = db.get(Roles, rol_id)
     if rol is None:
         raise NoEncontrado('El rol no existe.')
