@@ -1,5 +1,5 @@
 import {
-  Alert, Anchor, Badge, Card, Center, Group, Loader, Select, SimpleGrid, Stack, Table, Text,
+  Alert, Badge, Card, Center, Group, Loader, Select, SimpleGrid, Stack, Table, Text,
   TextInput, Title,
 } from '@mantine/core'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -144,9 +144,10 @@ function TablaVentas({ filas }: { filas: MargenVenta[] }) {
         <Table.Tbody>
           {filas.map((v) => (
             <Table.Tr key={v.negocio_id}>
-              <Table.Td>
-                <Anchor href={`/clientes?venta=${v.negocio_id}`} size="sm">#{v.negocio_id}</Anchor>
-              </Table.Td>
+              {/* El numero de la venta, sin enlace: no hay todavia una pantalla
+                  de la venta a la que llevar, y un enlace que no va a ninguna
+                  parte es peor que ninguno. */}
+              <Table.Td>#{v.negocio_id}</Table.Td>
               <Table.Td>{v.fecha_venta}</Table.Td>
               <Table.Td>
                 {v.servicio}
