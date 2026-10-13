@@ -1602,7 +1602,7 @@ export interface paths {
         };
         /**
          * Listar Cartera
-         * @description Quién debe, cuánto y desde cuándo (RF-046).
+         * @description Quién debe, cuánto, desde cuándo y qué se le vence (RF-046).
          */
         get: operations["listar_cartera_api_v1_cartera_get"];
         put?: never;
@@ -1620,8 +1620,35 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Resumen Cartera */
+        /**
+         * Resumen Cartera
+         * @description Los totales de lo que se está mirando: obedecen el filtro igual que la tabla.
+         */
         get: operations["resumen_cartera_api_v1_cartera_resumen_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cartera/antiguedad": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cartera Por Antiguedad
+         * @description La cartera repartida por edades, en los cortes de la contabilidad (RF-046).
+         *
+         *     Es el informe con el que se cobra: dice cuánta plata lleva entre 1 y 30
+         *     días, entre 31 y 60, entre 61 y 90, y cuánta pasó de 90 y ya hay que tratar
+         *     aparte.
+         */
+        get: operations["cartera_por_antiguedad_api_v1_cartera_antiguedad_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3716,6 +3743,8 @@ export interface components {
             cliente: string;
             /** Servicio */
             servicio: string;
+            /** Servicio Id */
+            servicio_id: number;
             /**
              * Fecha Venta
              * Format: date
@@ -3737,6 +3766,17 @@ export interface components {
             por_vencer: number;
             /** Dias Vencido */
             dias_vencido: number;
+            /**
+             * Tramo
+             * @description El atraso en el corte de la contabilidad
+             * @enum {string}
+             */
+            tramo: "al_dia" | "1_30" | "31_60" | "61_90" | "mas_90";
+            /**
+             * Proximo Vencimiento
+             * @description La próxima cuota que todavía no es exigible
+             */
+            proximo_vencimiento?: string | null;
             /** Moneda */
             moneda: string;
         };
@@ -5097,6 +5137,11 @@ export interface components {
             cartera: number;
             /** Vencido */
             vencido: number;
+            /**
+             * Por Vencer
+             * @description El saldo que todavía no es exigible
+             */
+            por_vencer: number;
             /** Ventas Con Saldo */
             ventas_con_saldo: number;
         };
@@ -5479,6 +5524,27 @@ export interface components {
             token_type: "bearer";
             /** Expira En Segundos */
             expira_en_segundos: number;
+        };
+        /**
+         * TramoAntiguedad
+         * @description Una fila del informe de cartera por edades.
+         */
+        TramoAntiguedad: {
+            /**
+             * Tramo
+             * @enum {string}
+             */
+            tramo: "al_dia" | "1_30" | "31_60" | "61_90" | "mas_90";
+            /** Etiqueta */
+            etiqueta: string;
+            /** Cuantas */
+            cuantas: number;
+            /** Saldo */
+            saldo: number;
+            /** Vencido */
+            vencido: number;
+            /** Por Vencer */
+            por_vencer: number;
         };
         /** UsuarioAsignable */
         UsuarioAsignable: {
@@ -8565,13 +8631,22 @@ export interface operations {
     listar_cartera_api_v1_cartera_get: {
         parameters: {
             query?: {
-                solo_vencida?: boolean;
-                vendedor_id?: number | null;
-                cliente_id?: number | null;
-                /** @description Vencida hace más de N días */
-                desde_dias?: number | null;
                 pagina?: number;
                 tamano?: number;
+                solo_vencida?: boolean;
+                /** @description Solo un corte de antigüedad: 1_30, 31_60, 61_90, mas_90 */
+                tramo?: ("al_dia" | "1_30" | "31_60" | "61_90" | "mas_90") | null;
+                /** @description Vencida hace más de N días */
+                desde_dias?: number | null;
+                /** @description Lo que se le vence en los próximos N días */
+                vence_en_dias?: number | null;
+                vendedor_id?: number | null;
+                cliente_id?: number | null;
+                servicio_id?: number | null;
+                /** @description Vendido desde esta fecha */
+                desde?: string | null;
+                /** @description Vendido hasta esta fecha */
+                hasta?: string | null;
             };
             header?: never;
             path?: never;
@@ -8601,7 +8676,22 @@ export interface operations {
     };
     resumen_cartera_api_v1_cartera_resumen_get: {
         parameters: {
-            query?: never;
+            query?: {
+                solo_vencida?: boolean;
+                /** @description Solo un corte de antigüedad: 1_30, 31_60, 61_90, mas_90 */
+                tramo?: ("al_dia" | "1_30" | "31_60" | "61_90" | "mas_90") | null;
+                /** @description Vencida hace más de N días */
+                desde_dias?: number | null;
+                /** @description Lo que se le vence en los próximos N días */
+                vence_en_dias?: number | null;
+                vendedor_id?: number | null;
+                cliente_id?: number | null;
+                servicio_id?: number | null;
+                /** @description Vendido desde esta fecha */
+                desde?: string | null;
+                /** @description Vendido hasta esta fecha */
+                hasta?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8615,6 +8705,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResumenCartera"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cartera_por_antiguedad_api_v1_cartera_antiguedad_get: {
+        parameters: {
+            query?: {
+                solo_vencida?: boolean;
+                /** @description Solo un corte de antigüedad: 1_30, 31_60, 61_90, mas_90 */
+                tramo?: ("al_dia" | "1_30" | "31_60" | "61_90" | "mas_90") | null;
+                /** @description Vencida hace más de N días */
+                desde_dias?: number | null;
+                /** @description Lo que se le vence en los próximos N días */
+                vence_en_dias?: number | null;
+                vendedor_id?: number | null;
+                cliente_id?: number | null;
+                servicio_id?: number | null;
+                /** @description Vendido desde esta fecha */
+                desde?: string | null;
+                /** @description Vendido hasta esta fecha */
+                hasta?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TramoAntiguedad"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

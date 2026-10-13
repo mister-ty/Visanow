@@ -122,24 +122,68 @@ def ajustar(negocio_id: int, datos: esq.AjusteCrear, request: Request,
 
 # ------------------------------------------------------------------- cartera
 
+class FiltrosCartera:
+    """Lo que se puede filtrar de la cartera (RF-046).
+
+    Van juntos en una sola clase porque la lista, los totales de arriba y el
+    informe por edades admiten exactamente los mismos filtros. Si cada
+    respuesta tuviera los suyos, la pantalla acabaría mostrando totales de una
+    cosa y una tabla de otra.
+
+    Filtrar es una comodidad del usuario, no un control de acceso: quién puede
+    ver montos lo decide el permiso `pagos.ver`.
+    """
+
+    def __init__(
+        self,
+        solo_vencida: bool = False,
+        tramo: esq.TramoMora | None = Query(
+            default=None, description='Solo un corte de antigüedad: 1_30, 31_60, 61_90, mas_90'),
+        desde_dias: int | None = Query(default=None, ge=0,
+                                       description='Vencida hace más de N días'),
+        vence_en_dias: int | None = Query(
+            default=None, ge=0, description='Lo que se le vence en los próximos N días'),
+        vendedor_id: int | None = None,
+        cliente_id: int | None = None,
+        servicio_id: int | None = None,
+        desde: date | None = Query(default=None, description='Vendido desde esta fecha'),
+        hasta: date | None = Query(default=None, description='Vendido hasta esta fecha'),
+    ):
+        self.como_dict = {
+            'solo_vencida': solo_vencida, 'tramo': tramo, 'desde_dias': desde_dias,
+            'vence_en_dias': vence_en_dias, 'vendedor_id': vendedor_id,
+            'cliente_id': cliente_id, 'servicio_id': servicio_id,
+            'desde': desde, 'hasta': hasta}
+
+
 @router.get('/cartera', response_model=esq.PaginaCartera)
-def listar_cartera(solo_vencida: bool = False, vendedor_id: int | None = None,
-                   cliente_id: int | None = None,
-                   desde_dias: int | None = Query(default=None,
-                                                  description='Vencida hace más de N días'),
-                   pagina: int = 1, tamano: int = 50,
+def listar_cartera(filtros: FiltrosCartera = Depends(), pagina: int = 1, tamano: int = 50,
                    _: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
-    """Quién debe, cuánto y desde cuándo (RF-046)."""
-    total, suma, filas = serv_cartera.cartera(
-        db, solo_vencida=solo_vencida, vendedor_id=vendedor_id, cliente_id=cliente_id,
-        desde_dias=desde_dias, pagina=pagina, tamano=tamano)
+    """Quién debe, cuánto, desde cuándo y qué se le vence (RF-046)."""
+    total, suma, filas = serv_cartera.cartera(db, pagina=pagina, tamano=tamano,
+                                              **filtros.como_dict)
     return esq.PaginaCartera(total=total, suma_saldo=suma, pagina=pagina, tamano=tamano,
                              items=[esq.FilaCarteraSalida(**f.__dict__) for f in filas])
 
 
 @router.get('/cartera/resumen', response_model=esq.ResumenCartera)
-def resumen_cartera(_: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
-    return esq.ResumenCartera(**serv_cartera.resumen(db))
+def resumen_cartera(filtros: FiltrosCartera = Depends(),
+                    _: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
+    """Los totales de lo que se está mirando: obedecen el filtro igual que la tabla."""
+    return esq.ResumenCartera(**serv_cartera.resumen(db, **filtros.como_dict))
+
+
+@router.get('/cartera/antiguedad', response_model=list[esq.TramoAntiguedad])
+def cartera_por_antiguedad(filtros: FiltrosCartera = Depends(),
+                           _: Usuarios = Depends(requiere('pagos.ver')),
+                           db: Session = Depends(get_db)):
+    """La cartera repartida por edades, en los cortes de la contabilidad (RF-046).
+
+    Es el informe con el que se cobra: dice cuánta plata lleva entre 1 y 30
+    días, entre 31 y 60, entre 61 y 90, y cuánta pasó de 90 y ya hay que tratar
+    aparte.
+    """
+    return [esq.TramoAntiguedad(**t) for t in serv_cartera.antiguedad(db, **filtros.como_dict)]
 
 
 @router.get('/cartera/por-estado', response_model=list[esq.PorEstado])

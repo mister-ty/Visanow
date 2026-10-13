@@ -268,3 +268,242 @@ def test_operaciones_no_ve_los_montos_de_la_cartera(cliente, usuario, venta):
     cab = entrar(cliente, usuario('operaciones'))
     assert cliente.get('/api/v1/cartera', headers=cab).status_code == 403
     assert cliente.get('/api/v1/pagos', headers=cab).status_code == 403
+
+
+# ----------------------------------- cartera por edades y filtros (RF-046)
+
+@pytest.fixture
+def deudor(cliente, comercial, finanzas, db):
+    """Fábrica de ventas con saldo, con la edad de la mora puesta a la medida.
+
+    Los datos se crean acá a propósito. En la base de hoy «cuotas_negocio» está
+    vacía para las 477 ventas, y la cartera vencida sale de comparar lo pagado
+    contra lo que ya era exigible según las cuotas: sin cuotas, toda la cartera
+    reporta cero vencido y cero días de mora. Una prueba montada sobre esos
+    datos pasaría sin haber comprobado nada.
+
+    `mora` son los días que lleva sin pagarse el anticipo; `mora=None` deja las
+    dos cuotas en el futuro, que es una venta al día con plata por vencer.
+    """
+    cab, _ = comercial
+
+    def _crear(nombre: str, *, mora: int | None = None, vence_en: int = 30,
+               servicio: str = 'adelantos', fecha_venta: str | None = None,
+               vendedor_id: int | None = None) -> dict:
+        c = cliente.post('/api/v1/clientes', headers=cab, json={'nombre': nombre}).json()
+        cliente.post('/api/v1/solicitantes', headers=cab,
+                     json={'cliente_id': c['id'], 'nombre': nombre})
+        pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+        serv = db.scalar(select(Servicios.id).where(Servicios.codigo == servicio))
+        lead = cliente.post('/api/v1/oportunidades', headers=cab, json={
+            'cliente_id': c['id'], 'servicio_id': serv, 'pais_id': pais,
+            'proxima_accion': 'Enviar cotización'}).json()
+        r = cliente.post(f'/api/v1/oportunidades/{lead["id"]}/ganar', headers=cab, json={})
+        assert r.status_code == 201, r.text
+        v = r.json()
+        r = cliente.post(f'/api/v1/ventas/{v["id"]}/cuotas', headers=finanzas, json={})
+        assert r.status_code == 201, r.text
+
+        db.execute(text("""update cuotas_negocio
+                              set fecha_pactada = current_date + :d
+                            where negocio_id = :n and numero = 2"""),
+                   {'d': vence_en, 'n': v['id']})
+        db.execute(text("""update cuotas_negocio
+                              set fecha_pactada = current_date + :d
+                            where negocio_id = :n and numero = 1"""),
+                   {'d': vence_en if mora is None else -mora, 'n': v['id']})
+        if fecha_venta is not None:
+            db.execute(text('update negocios set fecha_venta = :f where id = :n'),
+                       {'f': fecha_venta, 'n': v['id']})
+        if vendedor_id is not None:
+            db.execute(text('update negocios set vendedor_id = :u where id = :n'),
+                       {'u': vendedor_id, 'n': v['id']})
+        db.commit()
+        return v
+    return _crear
+
+
+def lista(cliente, cab, consulta: str = '') -> dict:
+    r = cliente.get(f'/api/v1/cartera?tamano=200{consulta}', headers=cab)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def edades(cliente, cab, consulta: str = '') -> dict:
+    r = cliente.get(f'/api/v1/cartera/antiguedad?{consulta}', headers=cab)
+    assert r.status_code == 200, r.text
+    return {t['tramo']: t for t in r.json()}
+
+
+def test_la_antiguedad_se_parte_en_los_tramos_de_la_contabilidad(cliente, finanzas, deudor):
+    """RF-046. Un número de días suelto por fila no contesta la pregunta del
+    cobro: «de lo que me deben, cuánto lleva entre 31 y 60 días». Los cortes son
+    los de la contabilidad colombiana: 1-30, 31-60, 61-90 y más de 90.
+
+    Los bordes van a propósito —30 y 31, 60 y 61, 90 y 91—: es donde se
+    equivoca el corte, y una deuda que se cae al tramo de al lado cambia el
+    informe y la decisión de a quién se llama hoy.
+    """
+    esperado = {30: '1_30', 31: '31_60', 60: '31_60', 61: '61_90', 90: '61_90', 91: 'mas_90'}
+    ids = {dias: deudor(f'Deudor de {dias} días', mora=dias)['id'] for dias in esperado}
+
+    filas = {f['negocio_id']: f for f in lista(cliente, finanzas)['items']}
+    for dias, tramo in esperado.items():
+        fila = filas[ids[dias]]
+        assert fila['dias_vencido'] == dias
+        assert fila['tramo'] == tramo, f'{dias} días de mora no cayó en «{tramo}»'
+
+
+def test_el_corte_por_edades_dice_cuanto_hay_en_cada_tramo(cliente, finanzas, deudor):
+    """Lo que de verdad se mira al cobrar: cuánta plata hay en cada edad.
+
+    Sin el agregado hay que contar la tabla a mano, y por eso hoy nadie sabe
+    cuánto de la cartera ya está en el tramo que la contabilidad da por perdido.
+    """
+    for dias in (10, 20, 45, 100):
+        deudor(f'Deudor de {dias} días', mora=dias)
+    deudor('Cliente al día', mora=None)
+
+    tramos = edades(cliente, finanzas)
+    assert list(tramos) == ['al_dia', '1_30', '31_60', '61_90', 'mas_90'], (
+        'los tramos salen siempre y en orden de edad, aunque alguno esté vacío')
+
+    assert tramos['1_30']['cuantas'] == 2, 'el de 10 y el de 20 días'
+    assert tramos['1_30']['vencido'] == 280000, 'dos anticipos de 140.000 sin pagar'
+    assert tramos['1_30']['saldo'] == 1400000
+    assert tramos['31_60']['cuantas'] == 1 and tramos['31_60']['vencido'] == 140000
+    assert tramos['61_90']['cuantas'] == 0, 'no hay nada en esa edad'
+    assert tramos['mas_90']['cuantas'] == 1 and tramos['mas_90']['saldo'] == 700000
+    assert tramos['al_dia']['cuantas'] == 1 and tramos['al_dia']['vencido'] == 0
+    assert tramos['al_dia']['por_vencer'] == 700000
+
+    assert sum(t['saldo'] for t in tramos.values()) == lista(cliente, finanzas)['suma_saldo'], (
+        'el corte por edades y la lista tienen que hablar de la misma plata')
+
+
+def test_la_cartera_se_filtra_por_tramo_de_antiguedad(cliente, finanzas, deudor):
+    """«Muéstrame solo lo de 31 a 60 días»: es la lista de llamadas del día."""
+    nuevo = deudor('Mora de 10 días', mora=10)['id']
+    medio = deudor('Mora de 45 días', mora=45)['id']
+    viejo = deudor('Mora de 100 días', mora=100)['id']
+
+    r = lista(cliente, finanzas, '&tramo=31_60')
+    ids = [f['negocio_id'] for f in r['items']]
+    assert ids == [medio]
+    assert nuevo not in ids and viejo not in ids
+    assert r['suma_saldo'] == 700000
+
+    assert cliente.get('/api/v1/cartera?tramo=cualquier_cosa',
+                       headers=finanzas).status_code == 422, 'un tramo inventado no se traga'
+
+
+def test_se_puede_filtrar_lo_que_vence_en_los_proximos_dias(cliente, finanzas, deudor, db):
+    """«Por vencer» se veía pero no se podía filtrar, y es justo el filtro que
+    sirve para llamar ANTES de que la plata se vuelva mora."""
+    pronto = deudor('Le vence en 5 días', mora=None, vence_en=5)['id']
+    lejos = deudor('Le vence en 60 días', mora=None, vence_en=60)['id']
+
+    r = lista(cliente, finanzas, '&vence_en_dias=15')
+    ids = [f['negocio_id'] for f in r['items']]
+    assert pronto in ids and lejos not in ids
+    assert r['suma_saldo'] == 700000
+
+    fila = next(f for f in r['items'] if f['negocio_id'] == pronto)
+    assert fila['tramo'] == 'al_dia', 'no debe nada vencido todavía'
+    assert fila['por_vencer'] == 700000 and fila['vencido'] == 0
+    en_cinco = db.execute(text('select current_date + 5')).scalar()
+    assert fila['proximo_vencimiento'] == en_cinco.isoformat()
+
+
+def test_la_cartera_se_filtra_por_servicio(cliente, finanzas, deudor):
+    """La administradora no cobra igual un adelanto de cita que una renovación."""
+    adelanto = deudor('Compró un adelanto', mora=10)
+    renovacion = deudor('Compró una renovación', mora=10, servicio='renovacion')
+
+    r = lista(cliente, finanzas, f'&servicio_id={renovacion["servicio_id"]}')
+    ids = [f['negocio_id'] for f in r['items']]
+    assert ids == [renovacion['id']]
+    assert adelanto['id'] not in ids
+    assert r['suma_saldo'] == 500000, 'el valor de la renovación, sin el adelanto'
+
+
+def test_la_cartera_se_filtra_por_rango_de_fechas_de_venta(cliente, finanzas, deudor):
+    """Para cerrar un periodo: qué quedó debiendo lo que se vendió en ese rango."""
+    marzo = deudor('Venta de marzo', mora=10, fecha_venta='2026-03-15')['id']
+    septiembre = deudor('Venta de septiembre', mora=10, fecha_venta='2026-09-20')['id']
+
+    primer_semestre = [f['negocio_id'] for f in
+                       lista(cliente, finanzas, '&desde=2026-01-01&hasta=2026-06-30')['items']]
+    assert primer_semestre == [marzo]
+
+    desde_agosto = [f['negocio_id'] for f in lista(cliente, finanzas, '&desde=2026-08-01')['items']]
+    assert septiembre in desde_agosto and marzo not in desde_agosto
+
+
+def test_el_filtro_de_antiguedad_minima_deja_fuera_la_mora_mas_nueva(cliente, finanzas, deudor):
+    """`desde_dias` es el único filtro que toca la antigüedad y no tenía prueba.
+
+    Y el corte por edades tiene que obedecerlo igual que la lista: si no, el
+    informe de arriba y la tabla de abajo hablan de plata distinta.
+    """
+    nuevo = deudor('Mora de 5 días', mora=5)['id']
+    viejo = deudor('Mora de 70 días', mora=70)['id']
+
+    ids = [f['negocio_id'] for f in lista(cliente, finanzas, '&desde_dias=60')['items']]
+    assert viejo in ids and nuevo not in ids
+
+    tramos = edades(cliente, finanzas, 'desde_dias=60')
+    assert tramos['61_90']['cuantas'] == 1
+    assert tramos['1_30']['cuantas'] == 0, 'la mora de 5 días quedó fuera del filtro'
+
+
+def test_la_cartera_se_filtra_por_vendedor_y_los_totales_tambien(cliente, finanzas, deudor,
+                                                                 usuario):
+    """Cada vendedora cobra lo suyo. Si los totales de arriba no obedecieran el
+    filtro, la tarjeta diría un número y la suma de la tabla otro."""
+    otra = usuario('comercial').u
+    mia = deudor('Cliente de la casa', mora=10)['id']
+    suya = deudor('Cliente de la otra vendedora', mora=10, vendedor_id=otra.id)['id']
+
+    r = lista(cliente, finanzas, f'&vendedor_id={otra.id}')
+    ids = [f['negocio_id'] for f in r['items']]
+    assert ids == [suya]
+    assert mia not in ids
+
+    resumen = cliente.get(f'/api/v1/cartera/resumen?vendedor_id={otra.id}',
+                          headers=finanzas).json()
+    assert resumen['cartera'] == 700000, 'solo la cartera de esa vendedora'
+    assert resumen['vencido'] == 140000
+    assert resumen['cartera'] == r['suma_saldo'], 'la tarjeta y la tabla, la misma plata'
+
+
+def test_la_cartera_se_filtra_por_cliente_y_el_corte_por_edades_tambien(cliente, finanzas,
+                                                                        deudor):
+    """Para la llamada: la deuda de ESTE cliente, con su edad, sin el resto."""
+    uno = deudor('Mauricio Londoño', mora=100)
+    otro = deudor('Gloria Sierra', mora=10)
+
+    r = lista(cliente, finanzas, f'&cliente_id={uno["cliente_id"]}')
+    ids = [f['negocio_id'] for f in r['items']]
+    assert ids == [uno['id']]
+    assert otro['id'] not in ids
+
+    tramos = edades(cliente, finanzas, f'cliente_id={uno["cliente_id"]}')
+    assert tramos['mas_90']['cuantas'] == 1
+    assert tramos['1_30']['cuantas'] == 0, 'el otro cliente no entra en la cuenta'
+
+
+def test_el_resumen_tambien_dice_cuanto_esta_por_vencer(cliente, finanzas, deudor):
+    """Sin «por vencer» arriba, de la cartera solo se ve la mitad: lo que ya se
+    pasó de fecha, y no lo que se va a pasar la semana entrante."""
+    deudor('Debe con anticipo vencido', mora=20)
+    r = cliente.get('/api/v1/cartera/resumen', headers=finanzas).json()
+    assert r['vencido'] == 140000
+    assert r['por_vencer'] == 560000, 'el saldo que todavía no es exigible'
+
+
+def test_operaciones_tampoco_ve_el_corte_por_edades(cliente, usuario, deudor):
+    """A operaciones se le oculta la contabilidad (respuesta del 29/09). El
+    informe de cartera por edades es contabilidad."""
+    cab = entrar(cliente, usuario('operaciones'))
+    assert cliente.get('/api/v1/cartera/antiguedad', headers=cab).status_code == 403

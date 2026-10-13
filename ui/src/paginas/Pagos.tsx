@@ -10,11 +10,12 @@ import { Link } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { BotonExportar } from '../componentes/BotonExportar'
-import { useAsignables } from '../lib/catalogos'
+import { aSelect, useAsignables, useCatalogos } from '../lib/catalogos'
 import { mostrarError } from '../lib/errores'
 import { formatearPesos } from '../lib/formato'
 
 type Pago = Esquemas['PagoSalida']
+type Tramo = Esquemas['TramoAntiguedad']['tramo']
 
 const COLOR_ESTADO_PAGO: Record<string, string> = {
   confirmado: 'teal', pendiente: 'yellow', no_identificado: 'orange', reversado: 'gray', duplicado: 'gray',
@@ -26,6 +27,25 @@ const NOMBRE_ESTADO_PAGO: Record<string, string> = {
 const NOMBRE_AJUSTE: Record<string, string> = {
   reembolso: 'Reembolso', cargo: 'Cargo', descuento: 'Descuento', condonacion: 'Condonación',
 }
+
+// Los cortes de antigüedad de la contabilidad colombiana. En qué tramo cae cada
+// deuda lo decide la API, no esta pantalla: acá solo se le pone color y nombre.
+// El color sube de tono con la edad para que el ojo encuentre lo peor sin leer.
+const COLOR_TRAMO: Record<string, string> = {
+  al_dia: 'teal', '1_30': 'yellow', '31_60': 'orange', '61_90': 'red', mas_90: 'grape',
+}
+const NOMBRE_TRAMO: Record<string, string> = {
+  al_dia: 'Al día', '1_30': '1 a 30 d', '31_60': '31 a 60 d', '61_90': '61 a 90 d',
+  mas_90: '+ de 90 d',
+}
+// El filtro no ofrece «al día»: en una lista de cobro no se filtra por quien no
+// debe nada vencido. Para eso está «le vence en N días».
+const TRAMOS: { valor: Tramo; titulo: string }[] = [
+  { valor: '1_30', titulo: '1 a 30 días' },
+  { valor: '31_60', titulo: '31 a 60 días' },
+  { valor: '61_90', titulo: '61 a 90 días' },
+  { valor: 'mas_90', titulo: 'Más de 90 días' },
+]
 
 // La API entrega la fecha como AAAA-MM-DD sin hora. Se parte el texto en vez de
 // pasarlo por Date: `new Date('2026-10-16')` es medianoche UTC y en Bogotá se
@@ -89,24 +109,45 @@ export function Pagos() {
 
 function Cartera({ abrirVenta }: { abrirVenta: (id: number) => void }) {
   const asignables = useAsignables()
+  const catalogos = useCatalogos()
   const [soloVencida, setSoloVencida] = useState(false)
+  const [tramo, setTramo] = useState<Tramo | null>(null)
   const [vendedor, setVendedor] = useState<string | null>(null)
+  const [servicio, setServicio] = useState<string | null>(null)
   const [moraMinima, setMoraMinima] = useState<number | string>('')
+  const [venceEn, setVenceEn] = useState<number | string>('')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
 
+  // Un solo juego de filtros para las tres respuestas de la pantalla: los
+  // totales de arriba, el corte por edades y la tabla. Si cada uno filtrara a
+  // su manera, la tarjeta diría un número y la suma de la tabla otro, y es
+  // justo lo que hoy pasa entre las hojas PAGOS y REV PAGOS.
+  const filtros = {
+    solo_vencida: soloVencida,
+    ...(tramo ? { tramo } : {}),
+    ...(vendedor ? { vendedor_id: Number(vendedor) } : {}),
+    ...(servicio ? { servicio_id: Number(servicio) } : {}),
+    ...(moraMinima !== '' ? { desde_dias: Number(moraMinima) } : {}),
+    ...(venceEn !== '' ? { vence_en_dias: Number(venceEn) } : {}),
+    ...(desde ? { desde } : {}),
+    ...(hasta ? { hasta } : {}),
+  }
   const resumen = useQuery({
-    queryKey: ['cartera-resumen'],
-    queryFn: () => exigir(api.GET('/api/v1/cartera/resumen')),
+    queryKey: ['cartera-resumen', filtros],
+    queryFn: () => exigir(api.GET('/api/v1/cartera/resumen', { params: { query: filtros } })),
+    placeholderData: keepPreviousData,
+  })
+  const edades = useQuery({
+    queryKey: ['cartera-antiguedad', filtros],
+    queryFn: () => exigir(api.GET('/api/v1/cartera/antiguedad', { params: { query: filtros } })),
+    placeholderData: keepPreviousData,
   })
   const porEstado = useQuery({
     queryKey: ['cartera-por-estado'],
     queryFn: () => exigir(api.GET('/api/v1/cartera/por-estado')),
   })
-  const consulta = {
-    solo_vencida: soloVencida,
-    ...(vendedor ? { vendedor_id: Number(vendedor) } : {}),
-    ...(moraMinima !== '' ? { desde_dias: Number(moraMinima) } : {}),
-    tamano: 100,
-  }
+  const consulta = { ...filtros, tamano: 100 }
   const cartera = useQuery({
     queryKey: ['cartera', consulta],
     queryFn: () => exigir(api.GET('/api/v1/cartera', { params: { query: consulta } })),
@@ -116,13 +157,37 @@ function Cartera({ abrirVenta }: { abrirVenta: (id: number) => void }) {
   const r = resumen.data
   return (
     <Stack>
-      {/* Vendido, cobrado y cartera por separado: son tres preguntas distintas */}
-      <SimpleGrid cols={{ base: 2, md: 4 }}>
+      {/* Vendido, cobrado y cartera por separado: son preguntas distintas. «Por
+          vencer» va al lado de «vencido» porque sin él de la cartera solo se ve
+          la mitad: lo que ya se pasó de fecha, y no lo que se va a pasar. */}
+      <SimpleGrid cols={{ base: 2, md: 5 }}>
         <Tarjeta titulo="Vendido" valor={r?.vendido} />
         <Tarjeta titulo="Cobrado" valor={r?.cobrado} />
         <Tarjeta titulo="Cartera (saldo)" valor={r?.cartera} sub={`${r?.ventas_con_saldo ?? 0} venta(s) con saldo`} />
         <Tarjeta titulo="Vencido" valor={r?.vencido} color="red" />
+        <Tarjeta titulo="Por vencer" valor={r?.por_vencer} />
       </SimpleGrid>
+
+      {/* El informe con el que se cobra. Cada tramo es un botón: se hace clic en
+          «31 a 60 días» y abajo queda la lista de llamadas de ese tramo. */}
+      <div>
+        <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={6}>Cartera por edades</Text>
+        <SimpleGrid cols={{ base: 2, md: 5 }}>
+          {(edades.data ?? []).map((t) => (
+            <Card key={t.tramo} withBorder padding="sm" style={{ cursor: 'pointer' }}
+              bg={tramo === t.tramo ? 'var(--mantine-color-default-hover)' : undefined}
+              onClick={() => setTramo(tramo === t.tramo ? null : t.tramo)}>
+              <Group gap={6} justify="space-between" wrap="nowrap">
+                <Text size="xs" fw={600} c={COLOR_TRAMO[t.tramo]}>{t.etiqueta}</Text>
+                <Badge size="xs" variant="light" color={COLOR_TRAMO[t.tramo]}>{t.cuantas}</Badge>
+              </Group>
+              <Text size="md" fw={700}>{formatearPesos(t.saldo)}</Text>
+              <Text size="xs" c="dimmed">
+                {t.tramo === 'al_dia' ? 'nada vencido' : `${formatearPesos(t.vencido)} vencido`}
+              </Text>
+            </Card>))}
+        </SimpleGrid>
+      </div>
 
       {porEstado.data && porEstado.data.length > 0 && (
         <Group gap="xs">
@@ -132,25 +197,39 @@ function Cartera({ abrirVenta }: { abrirVenta: (id: number) => void }) {
             </Badge>))}
         </Group>)}
 
-      <Group align="flex-end">
+      <Group align="flex-end" wrap="wrap">
+        <Select label="Edad de la mora" w={170} clearable value={tramo}
+          onChange={(v) => setTramo(v === null ? null : (v as Tramo))}
+          data={TRAMOS.map((t) => ({ value: t.valor, label: t.titulo }))} />
         <Select label="Vendedor" w={200} clearable value={vendedor}
           onChange={(v) => setVendedor(v === null ? null : String(v))}
           data={(asignables.data ?? []).map((u) => ({ value: String(u.id), label: u.nombre }))} />
-        <NumberInput label="Mora de más de (días)" w={180} min={0} allowDecimal={false}
+        <Select label="Servicio" w={200} clearable value={servicio} searchable
+          onChange={(v) => setServicio(v === null ? null : String(v))}
+          data={aSelect(catalogos.data?.servicios)} />
+        <NumberInput label="Mora de más de (días)" w={170} min={0} allowDecimal={false}
           value={moraMinima} onChange={(v) => setMoraMinima(typeof v === 'bigint' ? Number(v) : v)} />
+        <NumberInput label="Le vence en (días)" w={160} min={0} allowDecimal={false}
+          description="Para llamar antes" value={venceEn}
+          onChange={(v) => setVenceEn(typeof v === 'bigint' ? Number(v) : v)} />
+        <TextInput type="date" label="Vendido desde" value={desde}
+          onChange={(e) => setDesde(e.currentTarget.value)} />
+        <TextInput type="date" label="Vendido hasta" value={hasta}
+          onChange={(e) => setHasta(e.currentTarget.value)} />
         <Switch mb={8} label="Solo lo vencido" checked={soloVencida}
           onChange={(e) => setSoloVencida(e.currentTarget.checked)} />
       </Group>
 
       <Card withBorder padding={0}>
-        <Table.ScrollContainer minWidth={980}>
+        <Table.ScrollContainer minWidth={1100}>
           <Table verticalSpacing="sm" highlightOnHover>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Cliente</Table.Th><Table.Th>Servicio</Table.Th><Table.Th>Vendedor</Table.Th>
                 <Table.Th ta="right">Pactado</Table.Th><Table.Th ta="right">Pagado</Table.Th>
                 <Table.Th ta="right">Saldo</Table.Th><Table.Th ta="right">Vencido</Table.Th>
-                <Table.Th ta="right">Por vencer</Table.Th><Table.Th>Mora</Table.Th>
+                <Table.Th ta="right">Por vencer</Table.Th><Table.Th>Edad de la mora</Table.Th>
+                <Table.Th>Le vence</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -171,13 +250,24 @@ function Cartera({ abrirVenta }: { abrirVenta: (id: number) => void }) {
                   <Table.Td ta="right" c={f.vencido > 0 ? 'red' : 'dimmed'}>{formatearPesos(f.vencido)}</Table.Td>
                   <Table.Td ta="right" c="dimmed">{formatearPesos(f.por_vencer)}</Table.Td>
                   <Table.Td>
-                    {f.dias_vencido > 0
-                      ? <Badge color="red" variant="light">{f.dias_vencido} d</Badge>
-                      : <Text size="sm" c="dimmed">al día</Text>}
+                    {/* El tramo es lo que se lee de un golpe; los días quedan al
+                        lado para cuando hay que afinar la decisión. */}
+                    {f.tramo === 'al_dia'
+                      ? <Text size="sm" c="dimmed">Al día</Text>
+                      : (
+                        <Group gap={6} wrap="nowrap">
+                          <Badge color={COLOR_TRAMO[f.tramo]} variant="light">
+                            {NOMBRE_TRAMO[f.tramo]}
+                          </Badge>
+                          <Text size="xs" c="dimmed">{f.dias_vencido} d</Text>
+                        </Group>)}
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c="dimmed">{formatearDia(f.proximo_vencimiento)}</Text>
                   </Table.Td>
                 </Table.Tr>))}
               {cartera.data?.items.length === 0 && (
-                <Table.Tr><Table.Td colSpan={9}>
+                <Table.Tr><Table.Td colSpan={10}>
                   <Text size="sm" c="dimmed" ta="center" py="lg">No hay ventas con saldo con esos filtros.</Text>
                 </Table.Td></Table.Tr>)}
             </Table.Tbody>

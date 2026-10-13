@@ -257,7 +257,9 @@ t_v_cartera = Table(
     Column('exigible_hoy', Numeric),
     Column('vencido', Numeric),
     Column('por_vencer', Numeric),
-    Column('dias_mora', Integer)
+    Column('dias_mora', Integer),
+    Column('tramo_mora', Text),
+    Column('proximo_vencimiento', Date)
 )
 
 
