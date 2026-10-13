@@ -28,16 +28,16 @@ Una venta con cuota exigible hoy y sin pagar entra en el primer tramo y no en
 «al día»: es plata que ya se tenía que haber recibido, aunque todavía no haya
 cumplido un día de atraso.
 
-Revision ID: 0019_cartera_por_edades
-Revises: 0018_colaboradores_caso
+Revision ID: 0020_cartera_por_edades
+Revises: 0019_costo_del_servicio
 Create Date: 2026-10-13
 """
 from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = '0019_cartera_por_edades'
-down_revision: Union[str, None] = '0018_colaboradores_caso'
+revision: str = '0020_cartera_por_edades'
+down_revision: Union[str, None] = '0019_costo_del_servicio'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
