@@ -224,11 +224,23 @@ VISTA_TARIFAS = _vista(m.Tarifas, 'Tarifa', 'Tarifas', 'fa-tags',
 VISTA_TARIFAS.column_formatters = {'valor': _pesos, 'valor_minimo': _pesos}
 VISTA_TARIFAS.column_default_sort = [('servicio_id', False), ('personas', False)]
 
+# Lo que a la agencia le cuesta atender cada servicio (RF-054). Se administra
+# aqui, junto a la tarifa, porque es la otra mitad de la misma pregunta: a cuanto
+# se vende y cuanto cuesta. Sin esta pantalla la rentabilidad restaria cero por
+# costos y el margen saldria inflado en lo que cuesta el tramitador.
+VISTA_COSTOS = _vista(m.CostosServicio, 'Costo del servicio', 'Costos por servicio',
+                      'fa-money-bill-trend-up',
+                      lista=['servicio', 'concepto', 'monto', 'modalidad',
+                             'vigente_desde', 'vigente_hasta', 'activo'])
+VISTA_COSTOS.column_formatters = {'monto': _pesos}
+VISTA_COSTOS.column_default_sort = [('servicio_id', False), ('vigente_desde', True)]
+
 VISTAS = [
     _vista(m.Servicios, 'Servicio', 'Servicios', 'fa-briefcase',
            lista=['codigo', 'nombre', 'tipo', 'pais', 'crea_casos', 'tasa_consular_valor',
                   'tasa_consular_moneda', 'activo']),
     VISTA_TARIFAS,
+    VISTA_COSTOS,
     _vista(m.Paises, 'País', 'Países', 'fa-globe'),
     _vista(m.Sedes, 'Sede', 'Sedes y consulados', 'fa-building'),
     _vista(m.TiposVisa, 'Tipo de visa', 'Tipos de visa', 'fa-passport'),

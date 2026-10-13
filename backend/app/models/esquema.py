@@ -376,6 +376,7 @@ class Servicios(Base):
 
     pais: Mapped[Optional['Paises']] = relationship('Paises', back_populates='servicios')
     comisiones_reglas: Mapped[list['ComisionesReglas']] = relationship('ComisionesReglas', back_populates='servicio')
+    costos_servicio: Mapped[list['CostosServicio']] = relationship('CostosServicio', back_populates='servicio')
     tarifas: Mapped[list['Tarifas']] = relationship('Tarifas', back_populates='servicio')
     oportunidades: Mapped[list['Oportunidades']] = relationship('Oportunidades', back_populates='servicio')
     negocios: Mapped[list['Negocios']] = relationship('Negocios', back_populates='servicio')
@@ -612,6 +613,33 @@ class ComisionesReglas(Base):
     servicio: Mapped[Optional['Servicios']] = relationship('Servicios', back_populates='comisiones_reglas')
     vendedor: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='comisiones_reglas')
     comisiones: Mapped[list['Comisiones']] = relationship('Comisiones', back_populates='regla')
+
+
+class CostosServicio(Base):
+    __tablename__ = 'costos_servicio'
+    __table_args__ = (
+        CheckConstraint("modalidad::text = ANY (ARRAY['total'::character varying, 'por_persona'::character varying]::text[])", name='costos_servicio_modalidad_check'),
+        CheckConstraint('monto >= 0::numeric', name='costos_servicio_monto_check'),
+        CheckConstraint('vigente_hasta IS NULL OR vigente_hasta >= vigente_desde', name='ck_costos_servicio_vigencia'),
+        ForeignKeyConstraint(['servicio_id'], ['servicios.id'], name='costos_servicio_servicio_id_fkey'),
+        PrimaryKeyConstraint('id', name='costos_servicio_pkey'),
+        Index('ix_costos_servicio_vigencia', 'servicio_id', 'vigente_desde', 'vigente_hasta'),
+        Index('ux_costos_servicio', 'servicio_id', 'concepto', 'vigente_desde', unique=True)
+    )
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=True)
+    servicio_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    concepto: Mapped[str] = mapped_column(String(120), nullable=False)
+    monto: Mapped[decimal.Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    moneda: Mapped[str] = mapped_column(CHAR(3), nullable=False, server_default=text("'COP'::bpchar"))
+    modalidad: Mapped[str] = mapped_column(String(12), nullable=False, server_default=text("'total'::character varying"))
+    vigente_desde: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    activo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text('true'))
+    creado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    vigente_hasta: Mapped[Optional[datetime.date]] = mapped_column(Date)
+    observacion: Mapped[Optional[str]] = mapped_column(Text)
+
+    servicio: Mapped['Servicios'] = relationship('Servicios', back_populates='costos_servicio')
 
 
 class Documentos(Base):

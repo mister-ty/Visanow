@@ -1,7 +1,7 @@
 import {
   IconAddressBook, IconBell, IconBuildingBank, IconCalendarEvent, IconCash, IconChartBar,
   IconChecklist, IconFileImport, IconFilter, IconHistory, IconHome, IconMessage,
-  IconPercentage, IconPlaneDeparture, IconSettings, IconUsers, type Icon,
+  IconPercentage, IconPlaneDeparture, IconReportMoney, IconSettings, IconUsers, type Icon,
 } from '@tabler/icons-react'
 
 export interface Seccion {
@@ -56,6 +56,11 @@ export const SECCIONES: Seccion[] = [
   },
   {
     ruta: '/tableros', titulo: 'Tableros', icono: IconChartBar, permiso: 'tableros.ver',
+  },
+  // Rentabilidad va con el permiso de ver plata, no con el de tableros: muestra
+  // comisiones y margen, que es «lo de la contabilidad» que operaciones no ve.
+  {
+    ruta: '/rentabilidad', titulo: 'Rentabilidad', icono: IconReportMoney, permiso: 'pagos.ver',
   },
   { ruta: '/importacion', titulo: 'Importación SaaS', icono: IconFileImport, permiso: 'importacion.ver' },
   { ruta: '/auditoria', titulo: 'Auditoría', icono: IconHistory, permiso: 'auditoria.ver' },

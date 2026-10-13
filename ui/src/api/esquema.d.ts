@@ -1724,6 +1724,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/rentabilidad": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Informe
+         * @description El margen del periodo, y el mismo margen cortado por servicio y por mes.
+         *
+         *     «Ingreso neto menos comisiones, gastos directos y costos»: las cuatro
+         *     cifras viajan aparte para que la resta se pueda rehacer a mano.
+         */
+        get: operations["informe_api_v1_rentabilidad_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rentabilidad/ventas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ventas
+         * @description Una fila por venta. Por omision las peores primero: son las que hay que mirar.
+         */
+        get: operations["ventas_api_v1_rentabilidad_ventas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rentabilidad/ventas/{negocio_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Venta
+         * @description Que dejo esta venta, pieza por pieza.
+         */
+        get: operations["venta_api_v1_rentabilidad_ventas__negocio_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datos-personales/{cliente_id}/evaluar": {
         parameters: {
             query?: never;
@@ -3969,6 +4032,17 @@ export interface components {
              */
             formato: "numero" | "pesos" | "porcentaje";
         };
+        /** InformeSalida */
+        InformeSalida: {
+            total: components["schemas"]["MargenSalida"];
+            /** Por Servicio */
+            por_servicio: components["schemas"]["MargenSalida"][];
+            /**
+             * Por Periodo
+             * @description Un mes por fila, por fecha de venta
+             */
+            por_periodo: components["schemas"]["MargenSalida"][];
+        };
         /** ItemChecklist */
         ItemChecklist: {
             /** Item Id */
@@ -4045,6 +4119,147 @@ export interface components {
             cumplido: boolean;
             /** Observacion */
             observacion?: string | null;
+        };
+        /** MargenSalida */
+        MargenSalida: {
+            /**
+             * Clave
+             * @description Id del servicio, primer dia del mes o id de la venta
+             */
+            clave: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Ventas */
+            ventas: number;
+            /**
+             * Ingreso Bruto
+             * @description Pagos confirmados, sin la tasa consular
+             */
+            ingreso_bruto: number;
+            /**
+             * Reembolsos
+             * @description Plata que entro y se le devolvio al cliente
+             */
+            reembolsos: number;
+            /**
+             * Costo Medio
+             * @description Lo que se llevo la pasarela o el banco
+             */
+            costo_medio: number;
+            /**
+             * Ingreso Neto
+             * @description Ingreso bruto menos los reembolsos y el costo del medio de pago
+             */
+            ingreso_neto: number;
+            /** Comisiones */
+            comisiones: number;
+            /**
+             * Gastos Directos
+             * @description Gastos cargados a la venta o a sus tramites
+             */
+            gastos_directos: number;
+            /**
+             * Costo Servicio
+             * @description Lo que cuesta atender el servicio
+             */
+            costo_servicio: number;
+            /**
+             * Margen
+             * @description Ingreso neto menos comisiones, gastos directos y costos
+             */
+            margen: number;
+            /**
+             * Margen Pct
+             * @description Nulo cuando no ha entrado plata: un porcentaje sobre cero no dice nada
+             */
+            margen_pct: number | null;
+            /**
+             * Recaudo Terceros
+             * @description Tasa consular recaudada. No es ingreso de la agencia y no entra al margen
+             */
+            recaudo_terceros: number;
+        };
+        /** MargenVentaSalida */
+        MargenVentaSalida: {
+            /**
+             * Clave
+             * @description Id del servicio, primer dia del mes o id de la venta
+             */
+            clave: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Ventas */
+            ventas: number;
+            /**
+             * Ingreso Bruto
+             * @description Pagos confirmados, sin la tasa consular
+             */
+            ingreso_bruto: number;
+            /**
+             * Reembolsos
+             * @description Plata que entro y se le devolvio al cliente
+             */
+            reembolsos: number;
+            /**
+             * Costo Medio
+             * @description Lo que se llevo la pasarela o el banco
+             */
+            costo_medio: number;
+            /**
+             * Ingreso Neto
+             * @description Ingreso bruto menos los reembolsos y el costo del medio de pago
+             */
+            ingreso_neto: number;
+            /** Comisiones */
+            comisiones: number;
+            /**
+             * Gastos Directos
+             * @description Gastos cargados a la venta o a sus tramites
+             */
+            gastos_directos: number;
+            /**
+             * Costo Servicio
+             * @description Lo que cuesta atender el servicio
+             */
+            costo_servicio: number;
+            /**
+             * Margen
+             * @description Ingreso neto menos comisiones, gastos directos y costos
+             */
+            margen: number;
+            /**
+             * Margen Pct
+             * @description Nulo cuando no ha entrado plata: un porcentaje sobre cero no dice nada
+             */
+            margen_pct: number | null;
+            /**
+             * Recaudo Terceros
+             * @description Tasa consular recaudada. No es ingreso de la agencia y no entra al margen
+             */
+            recaudo_terceros: number;
+            /** Negocio Id */
+            negocio_id: number;
+            /**
+             * Fecha Venta
+             * Format: date
+             */
+            fecha_venta: string;
+            /** Servicio */
+            servicio: string;
+            /** Es Recaudo De Terceros */
+            es_recaudo_de_terceros: boolean;
+            /** Vendedor */
+            vendedor: string | null;
+            /**
+             * Valor Pactado
+             * @description Lo acordado, para leer el ingreso en contexto
+             */
+            valor_pactado: number;
+            /**
+             * Saldo
+             * @description Lo que el cliente todavia debe
+             */
+            saldo: number;
         };
         /** MfaInicioSalida */
         MfaInicioSalida: {
@@ -4440,6 +4655,17 @@ export interface components {
             tamano: number;
             /** Items */
             items: components["schemas"]["TareaSalida"][];
+        };
+        /** PaginaVentas */
+        PaginaVentas: {
+            /** Total */
+            total: number;
+            /** Pagina */
+            pagina: number;
+            /** Tamano */
+            tamano: number;
+            /** Items */
+            items: components["schemas"]["MargenVentaSalida"][];
         };
         /** PagoCrear */
         PagoCrear: {
@@ -8479,6 +8705,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenderSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    informe_api_v1_rentabilidad_get: {
+        parameters: {
+            query?: {
+                /** @description Fecha de venta, inclusive */
+                desde?: string | null;
+                /** @description Fecha de venta, inclusive */
+                hasta?: string | null;
+                servicio_id?: number | null;
+                vendedor_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InformeSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ventas_api_v1_rentabilidad_ventas_get: {
+        parameters: {
+            query?: {
+                /** @description Fecha de venta, inclusive */
+                desde?: string | null;
+                /** @description Fecha de venta, inclusive */
+                hasta?: string | null;
+                servicio_id?: number | null;
+                vendedor_id?: number | null;
+                orden?: "peores" | "mejores" | "recientes";
+                pagina?: number;
+                tamano?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginaVentas"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    venta_api_v1_rentabilidad_ventas__negocio_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                negocio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MargenVentaSalida"];
                 };
             };
             /** @description Validation Error */
