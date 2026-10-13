@@ -33,6 +33,18 @@ def con_disco(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture
+def sin_disco(monkeypatch):
+    """Un servidor efimero, como Render en el plan gratuito.
+
+    Se declara a proposito en vez de confiar en que el .env de quien corre las
+    pruebas lo tenga vacio: una prueba que pasa o falla segun la configuracion
+    local de cada quien no esta probando el codigo.
+    """
+    from app.core.config import ajustes
+    monkeypatch.setattr(ajustes(), 'almacenamiento_ruta', '')
+
+
 def un_cliente(cliente, cab, nombre='Documentada Prueba Cliente'):
     return cliente.post('/api/v1/clientes', headers=cab, json={'nombre': nombre}).json()
 
@@ -105,7 +117,7 @@ def test_la_huella_guardada_es_la_del_archivo(cliente, admin, db, con_disco):
 
 # ------------------------------------ no se guarda donde se va a perder
 
-def test_sin_disco_declarado_no_se_sube_y_se_dice_por_que(cliente, admin, db):
+def test_sin_disco_declarado_no_se_sube_y_se_dice_por_que(cliente, admin, db, sin_disco):
     """Render borra su disco en cada despliegue. Subir el pasaporte de alguien
     ahi es perderlo sin que nadie se entere hasta que haga falta.
     """
@@ -121,7 +133,7 @@ def test_con_disco_el_estado_lo_dice(cliente, admin, con_disco):
     assert d['se_pueden_subir'] is True and d['motivo'] is None
 
 
-def test_sin_disco_el_estado_lo_dice_con_el_motivo(cliente, admin):
+def test_sin_disco_el_estado_lo_dice_con_el_motivo(cliente, admin, sin_disco):
     """Ofrecer «subir archivo» donde el archivo se va a perder es peor que no
     ofrecerlo: la persona cree que quedo guardado.
     """
@@ -131,7 +143,7 @@ def test_sin_disco_el_estado_lo_dice_con_el_motivo(cliente, admin):
     assert d['max_mb'] == 25 and 'pdf' in d['tipos']
 
 
-def test_el_enlace_sirve_aunque_no_haya_disco(cliente, admin, db):
+def test_el_enlace_sirve_aunque_no_haya_disco(cliente, admin, db, sin_disco):
     """Es la salida mientras tanto, y ademas sirve siempre: hay cosas que ya
     viven en una carpeta compartida y no tiene sentido duplicar.
     """

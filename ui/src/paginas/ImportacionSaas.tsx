@@ -290,19 +290,21 @@ function ModalVincular({ fila, cerrar }: { fila: Fila | null; cerrar: () => void
           <Button variant="default" onClick={() => setBuscar(nombre.trim())}>Buscar</Button>
         </Group>
         {candidatos.isPending && <Center h={60}><Loader color="teal" size="sm" /></Center>}
-        <Table>
-          <Table.Tbody>
-            {candidatos.data?.map((c) => (
-              <Table.Tr key={c.caso_id}>
-                <Table.Td>{c.solicitante}<Text size="xs" c="dimmed">Trámite #{c.caso_id} · {c.fuente}</Text></Table.Td>
-                <Table.Td ta="right">
-                  <Button size="compact-sm" loading={m.isPending} onClick={() => m.mutate(c.caso_id)}>Vincular</Button>
-                </Table.Td>
-              </Table.Tr>))}
-            {candidatos.data?.length === 0 && (
-              <Table.Tr><Table.Td><Text size="sm" c="dimmed">Ningún trámite parece corresponder. Pruebe con otro nombre.</Text></Table.Td></Table.Tr>)}
-          </Table.Tbody>
-        </Table>
+        <Table.ScrollContainer minWidth={720}>
+          <Table>
+            <Table.Tbody>
+              {candidatos.data?.map((c) => (
+                <Table.Tr key={c.caso_id}>
+                  <Table.Td>{c.solicitante}<Text size="xs" c="dimmed">Trámite #{c.caso_id} · {c.fuente}</Text></Table.Td>
+                  <Table.Td ta="right">
+                    <Button size="compact-sm" loading={m.isPending} onClick={() => m.mutate(c.caso_id)}>Vincular</Button>
+                  </Table.Td>
+                </Table.Tr>))}
+              {candidatos.data?.length === 0 && (
+                <Table.Tr><Table.Td><Text size="sm" c="dimmed">Ningún trámite parece corresponder. Pruebe con otro nombre.</Text></Table.Td></Table.Tr>)}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
         <Text size="xs" c="dimmed">El sistema sugiere; usted decide de quién es la solicitud.</Text>
       </Stack>
     </Modal>)

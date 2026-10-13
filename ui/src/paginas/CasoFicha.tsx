@@ -210,15 +210,17 @@ export function CasoFicha() {
               {c.citas.length === 0
                 ? <Text size="sm" c="dimmed">Sin citas agendadas.</Text>
                 : (
-                  <Table verticalSpacing={6}>
-                    <Table.Tbody>
-                      {c.citas.map((cita) => (
-                        <FilaCita key={cita.id} cita={cita} editable={puedeEditar}
-                          cambiar={(cambios) => cambiarCita.mutate({ id: cita.id, cambios })}
-                          reprogramar={() => setReprogramando(cita)}
-                          guardando={cambiarCita.isPending} />))}
-                    </Table.Tbody>
-                  </Table>)}
+                  <Table.ScrollContainer minWidth={600}>
+                    <Table verticalSpacing={6}>
+                      <Table.Tbody>
+                        {c.citas.map((cita) => (
+                          <FilaCita key={cita.id} cita={cita} editable={puedeEditar}
+                            cambiar={(cambios) => cambiarCita.mutate({ id: cita.id, cambios })}
+                            reprogramar={() => setReprogramando(cita)}
+                            guardando={cambiarCita.isPending} />))}
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>)}
             </Card>
           </Stack>
         </Grid.Col>

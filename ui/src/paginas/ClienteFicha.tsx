@@ -269,54 +269,56 @@ function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar,
   })
 
   return (
-    <Table verticalSpacing={6}>
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Persona</Table.Th><Table.Th>Relación</Table.Th>
-          <Table.Th>Documento</Table.Th><Table.Th>Pasaporte</Table.Th><Table.Th w={130} />
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {solicitantes.map((s) => (
-          <Table.Tr key={s.id}>
-            <Table.Td><Text size="sm">{s.nombre}</Text></Table.Td>
-            <Table.Td><Text size="sm" c="dimmed">{s.relacion_con_cliente ?? '—'}</Text></Table.Td>
-            <Table.Td><Text size="sm">{s.numero_documento ?? '—'}</Text></Table.Td>
-            <Table.Td>
-              {s.pasaporte ? (
-                <Group gap={4}>
-                  <Text size="sm" ff="monospace">{s.pasaporte}</Text>
-                  <Tooltip label="Ver completo (queda registrado)">
-                    <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Ver pasaporte"
-                      loading={ver.isPending} onClick={() => ver.mutate(s.id)}>
-                      <IconEye size={14} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
-              ) : <Text size="sm" c="dimmed">—</Text>}
-            </Table.Td>
-            <Table.Td>
-              <Group gap={4} justify="flex-end" wrap="nowrap">
-                {puedeEditar && (
-                  <>
-                    <Tooltip label="Corregir sus datos">
-                      <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Editar persona"
-                        onClick={() => editar(s)}><IconPencil size={13} /></ActionIcon>
-                    </Tooltip>
-                    <Tooltip label={s.grupo_id ? 'Sacar del grupo o pasarlo a otro' : 'Meterlo en un grupo'}>
-                      <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Mover de grupo"
-                        onClick={() => mover(s)}><IconArrowsExchange size={13} /></ActionIcon>
-                    </Tooltip>
-                  </>)}
-                {puedeTramitar && (
-                  <Button size="compact-xs" variant="light" leftSection={<IconPlaneDeparture size={12} />}
-                    onClick={() => tramitar(s)}>Nuevo trámite</Button>)}
-              </Group>
-            </Table.Td>
+    <Table.ScrollContainer minWidth={720}>
+      <Table verticalSpacing={6}>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Persona</Table.Th><Table.Th>Relación</Table.Th>
+            <Table.Th>Documento</Table.Th><Table.Th>Pasaporte</Table.Th><Table.Th w={130} />
           </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
+        </Table.Thead>
+        <Table.Tbody>
+          {solicitantes.map((s) => (
+            <Table.Tr key={s.id}>
+              <Table.Td><Text size="sm">{s.nombre}</Text></Table.Td>
+              <Table.Td><Text size="sm" c="dimmed">{s.relacion_con_cliente ?? '—'}</Text></Table.Td>
+              <Table.Td><Text size="sm">{s.numero_documento ?? '—'}</Text></Table.Td>
+              <Table.Td>
+                {s.pasaporte ? (
+                  <Group gap={4}>
+                    <Text size="sm" ff="monospace">{s.pasaporte}</Text>
+                    <Tooltip label="Ver completo (queda registrado)">
+                      <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Ver pasaporte"
+                        loading={ver.isPending} onClick={() => ver.mutate(s.id)}>
+                        <IconEye size={14} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                ) : <Text size="sm" c="dimmed">—</Text>}
+              </Table.Td>
+              <Table.Td>
+                <Group gap={4} justify="flex-end" wrap="nowrap">
+                  {puedeEditar && (
+                    <>
+                      <Tooltip label="Corregir sus datos">
+                        <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Editar persona"
+                          onClick={() => editar(s)}><IconPencil size={13} /></ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={s.grupo_id ? 'Sacar del grupo o pasarlo a otro' : 'Meterlo en un grupo'}>
+                        <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Mover de grupo"
+                          onClick={() => mover(s)}><IconArrowsExchange size={13} /></ActionIcon>
+                      </Tooltip>
+                    </>)}
+                  {puedeTramitar && (
+                    <Button size="compact-xs" variant="light" leftSection={<IconPlaneDeparture size={12} />}
+                      onClick={() => tramitar(s)}>Nuevo trámite</Button>)}
+                </Group>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
   )
 }
 
@@ -552,40 +554,42 @@ function TarjetaTramites({ tramites, citas }: {
           Ninguna de estas personas tiene trámite abierto. Se abre desde la tabla de personas.
         </Text>
       ) : (
-        <Table verticalSpacing={6} highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Persona</Table.Th><Table.Th>Destino</Table.Th><Table.Th>Estado</Table.Th>
-              <Table.Th>Responsable</Table.Th><Table.Th>Próxima acción</Table.Th><Table.Th>Sin mover</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {tramites.map((t) => (
-              <Table.Tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => navegar(`/casos/${t.id}`)}>
-                <Table.Td><Text size="sm">{t.solicitante}</Text></Table.Td>
-                <Table.Td><Text size="sm" c="dimmed">{t.pais ?? '—'}</Text></Table.Td>
-                <Table.Td>
-                  <Group gap={4}>
-                    <Badge variant="light" color={t.es_final ? 'gray' : 'teal'}>{t.estado_nombre}</Badge>
-                    {t.resultado && (
-                      <Badge size="xs" variant="light" color={t.resultado === 'aprobada' ? 'teal' : 'red'}>
-                        {t.resultado}
-                      </Badge>)}
-                  </Group>
-                </Table.Td>
-                <Table.Td>
-                  {t.responsable
-                    ? <Text size="sm">{t.responsable}</Text>
-                    : <Badge size="sm" color="orange" variant="light">sin asignar</Badge>}
-                </Table.Td>
-                <Table.Td><Text size="sm" c="dimmed">{t.proxima_accion ?? '—'}</Text></Table.Td>
-                <Table.Td>
-                  <Text size="sm" c={COLOR_RIESGO[t.riesgo]}>{t.dias_sin_movimiento} día(s)</Text>
-                </Table.Td>
+        <Table.ScrollContainer minWidth={840}>
+          <Table verticalSpacing={6} highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Persona</Table.Th><Table.Th>Destino</Table.Th><Table.Th>Estado</Table.Th>
+                <Table.Th>Responsable</Table.Th><Table.Th>Próxima acción</Table.Th><Table.Th>Sin mover</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {tramites.map((t) => (
+                <Table.Tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => navegar(`/casos/${t.id}`)}>
+                  <Table.Td><Text size="sm">{t.solicitante}</Text></Table.Td>
+                  <Table.Td><Text size="sm" c="dimmed">{t.pais ?? '—'}</Text></Table.Td>
+                  <Table.Td>
+                    <Group gap={4}>
+                      <Badge variant="light" color={t.es_final ? 'gray' : 'teal'}>{t.estado_nombre}</Badge>
+                      {t.resultado && (
+                        <Badge size="xs" variant="light" color={t.resultado === 'aprobada' ? 'teal' : 'red'}>
+                          {t.resultado}
+                        </Badge>)}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>
+                    {t.responsable
+                      ? <Text size="sm">{t.responsable}</Text>
+                      : <Badge size="sm" color="orange" variant="light">sin asignar</Badge>}
+                  </Table.Td>
+                  <Table.Td><Text size="sm" c="dimmed">{t.proxima_accion ?? '—'}</Text></Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c={COLOR_RIESGO[t.riesgo]}>{t.dias_sin_movimiento} día(s)</Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {citas.length > 0 && (

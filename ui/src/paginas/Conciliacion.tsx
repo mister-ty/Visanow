@@ -265,35 +265,37 @@ function ModalMovimiento({ movimiento, cerrar }: { movimiento: Movimiento | null
                       No hay un único candidato exacto: elija con cuidado. El nombre de quien consignó
                       no sirve para decidir, muchas veces no es el cliente.
                     </Alert>)}
-                  <Table>
-                    <Table.Tbody>
-                      {sugerencias.data.candidatos.map((c) => (
-                        <Table.Tr key={c.pago_id}>
-                          <Table.Td>
-                            {c.cliente && c.negocio_id
-                              ? <Text size="sm">{c.cliente}</Text>
-                              : <Text size="sm" c="dimmed">Pago sin identificar</Text>}
-                            <Text size="xs" c="dimmed">Pago #{c.pago_id} · {dia(c.fecha)}</Text>
-                          </Table.Td>
-                          <Table.Td ta="right">{formatearPesos(c.monto)}</Table.Td>
-                          <Table.Td>
-                            {c.exacto
-                              ? <Badge color="teal" variant="light">Exacto</Badge>
-                              : <Badge color="gray" variant="light">
-                                  {c.dias_de_diferencia} día(s) de diferencia</Badge>}
-                          </Table.Td>
-                          <Table.Td>
-                            {editar && (
-                              <Group gap="xs" justify="flex-end" wrap="nowrap">
-                                <Button size="compact-sm" loading={conciliar.isPending}
-                                  onClick={() => conciliar.mutate({ pago_id: c.pago_id })}>Conciliar</Button>
-                                <Button size="compact-sm" variant="default" loading={parcial.isPending}
-                                  onClick={() => parcial.mutate(c.pago_id)}>Cubre una parte</Button>
-                              </Group>)}
-                          </Table.Td>
-                        </Table.Tr>))}
-                    </Table.Tbody>
-                  </Table>
+                  <Table.ScrollContainer minWidth={600}>
+                    <Table>
+                      <Table.Tbody>
+                        {sugerencias.data.candidatos.map((c) => (
+                          <Table.Tr key={c.pago_id}>
+                            <Table.Td>
+                              {c.cliente && c.negocio_id
+                                ? <Text size="sm">{c.cliente}</Text>
+                                : <Text size="sm" c="dimmed">Pago sin identificar</Text>}
+                              <Text size="xs" c="dimmed">Pago #{c.pago_id} · {dia(c.fecha)}</Text>
+                            </Table.Td>
+                            <Table.Td ta="right">{formatearPesos(c.monto)}</Table.Td>
+                            <Table.Td>
+                              {c.exacto
+                                ? <Badge color="teal" variant="light">Exacto</Badge>
+                                : <Badge color="gray" variant="light">
+                                    {c.dias_de_diferencia} día(s) de diferencia</Badge>}
+                            </Table.Td>
+                            <Table.Td>
+                              {editar && (
+                                <Group gap="xs" justify="flex-end" wrap="nowrap">
+                                  <Button size="compact-sm" loading={conciliar.isPending}
+                                    onClick={() => conciliar.mutate({ pago_id: c.pago_id })}>Conciliar</Button>
+                                  <Button size="compact-sm" variant="default" loading={parcial.isPending}
+                                    onClick={() => parcial.mutate(c.pago_id)}>Cubre una parte</Button>
+                                </Group>)}
+                            </Table.Td>
+                          </Table.Tr>))}
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>
                 </>)}
 
               {editar && (

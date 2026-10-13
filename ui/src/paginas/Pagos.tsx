@@ -482,7 +482,8 @@ function ModalEstadoFinanciero({ negocioId, cerrar }: { negocioId: number | null
             ? <Alert color="orange" variant="light">
                 Sin plan de cuotas esta venta nunca vence, y la cartera vencida no la va a mostrar.
               </Alert>
-            : <Table>
+            : <Table.ScrollContainer minWidth={600}>
+            :   <Table>
                 <Table.Tbody>
                   {e.cuotas.map((c) => (
                     <Table.Tr key={c.numero}>
@@ -491,42 +492,47 @@ function ModalEstadoFinanciero({ negocioId, cerrar }: { negocioId: number | null
                       <Table.Td ta="right">{formatearPesos(c.monto)}</Table.Td>
                     </Table.Tr>))}
                 </Table.Tbody>
-              </Table>}
+              </Table>
+            : </Table.ScrollContainer>}
 
           <Text fw={600}>Pagos</Text>
-          <Table>
-            <Table.Tbody>
-              {e.pagos.map((p) => (
-                <Table.Tr key={p.id}>
-                  <Table.Td>{formatearDia(p.fecha)}</Table.Td>
-                  <Table.Td>{p.referencia ?? p.pagador_nombre ?? '—'}</Table.Td>
-                  <Table.Td><Badge size="sm" variant="light" color={COLOR_ESTADO_PAGO[p.estado]}>
-                    {NOMBRE_ESTADO_PAGO[p.estado]}</Badge></Table.Td>
-                  <Table.Td ta="right">{formatearPesos(p.monto_bruto)}</Table.Td>
-                </Table.Tr>))}
-              {e.pagos.length === 0 && (
-                <Table.Tr><Table.Td><Text size="sm" c="dimmed">Sin pagos todavía.</Text></Table.Td></Table.Tr>)}
-            </Table.Tbody>
-          </Table>
+          <Table.ScrollContainer minWidth={600}>
+            <Table>
+              <Table.Tbody>
+                {e.pagos.map((p) => (
+                  <Table.Tr key={p.id}>
+                    <Table.Td>{formatearDia(p.fecha)}</Table.Td>
+                    <Table.Td>{p.referencia ?? p.pagador_nombre ?? '—'}</Table.Td>
+                    <Table.Td><Badge size="sm" variant="light" color={COLOR_ESTADO_PAGO[p.estado]}>
+                      {NOMBRE_ESTADO_PAGO[p.estado]}</Badge></Table.Td>
+                    <Table.Td ta="right">{formatearPesos(p.monto_bruto)}</Table.Td>
+                  </Table.Tr>))}
+                {e.pagos.length === 0 && (
+                  <Table.Tr><Table.Td><Text size="sm" c="dimmed">Sin pagos todavía.</Text></Table.Td></Table.Tr>)}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
 
           <Group justify="space-between">
             <Text fw={600}>Ajustes</Text>
             {puede('ajustes.crear') && (
               <Button size="compact-sm" variant="default" onClick={() => setAjustando(true)}>Nuevo ajuste</Button>)}
           </Group>
-          <Table>
-            <Table.Tbody>
-              {e.ajustes_detalle.map((a) => (
-                <Table.Tr key={a.id}>
-                  <Table.Td>{formatearDia(a.fecha)}</Table.Td>
-                  <Table.Td>{NOMBRE_AJUSTE[a.tipo]}</Table.Td>
-                  <Table.Td>{a.motivo}</Table.Td>
-                  <Table.Td ta="right">{formatearPesos(a.monto)}</Table.Td>
-                </Table.Tr>))}
-              {e.ajustes_detalle.length === 0 && (
-                <Table.Tr><Table.Td><Text size="sm" c="dimmed">Sin ajustes.</Text></Table.Td></Table.Tr>)}
-            </Table.Tbody>
-          </Table>
+          <Table.ScrollContainer minWidth={600}>
+            <Table>
+              <Table.Tbody>
+                {e.ajustes_detalle.map((a) => (
+                  <Table.Tr key={a.id}>
+                    <Table.Td>{formatearDia(a.fecha)}</Table.Td>
+                    <Table.Td>{NOMBRE_AJUSTE[a.tipo]}</Table.Td>
+                    <Table.Td>{a.motivo}</Table.Td>
+                    <Table.Td ta="right">{formatearPesos(a.monto)}</Table.Td>
+                  </Table.Tr>))}
+                {e.ajustes_detalle.length === 0 && (
+                  <Table.Tr><Table.Td><Text size="sm" c="dimmed">Sin ajustes.</Text></Table.Td></Table.Tr>)}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
           <ModalAjuste key={String(ajustando)} abierto={ajustando} negocioId={negocioId!}
             cerrar={() => setAjustando(false)} />
         </Stack>)}
