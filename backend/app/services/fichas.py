@@ -20,6 +20,7 @@ from app.core import seguridad as seg
 from app.core.errores import Invalido
 from app.models.esquema import (Actividades, Casos, CasosHistorial, Citas, Clientes, Grupos,
                                 Solicitantes, Usuarios)
+from app.services import casos as serv_casos
 from app.services import historial
 from app.services.auditoria import auditar
 
@@ -148,10 +149,16 @@ class Resultado:
     coincidio_por: str
 
 
-def buscar_global(db: Session, texto: str, limite: int = 8) -> list[Resultado]:
+def buscar_global(db: Session, texto: str, *, actor: Usuarios | None = None,
+                  limite: int = 8) -> list[Resultado]:
     """RF-029: una sola caja para nombre, teléfono, documento, correo, pasaporte,
     DS-160 o número de solicitud del SaaS. El pasaporte y el DS-160 están
-    cifrados: se buscan por su índice ciego, sin descifrar la columna."""
+    cifrados: se buscan por su índice ciego, sin descifrar la columna.
+
+    Recibe quién está buscando, y no por cortesía: el buscador devuelve
+    trámites, que no todo el mundo puede ver. Un buscador que responde lo mismo
+    para todos es una puerta de atrás a lo que la pantalla sí protege.
+    """
     texto = (texto or '').strip()
     if len(texto) < 2:
         return []
@@ -199,9 +206,19 @@ def buscar_global(db: Session, texto: str, limite: int = 8) -> list[Resultado]:
             coincidio_por='pasaporte' if s.pasaporte_indice == indice else 'nombre'))
 
     # Trámites: por número de solicitud del SaaS o por número de DS-160 (cifrado)
-    for caso in db.scalars(
-            select(Casos).where(or_(Casos.id_externo == texto, Casos.ds160_hash == indice))
-            .options(selectinload(Casos.solicitante), selectinload(Casos.estado)).limit(limite)):
+    de_tramite = (select(Casos)
+                  .where(or_(Casos.id_externo == texto, Casos.ds160_hash == indice))
+                  .options(selectinload(Casos.solicitante), selectinload(Casos.estado)))
+    # El alcance es control de acceso (RNF-03), no un filtro de pantalla, así
+    # que vale aquí también. Faltaba: quien solo ve los trámites que le
+    # asignaron encontraba por este buscador —escribiendo el n.º de solicitud o
+    # el DS-160— trámites que no son suyos, y desde el resultado los abría. Era
+    # el mismo hueco que ya se cerró en el tablero, pero por la puerta del
+    # buscador.
+    limite_alcance = serv_casos.alcance_de(actor)
+    if limite_alcance is not None:
+        de_tramite = de_tramite.where(limite_alcance)
+    for caso in db.scalars(de_tramite.limit(limite)):
         resultados.append(Resultado(
             tipo='tramite', id=caso.id, titulo=f'Trámite de {caso.solicitante.nombre}',
             detalle=caso.estado.nombre, ruta=f'/casos/{caso.id}',

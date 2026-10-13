@@ -17,9 +17,14 @@ router = APIRouter(tags=['ficha 360 y búsqueda'])
 @router.get('/buscar', response_model=list[esq.ResultadoBusqueda])
 def buscar(q: str = Query(min_length=2, description='Nombre, teléfono, documento, correo, pasaporte, '
                                                     'DS-160 o n.º de solicitud del SaaS'),
-           _: Usuarios = Depends(requiere('clientes.ver')), db: Session = Depends(get_db)):
-    """Una sola caja de búsqueda para todo el sistema (RF-029)."""
-    return [esq.ResultadoBusqueda(**r.__dict__) for r in fichas.buscar_global(db, q)]
+           actor: Usuarios = Depends(requiere('clientes.ver')), db: Session = Depends(get_db)):
+    """Una sola caja de búsqueda para todo el sistema (RF-029).
+
+    Quién busca va al servicio, porque la respuesta depende de eso: el alcance
+    del usuario decide qué trámites puede encontrar (RNF-03).
+    """
+    return [esq.ResultadoBusqueda(**r.__dict__)
+            for r in fichas.buscar_global(db, q, actor=actor)]
 
 
 @router.get('/clientes/{cliente_id}/ficha', response_model=esq.Ficha360)

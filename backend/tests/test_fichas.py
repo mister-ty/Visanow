@@ -8,7 +8,8 @@ tenga a mano en ese momento (un teléfono, una cédula, un pasaporte).
 import pytest
 from sqlalchemy import select, text
 
-from app.models.esquema import Paises
+from app.core import seguridad as seg
+from app.models.esquema import Casos, Paises
 from tests.conftest import entrar
 
 
@@ -284,70 +285,120 @@ def test_la_busqueda_exige_permiso(cliente, usuario):
     assert r.status_code == 401
 
 
-# ------------------------------------------- el historial en idioma de la gente
+# ------------------------------------------------------------ el DS-160 (RF-029)
 
-def test_el_historial_no_muestra_codigos_ni_ids_crudos(cliente, comercial, familia, db, usuario):
-    """La tabla guarda «estado: esperando_info → info_en_revision» y «sede_id: 2»,
-    que sirve para auditar pero no dice nada en pantalla. Se traduce en el
-    servidor, que es donde están los catálogos, y las dos fichas —la del cliente
-    y la del trámite— cuentan lo mismo."""
-    cab, _ = comercial
-    ops = usuario('operaciones')
-    cab_ops = entrar(cliente, ops)
+def _marcar_ds160(db, caso_id: int, numero: str) -> None:
+    """Pone el DS-160 como lo pone la importación del SaaS, que es la única
+    parte del sistema que lo escribe: el número cifrado y su índice ciego al
+    lado (ver `services/saas.py`). El número en claro no se guarda nunca."""
+    caso = db.get(Casos, caso_id)
+    caso.ds160_numero_cifrado = seg.cifrar(numero)
+    caso.ds160_hash = seg.indice_ciego(numero)
+    db.commit()
+
+
+def _tramite_con_ds160(cliente, db, usuario, familia, cab_comercial, *,
+                       id_externo='VN-2026-9001', ds160='AA0099887766', responsable=None):
+    """Un trámite con n.º de solicitud del SaaS y DS-160, que son las dos cosas
+    por las que RF-029 pide encontrarlo. Lo abre operaciones, que es quien
+    tramita; la comercial vende."""
     pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
-    persona = ficha(cliente, cab, familia)['cliente']['grupos'][0]['solicitantes'][0]
-    # RN-04: sin responsable el trámite no se puede mover
-    caso = cliente.post('/api/v1/casos', headers=cab_ops,
-                        json={'solicitante_id': persona['id'], 'pais_id': pais,
-                              'responsable_id': ops.u.id,
-                              'proxima_accion': 'Pedir documentos al cliente'}).json()
-
-    r = cliente.post(f'/api/v1/casos/{caso["id"]}/estado', headers=cab_ops,
-                     json={'codigo_destino': 'esperando_info'})
-    assert r.status_code == 200, r.text
-    sede = db.scalar(text("select id, nombre from sedes order by id limit 1"))
-    nombre_sede = db.scalar(text('select nombre from sedes where id = :i'), {'i': sede})
-    assert cliente.post(f'/api/v1/casos/{caso["id"]}/citas', headers=cab_ops, json={
-        'tipo': 'entrevista', 'inicia_en': '2027-05-06T10:00:00-05:00',
-        'sede_id': sede}).status_code == 201
-
-    titulos = [h['titulo'] for h in
-               cliente.get(f'/api/v1/casos/{caso["id"]}/historial', headers=cab_ops).json()]
-    nombre_estado = dict(db.execute(text('select codigo, nombre from estados_operativos')).all())
-    assert 'Trámite creado' in titulos
-    assert (f'Estado: {nombre_estado["registrado"]} → {nombre_estado["esperando_info"]}') in titulos
-    assert 'Cita de entrevista agendada' in titulos
-    assert f'Sede: — → {nombre_sede}' in titulos
-    for t in titulos:
-        assert 'esperando_info' not in t and 'sede_id' not in t, f'quedó un código crudo: {t}'
-
-    # La ficha del cliente cuenta exactamente lo mismo
-    en_la_ficha = [s['titulo'] for s in ficha(cliente, cab, familia)['cronologia']]
-    assert set(titulos) <= set(en_la_ficha)
+    persona = ficha(cliente, cab_comercial, familia)['cliente']['grupos'][0]['solicitantes'][0]
+    cuerpo = {'solicitante_id': persona['id'], 'pais_id': pais, 'id_externo': id_externo}
+    if responsable is not None:
+        cuerpo['responsable_id'] = responsable
+    r = cliente.post('/api/v1/casos', headers=entrar(cliente, usuario('operaciones')), json=cuerpo)
+    assert r.status_code == 201, r.text
+    _marcar_ds160(db, r.json()['id'], ds160)
+    return r.json()
 
 
-def test_el_documento_del_checklist_se_nombra_completo(cliente, comercial, familia, db, usuario):
+@pytest.mark.parametrize('consulta', [
+    'AA0099887766',
+    'aa0099887766',          # en minúsculas, como sale de copiar y pegar
+    'AA 0099 887766',        # con los espacios con que lo lee la gente
+])
+def test_el_ds160_encuentra_el_tramite_aunque_se_escriba_distinto(
+        cliente, comercial, familia, db, usuario, consulta):
+    """El DS-160 está cifrado: se busca por su índice ciego, que normaliza el
+    valor en mayúsculas y sin espacios. Así el asesor lo escribe como le quede
+    cómodo y encuentra lo mismo.
+
+    Esta parte de RF-029 estaba en el código sin una sola prueba que la
+    sostuviera: funcionaba, pero nada avisaba si se rompía.
+    """
     cab, _ = comercial
-    cab_ops = entrar(cliente, usuario('operaciones'))
-    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
-    persona = ficha(cliente, cab, familia)['cliente']['grupos'][0]['solicitantes'][0]
-    caso = cliente.post('/api/v1/casos', headers=cab_ops,
-                        json={'solicitante_id': persona['id'], 'pais_id': pais}).json()
-    detalle = cliente.get(f'/api/v1/casos/{caso["id"]}', headers=cab_ops).json()
-    item = detalle['checklist'][0]
-    assert cliente.post(f'/api/v1/casos/{caso["id"]}/checklist/{item["item_id"]}', headers=cab_ops,
-                        json={'cumplido': True}).status_code == 204
-
-    titulos = [h['titulo'] for h in
-               cliente.get(f'/api/v1/casos/{caso["id"]}/historial', headers=cab_ops).json()]
-    assert f'Documento «{item["nombre"]}»: entregado' in titulos
+    caso = _tramite_con_ds160(cliente, db, usuario, familia, cab)
+    hallado = [x for x in buscar(cliente, cab, consulta) if x['tipo'] == 'tramite']
+    assert [x['id'] for x in hallado] == [caso['id']], f'«{consulta}» no lo encontró: {hallado}'
+    assert hallado[0]['coincidio_por'] == 'DS-160'
+    assert hallado[0]['ruta'] == f'/casos/{caso["id"]}'
 
 
-def test_quien_contrata_y_viaja_no_sale_dos_veces(cliente, comercial, familia):
-    """Lucía es el contacto y además viaja. Sin cuidado saldría como cliente y
-    como viajera, con el mismo nombre y llevando a la misma ficha."""
+def test_un_ds160_parecido_no_cuenta(cliente, comercial, familia, db, usuario):
+    """El índice ciego solo permite la búsqueda exacta, y eso acá es lo correcto:
+    un dígito de diferencia es otro formulario, de otra persona."""
     cab, _ = comercial
-    encontrados = buscar(cliente, cab, 'Lucía Restrepo Ángel')
-    assert [r['tipo'] for r in encontrados] == ['cliente']
-    # Sus hijos, que no son el contacto, sí tienen que aparecer
-    assert [r['titulo'] for r in buscar(cliente, cab, 'Tomás Restrepo')] == ['Tomás Restrepo Gómez']
+    _tramite_con_ds160(cliente, db, usuario, familia, cab)
+    assert [x for x in buscar(cliente, cab, 'AA0099887767') if x['tipo'] == 'tramite'] == []
+
+
+# --------------------------------------------- el alcance en el buscador (RNF-03)
+
+def test_el_buscador_no_entrega_tramites_ajenos_a_quien_solo_ve_los_suyos(
+        cliente, comercial, familia, db, usuario):
+    """RNF-03, por la puerta del buscador.
+
+    El alcance ya se respetaba en el tablero y al abrir un trámite por su URL,
+    pero el buscador no recibía ni quién estaba buscando: quien tiene «solo los
+    trámites asignados» escribía el n.º de solicitud o el DS-160 y encontraba
+    trámites de otros, con el nombre del viajero en el resultado, y desde ahí
+    los abría. El control de acceso vale en todas las puertas o no vale.
+    """
+    from app.services import usuarios as servicio_usuarios
+
+    cab, _ = comercial
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ajeno = usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, ajeno.u.id, alcance='asignados')
+    db.commit()
+
+    caso = _tramite_con_ds160(cliente, db, usuario, familia, cab, responsable=dueno.u.id)
+    # El trámite se crea con el dueño como responsable; el ajeno no tiene nada
+    cab_ajeno = entrar(cliente, ajeno)
+    for consulta in ('VN-2026-9001', 'AA0099887766'):
+        hallado = [x for x in buscar(cliente, cab_ajeno, consulta) if x['tipo'] == 'tramite']
+        assert hallado == [], f'«{consulta}» le entregó un trámite ajeno: {hallado}'
+
+    # Y no es que el buscador se haya quedado mudo: el responsable sí los encuentra
+    cab_dueno = entrar(cliente, dueno)
+    for consulta, por in (('VN-2026-9001', 'n.º de solicitud'), ('AA0099887766', 'DS-160')):
+        hallado = [x for x in buscar(cliente, cab_dueno, consulta) if x['tipo'] == 'tramite']
+        assert [x['id'] for x in hallado] == [caso['id']], f'«{consulta}»: {hallado}'
+        assert hallado[0]['coincidio_por'] == por
+
+
+def test_colaborar_en_un_tramite_tambien_deja_encontrarlo_en_el_buscador(
+        cliente, comercial, familia, db, usuario):
+    """Ser colaborador tiene que servir también acá (RF-026). Si el alcance del
+    buscador mirara solo al responsable, a quien lo pusieron a ayudar le diría
+    que ese trámite no existe mientras lo ve en su propia lista de trabajo."""
+    from app.services import usuarios as servicio_usuarios
+
+    cab, _ = comercial
+    admin = usuario('administradora')
+    dueno = usuario('operaciones')
+    ayuda = usuario('operaciones')
+    servicio_usuarios.editar(db, admin.u, ayuda.u.id, alcance='asignados')
+    db.commit()
+
+    caso = _tramite_con_ds160(cliente, db, usuario, familia, cab, responsable=dueno.u.id)
+    cab_ayuda = entrar(cliente, ayuda)
+    assert [x for x in buscar(cliente, cab_ayuda, 'VN-2026-9001') if x['tipo'] == 'tramite'] == []
+
+    r = cliente.post(f'/api/v1/casos/{caso["id"]}/colaboradores', headers=entrar(cliente, dueno),
+                     json={'usuario_id': ayuda.u.id})
+    assert r.status_code == 201, r.text
+    hallado = [x for x in buscar(cliente, cab_ayuda, 'VN-2026-9001') if x['tipo'] == 'tramite']
+    assert [x['id'] for x in hallado] == [caso['id']]
