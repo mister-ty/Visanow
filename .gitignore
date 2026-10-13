@@ -43,3 +43,6 @@ Thumbs.db
 # Los respaldos de produccion: datos personales, nunca al repositorio.
 99_Respaldos/
 *.dump
+
+# Copias de trabajo temporales de los agentes: no son del proyecto.
+.claude/worktrees/
