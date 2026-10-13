@@ -51,10 +51,19 @@ def registrar(datos: esq.PagoCrear, request: Request,
 def listar(negocio_id: int | None = None,
            sin_asignar: bool = Query(default=False, description='La bandeja de no identificados'),
            desde: date | None = None, hasta: date | None = None,
+           referencia: str | None = Query(default=None,
+                                          description='La referencia del comprobante, o un '
+                                                      'pedazo de ella (RF-029)'),
            pagina: int = 1, tamano: int = 50,
            _: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
+    """Los pagos, con los filtros de la pantalla.
+
+    Buscar por referencia es la forma de responder «¿llegó este pago?» con el
+    comprobante del cliente a la vista, sin tener que adivinar la fecha.
+    """
     total, filas = servicio.listar(db, negocio_id=negocio_id, sin_asignar=sin_asignar,
-                                   desde=desde, hasta=hasta, pagina=pagina, tamano=tamano)
+                                   desde=desde, hasta=hasta, referencia=referencia,
+                                   pagina=pagina, tamano=tamano)
     return esq.PaginaPagos(total=total, pagina=pagina, tamano=tamano,
                            items=[_pago(p) for p in filas])
 

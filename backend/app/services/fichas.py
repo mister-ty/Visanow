@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -19,10 +20,12 @@ from sqlalchemy.orm import Session, selectinload
 from app.core import seguridad as seg
 from app.core.errores import Invalido
 from app.models.esquema import (Actividades, Casos, CasosHistorial, Citas, Clientes, Grupos,
-                                Solicitantes, Usuarios)
+                                Negocios, Pagos, Solicitantes, Usuarios)
 from app.services import casos as serv_casos
 from app.services import historial
 from app.services.auditoria import auditar
+from app.services.pagos import referencia_contiene
+from app.services.usuarios import permisos_de_rol
 
 TIPOS_NOTA = ('nota', 'llamada', 'whatsapp', 'correo', 'reunion')
 # Una nota interna no es hablar con el cliente; las demás sí. La diferencia
@@ -141,7 +144,7 @@ def cliente_de_caso(db: Session, caso_id: int) -> int | None:
 
 @dataclass
 class Resultado:
-    tipo: str               # cliente | solicitante | tramite
+    tipo: str               # cliente | solicitante | tramite | pago
     id: int
     titulo: str
     detalle: str
@@ -152,12 +155,14 @@ class Resultado:
 def buscar_global(db: Session, texto: str, *, actor: Usuarios | None = None,
                   limite: int = 8) -> list[Resultado]:
     """RF-029: una sola caja para nombre, teléfono, documento, correo, pasaporte,
-    DS-160 o número de solicitud del SaaS. El pasaporte y el DS-160 están
-    cifrados: se buscan por su índice ciego, sin descifrar la columna.
+    DS-160, número de solicitud del SaaS o referencia de pago. El pasaporte y el
+    DS-160 están cifrados: se buscan por su índice ciego, sin descifrar la
+    columna.
 
-    Recibe quién está buscando, y no por cortesía: el buscador devuelve
-    trámites, que no todo el mundo puede ver. Un buscador que responde lo mismo
-    para todos es una puerta de atrás a lo que la pantalla sí protege.
+    Recibe quién está buscando, y no por cortesía: el buscador devuelve trámites
+    y pagos, que son cosas que no todo el mundo puede ver. Un buscador que
+    responde lo mismo para todos es una puerta de atrás a lo que la pantalla
+    sí protege.
     """
     texto = (texto or '').strip()
     if len(texto) < 2:
@@ -224,7 +229,45 @@ def buscar_global(db: Session, texto: str, *, actor: Usuarios | None = None,
             detalle=caso.estado.nombre, ruta=f'/casos/{caso.id}',
             coincidio_por='n.º de solicitud' if caso.id_externo == texto else 'DS-160'))
 
+    resultados.extend(_pagos_por_referencia(db, texto, actor=actor, limite=limite))
     return resultados[: limite * 2]
+
+
+def _pagos_por_referencia(db: Session, texto: str, *, actor: Usuarios | None,
+                          limite: int) -> list[Resultado]:
+    """El pago, por la referencia del comprobante (RF-029).
+
+    Es la pregunta que llega por WhatsApp: «ya pagué, el comprobante dice
+    00123456789». Hasta ahora había que abrir la pantalla de pagos y recorrer
+    la lista con los ojos, o adivinar la fecha para filtrar por rango.
+
+    Vale la pena incluso para el pago que todavía no tiene dueño: si está en la
+    bandeja de no identificados, encontrarlo por su referencia es justamente lo
+    que permite asignarlo al cliente que está llamando.
+
+    Ver plata es un permiso, no un alcance (los pagos no cuelgan de un
+    responsable): quien no puede entrar a la pantalla de pagos tampoco puede
+    sacarlos por el buscador. Sin esto, operaciones —que a propósito no ve la
+    contabilidad— habría empezado a ver montos de clientes aquí.
+    """
+    if actor is None or 'pagos.ver' not in permisos_de_rol(db, actor.rol_id):
+        return []
+
+    salida: list[Resultado] = []
+    for p in db.scalars(
+            select(Pagos).where(referencia_contiene(Pagos.referencia, texto))
+            .options(selectinload(Pagos.negocio).selectinload(Negocios.cliente))
+            .order_by(Pagos.fecha.desc(), Pagos.id.desc()).limit(limite)):
+        de_quien = (p.negocio.cliente.nombre if p.negocio and p.negocio.cliente
+                    else 'sin identificar')
+        salida.append(Resultado(
+            tipo='pago', id=p.id, titulo=f'Pago de {de_quien}',
+            detalle=f'{p.fecha:%d/%m/%Y} · ref. {p.referencia}',
+            # Lleva a la pantalla de pagos ya filtrada por esa referencia: desde
+            # ahí se ve la venta, o se le asigna dueño si llegó suelto.
+            ruta=f'/pagos?referencia={quote(p.referencia or "")}',
+            coincidio_por='referencia de pago'))
+    return salida
 
 
 def _patron(texto: str):

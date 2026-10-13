@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import ip_cliente, requiere
@@ -46,11 +46,16 @@ def importar(datos: esq.ImportarEntrada, request: Request,
 @router.get('/conciliacion/movimientos', response_model=esq.PaginaMovimientos)
 def bandeja(estado: esq.EstadoMovimiento | None = 'sin_conciliar',
             desde: date | None = None, hasta: date | None = None,
-            banco: str | None = None, pagina: int = 1, tamano: int = 50,
+            banco: str | None = None,
+            referencia: str | None = Query(default=None,
+                                           description='La referencia del comprobante, o un '
+                                                       'pedazo de ella'),
+            pagina: int = 1, tamano: int = 50,
             _: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
     """El extracto, por estado. Por defecto, lo que falta por cuadrar."""
     total, suma, filas = serv.bandeja(db, estado=estado, desde=desde, hasta=hasta,
-                                      banco=banco, pagina=pagina, tamano=tamano)
+                                      banco=banco, referencia=referencia,
+                                      pagina=pagina, tamano=tamano)
     return esq.PaginaMovimientos(total=total, suma=suma, pagina=pagina, tamano=tamano,
                                  items=[_movimiento(m) for m in filas])
 

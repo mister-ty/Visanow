@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import select, text
 
 from app.core import seguridad as seg
-from app.models.esquema import Casos, Paises
+from app.models.esquema import Casos, Paises, Servicios
 from tests.conftest import entrar
 
 
@@ -17,6 +17,11 @@ from tests.conftest import entrar
 def comercial(cliente, usuario):
     p = usuario('comercial')
     return entrar(cliente, p), p
+
+
+@pytest.fixture
+def finanzas(cliente, usuario):
+    return entrar(cliente, usuario('finanzas'))
 
 
 @pytest.fixture
@@ -402,3 +407,157 @@ def test_colaborar_en_un_tramite_tambien_deja_encontrarlo_en_el_buscador(
     assert r.status_code == 201, r.text
     hallado = [x for x in buscar(cliente, cab_ayuda, 'VN-2026-9001') if x['tipo'] == 'tramite']
     assert [x['id'] for x in hallado] == [caso['id']]
+
+
+# ------------------------------------------- la referencia de pago (RF-029)
+
+@pytest.fixture
+def pago_con_referencia(cliente, comercial, familia, finanzas, db):
+    """Una venta de la familia con un pago encima, como entra de verdad: el
+    comprobante que el cliente manda por WhatsApp trae una referencia, y es lo
+    único de ese comprobante que se puede buscar."""
+    cab, _ = comercial
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    servicio = db.scalar(select(Servicios.id).where(Servicios.codigo == 'asesoria_usa'))
+    lead = cliente.post('/api/v1/oportunidades', headers=cab, json={
+        'cliente_id': familia, 'servicio_id': servicio, 'pais_id': pais,
+        'proxima_accion': 'Cotizar'}).json()
+    venta = cliente.post(f'/api/v1/oportunidades/{lead["id"]}/ganar', headers=cab, json={})
+    assert venta.status_code == 201, venta.text
+    r = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'negocio_id': venta.json()['id'], 'monto_bruto': 350000, 'fecha': '2026-10-05',
+        'referencia': 'BC-00123456789'})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_el_pago_se_encuentra_por_la_referencia_del_comprobante(
+        cliente, finanzas, pago_con_referencia):
+    """RF-029: «ya pagué, el comprobante dice BC-00123456789».
+
+    Era la última parte del requisito que no existía en ninguna capa: la caja de
+    búsqueda la nombraba en su texto de ayuda y no la buscaba.
+    """
+    hallado = [x for x in buscar(cliente, finanzas, 'BC-00123456789') if x['tipo'] == 'pago']
+    assert len(hallado) == 1, f'no encontró el pago: {hallado}'
+    assert hallado[0]['id'] == pago_con_referencia['id']
+    assert hallado[0]['coincidio_por'] == 'referencia de pago'
+    assert 'Lucía Restrepo Ángel' in hallado[0]['titulo'], 'tiene que decir de quién es'
+    assert 'BC-00123456789' in hallado[0]['detalle']
+    assert hallado[0]['ruta'].startswith('/pagos?referencia=')
+
+
+@pytest.mark.parametrize('consulta', [
+    '00123456789',           # solo los dígitos del comprobante
+    'bc-0012',               # en minúsculas
+    '123456',                # un pedazo de la mitad
+])
+def test_la_referencia_se_encuentra_por_un_pedazo_y_sin_distinguir_mayusculas(
+        cliente, finanzas, pago_con_referencia, consulta):
+    """Nadie copia la referencia completa: se acuerda de los últimos dígitos, o
+    pega un trozo del mensaje del banco."""
+    hallado = [x for x in buscar(cliente, finanzas, consulta) if x['tipo'] == 'pago']
+    assert [x['id'] for x in hallado] == [pago_con_referencia['id']], f'«{consulta}»: {hallado}'
+
+
+def test_el_pago_sin_dueno_tambien_se_encuentra_por_su_referencia(cliente, finanzas):
+    """Es el que más importa. Un pago que llegó suelto está en la bandeja de no
+    identificados sin nombre de cliente, así que la referencia es lo único por
+    donde agarrarlo: encontrarlo es lo que permite asignárselo al cliente que
+    está llamando (RF-043)."""
+    r = cliente.post('/api/v1/pagos', headers=finanzas, json={
+        'monto_bruto': 200000, 'fecha': '2026-10-06', 'referencia': 'NEQUI-778899'})
+    assert r.status_code == 201, r.text
+    hallado = [x for x in buscar(cliente, finanzas, 'NEQUI-778899') if x['tipo'] == 'pago']
+    assert [x['id'] for x in hallado] == [r.json()['id']], hallado
+    assert 'sin identificar' in hallado[0]['titulo']
+
+
+def test_quien_no_ve_la_contabilidad_no_encuentra_pagos_por_el_buscador(
+        cliente, usuario, pago_con_referencia):
+    """Ver plata es un permiso, no un alcance: los pagos no cuelgan de un
+    responsable. A operaciones se le oculta la contabilidad a propósito
+    (respuesta de la administradora del 29/09), y el buscador no puede ser la
+    rendija por donde empiece a ver montos y nombres de pagadores."""
+    cab = entrar(cliente, usuario('operaciones'))
+    assert cliente.get('/api/v1/pagos', headers=cab).status_code == 403
+    assert [x for x in buscar(cliente, cab, 'BC-00123456789') if x['tipo'] == 'pago'] == []
+
+
+def test_el_comodin_de_sql_no_se_cuela_por_la_caja_de_busqueda(
+        cliente, finanzas, pago_con_referencia):
+    """El `%` y el `_` son comodines en SQL. Sin escaparlos, escribir «%» en el
+    buscador pediría los pagos de todo el mundo, y es lo primero que alguien
+    escribe por accidente al buscar «50% del anticipo»."""
+    assert [x for x in buscar(cliente, finanzas, '%%') if x['tipo'] == 'pago'] == []
+    assert [x for x in buscar(cliente, finanzas, 'BC-%') if x['tipo'] == 'pago'] == []
+    assert [x for x in buscar(cliente, finanzas, 'BC_0') if x['tipo'] == 'pago'] == []
+
+
+# ------------------------------------------- el historial en idioma de la gente
+
+def test_el_historial_no_muestra_codigos_ni_ids_crudos(cliente, comercial, familia, db, usuario):
+    """La tabla guarda «estado: esperando_info → info_en_revision» y «sede_id: 2»,
+    que sirve para auditar pero no dice nada en pantalla. Se traduce en el
+    servidor, que es donde están los catálogos, y las dos fichas —la del cliente
+    y la del trámite— cuentan lo mismo."""
+    cab, _ = comercial
+    ops = usuario('operaciones')
+    cab_ops = entrar(cliente, ops)
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    persona = ficha(cliente, cab, familia)['cliente']['grupos'][0]['solicitantes'][0]
+    # RN-04: sin responsable el trámite no se puede mover
+    caso = cliente.post('/api/v1/casos', headers=cab_ops,
+                        json={'solicitante_id': persona['id'], 'pais_id': pais,
+                              'responsable_id': ops.u.id,
+                              'proxima_accion': 'Pedir documentos al cliente'}).json()
+
+    r = cliente.post(f'/api/v1/casos/{caso["id"]}/estado', headers=cab_ops,
+                     json={'codigo_destino': 'esperando_info'})
+    assert r.status_code == 200, r.text
+    sede = db.scalar(text("select id, nombre from sedes order by id limit 1"))
+    nombre_sede = db.scalar(text('select nombre from sedes where id = :i'), {'i': sede})
+    assert cliente.post(f'/api/v1/casos/{caso["id"]}/citas', headers=cab_ops, json={
+        'tipo': 'entrevista', 'inicia_en': '2027-05-06T10:00:00-05:00',
+        'sede_id': sede}).status_code == 201
+
+    titulos = [h['titulo'] for h in
+               cliente.get(f'/api/v1/casos/{caso["id"]}/historial', headers=cab_ops).json()]
+    nombre_estado = dict(db.execute(text('select codigo, nombre from estados_operativos')).all())
+    assert 'Trámite creado' in titulos
+    assert (f'Estado: {nombre_estado["registrado"]} → {nombre_estado["esperando_info"]}') in titulos
+    assert 'Cita de entrevista agendada' in titulos
+    assert f'Sede: — → {nombre_sede}' in titulos
+    for t in titulos:
+        assert 'esperando_info' not in t and 'sede_id' not in t, f'quedó un código crudo: {t}'
+
+    # La ficha del cliente cuenta exactamente lo mismo
+    en_la_ficha = [s['titulo'] for s in ficha(cliente, cab, familia)['cronologia']]
+    assert set(titulos) <= set(en_la_ficha)
+
+
+def test_el_documento_del_checklist_se_nombra_completo(cliente, comercial, familia, db, usuario):
+    cab, _ = comercial
+    cab_ops = entrar(cliente, usuario('operaciones'))
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    persona = ficha(cliente, cab, familia)['cliente']['grupos'][0]['solicitantes'][0]
+    caso = cliente.post('/api/v1/casos', headers=cab_ops,
+                        json={'solicitante_id': persona['id'], 'pais_id': pais}).json()
+    detalle = cliente.get(f'/api/v1/casos/{caso["id"]}', headers=cab_ops).json()
+    item = detalle['checklist'][0]
+    assert cliente.post(f'/api/v1/casos/{caso["id"]}/checklist/{item["item_id"]}', headers=cab_ops,
+                        json={'cumplido': True}).status_code == 204
+
+    titulos = [h['titulo'] for h in
+               cliente.get(f'/api/v1/casos/{caso["id"]}/historial', headers=cab_ops).json()]
+    assert f'Documento «{item["nombre"]}»: entregado' in titulos
+
+
+def test_quien_contrata_y_viaja_no_sale_dos_veces(cliente, comercial, familia):
+    """Lucía es el contacto y además viaja. Sin cuidado saldría como cliente y
+    como viajera, con el mismo nombre y llevando a la misma ficha."""
+    cab, _ = comercial
+    encontrados = buscar(cliente, cab, 'Lucía Restrepo Ángel')
+    assert [r['tipo'] for r in encontrados] == ['cliente']
+    # Sus hijos, que no son el contacto, sí tienen que aparecer
+    assert [r['titulo'] for r in buscar(cliente, cab, 'Tomás Restrepo')] == ['Tomás Restrepo Gómez']

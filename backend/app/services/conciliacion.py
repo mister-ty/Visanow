@@ -451,9 +451,16 @@ def deshacer(db: Session, actor: Usuarios, movimiento_id: int,
 
 def bandeja(db: Session, *, estado: str | None = 'sin_conciliar',
             desde: dt.date | None = None, hasta: dt.date | None = None,
-            banco: str | None = None, pagina: int = 1,
+            banco: str | None = None, referencia: str | None = None, pagina: int = 1,
             tamano: int = 50) -> tuple[int, float, list[MovimientosBanco]]:
-    """Lo que falta por cuadrar, de lo más reciente a lo más viejo."""
+    """Lo que falta por cuadrar, de lo más reciente a lo más viejo.
+
+    `referencia` es para cuando el cliente manda el comprobante: en vez de
+    buscar su consignación a ojo entre las 192 líneas del extracto, se escribe
+    la referencia del pantallazo y aparece la línea del banco (RF-029). Es el
+    único dato del comprobante que también viene en el extracto; el nombre no
+    sirve, porque muchas veces consigna otra persona.
+    """
     consulta = select(MovimientosBanco)
     if estado:
         if estado not in ESTADOS:
@@ -465,6 +472,9 @@ def bandeja(db: Session, *, estado: str | None = 'sin_conciliar',
         consulta = consulta.where(MovimientosBanco.fecha <= hasta)
     if banco:
         consulta = consulta.where(MovimientosBanco.banco.ilike(f'%{banco}%'))
+    if referencia := (referencia or '').strip():
+        consulta = consulta.where(
+            serv_pagos.referencia_contiene(MovimientosBanco.referencia, referencia))
 
     sub = consulta.subquery()
     total = db.scalar(select(func.count()).select_from(sub)) or 0
