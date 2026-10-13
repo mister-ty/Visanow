@@ -223,7 +223,8 @@ def antiguedad(db: Session, **filtros) -> list[dict]:
     """
     condiciones, parametros = _filtros(**filtros)
     donde = ' and '.join(['c.saldo > 0', *condiciones])
-    medido = {t: (int(n), float(s), float(v), float(p))
+    medido = {t: {'cuantas': int(n), 'saldo': float(s), 'vencido': float(v),
+                  'por_vencer': float(p)}
               for t, n, s, v, p in db.execute(text(f"""
                   select c.tramo_mora, count(*), coalesce(sum(c.saldo), 0),
                          coalesce(sum(c.vencido), 0), coalesce(sum(c.por_vencer), 0)
@@ -231,11 +232,9 @@ def antiguedad(db: Session, **filtros) -> list[dict]:
                     join negocios n on n.id = c.negocio_id
                    where {donde}
                    group by 1"""), parametros)}
-    return [{'tramo': t, 'etiqueta': ETIQUETA_TRAMO[t],
-             'cuantas': medido.get(t, (0, 0.0, 0.0, 0.0))[0],
-             'saldo': medido.get(t, (0, 0.0, 0.0, 0.0))[1],
-             'vencido': medido.get(t, (0, 0.0, 0.0, 0.0))[2],
-             'por_vencer': medido.get(t, (0, 0.0, 0.0, 0.0))[3]} for t in TRAMOS]
+    vacio = {'cuantas': 0, 'saldo': 0.0, 'vencido': 0.0, 'por_vencer': 0.0}
+    return [{'tramo': t, 'etiqueta': ETIQUETA_TRAMO[t], **medido.get(t, vacio)}
+            for t in TRAMOS]
 
 
 def por_estado(db: Session) -> list[tuple[str, int, float]]:
