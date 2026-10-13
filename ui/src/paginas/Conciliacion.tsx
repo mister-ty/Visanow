@@ -2,10 +2,11 @@ import {
   Alert, Badge, Button, Card, Center, Group, Loader, Modal, NumberInput, Select, SimpleGrid, Stack,
   Table, Text, TextInput, Textarea, Title,
 } from '@mantine/core'
+import { useDebouncedValue } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconWand } from '@tabler/icons-react'
+import { IconSearch, IconWand } from '@tabler/icons-react'
 import { useState } from 'react'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
@@ -46,6 +47,8 @@ export function Conciliacion() {
   const [estado, setEstado] = useState<Estado>('sin_conciliar')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
+  const [referencia, setReferencia] = useState('')
+  const [buscada] = useDebouncedValue(referencia.trim(), 300)
   const [abierto, setAbierto] = useState<Movimiento | null>(null)
 
   const rango = { ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}) }
@@ -53,7 +56,9 @@ export function Conciliacion() {
     queryKey: ['conciliacion', 'resumen', rango],
     queryFn: () => exigir(api.GET('/api/v1/conciliacion/resumen', { params: { query: rango } })),
   })
-  const consulta = { estado, ...rango, tamano: 100 }
+  // La referencia no entra en `rango`: el resumen de arriba son los totales del
+  // mes y no tienen que moverse porque alguien esté buscando una consignación.
+  const consulta = { estado, ...rango, ...(buscada ? { referencia: buscada } : {}), tamano: 100 }
   const movimientos = useQuery({
     queryKey: ['conciliacion', 'movimientos', consulta],
     queryFn: () => exigir(api.GET('/api/v1/conciliacion/movimientos', { params: { query: consulta } })),
@@ -111,6 +116,12 @@ export function Conciliacion() {
         <Select label="Estado" w={200} allowDeselect={false} value={estado}
           onChange={(v) => v && setEstado(v as Estado)}
           data={ESTADOS.map((e) => ({ value: e, label: NOMBRE[e] }))} />
+        {/* Cuando el cliente manda el pantallazo, la referencia es el único
+            dato del comprobante que también viene en el extracto: el nombre no
+            sirve porque muchas veces consigna otra persona (RF-029). */}
+        <TextInput label="Referencia del comprobante" w={260} value={referencia}
+          placeholder="Un pedazo basta" leftSection={<IconSearch size={16} />}
+          onChange={(e) => setReferencia(e.currentTarget.value)} />
       </Group>
 
       {movimientos.isPending ? <Center h={120}><Loader color="teal" /></Center> : (
@@ -148,7 +159,9 @@ export function Conciliacion() {
                 {movimientos.data?.items.length === 0 && (
                   <Table.Tr><Table.Td colSpan={7}>
                     <Text size="sm" c="dimmed" ta="center" py="lg">
-                      No hay movimientos {NOMBRE[estado].toLowerCase()} en ese rango.</Text>
+                      {buscada
+                        ? `Ninguna línea del extracto con la referencia «${buscada}».`
+                        : `No hay movimientos ${NOMBRE[estado].toLowerCase()} en ese rango.`}</Text>
                   </Table.Td></Table.Tr>)}
               </Table.Tbody>
             </Table>

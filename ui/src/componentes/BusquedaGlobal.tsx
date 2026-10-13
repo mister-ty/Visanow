@@ -1,6 +1,6 @@
 import { Badge, Combobox, Group, Loader, Text, TextInput, useCombobox } from '@mantine/core'
 import { useDebouncedValue, useHotkeys } from '@mantine/hooks'
-import { IconPlaneDeparture, IconSearch, IconUser, IconUsersGroup } from '@tabler/icons-react'
+import { IconCashBanknote, IconPlaneDeparture, IconSearch, IconUser, IconUsersGroup } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -12,17 +12,25 @@ const ICONOS = {
   cliente: IconUser,
   solicitante: IconUsersGroup,
   tramite: IconPlaneDeparture,
+  pago: IconCashBanknote,
 } as const
 
 const ROTULOS = {
   cliente: 'Clientes',
   solicitante: 'Personas que viajan',
   tramite: 'Trámites',
+  pago: 'Pagos',
 } as const
 
+// Los pagos van de últimas a propósito: lo que más se busca es gente. Y quien
+// no tiene permiso de ver plata no recibe ese grupo nunca, porque el servidor
+// no se lo manda (no es que la pantalla lo esconda).
+const TIPOS = ['cliente', 'solicitante', 'tramite', 'pago'] as const
+
 /** Una sola caja para todo (RF-029): el asesor escribe lo que tenga a mano —un
- *  nombre, un teléfono, una cédula, un pasaporte, el n.º de solicitud— y llega
- *  a la ficha. No hay que saber en qué pantalla buscar. */
+ *  nombre, un teléfono, una cédula, un pasaporte, el n.º de solicitud, la
+ *  referencia del comprobante que acaba de llegar por WhatsApp— y llega a la
+ *  ficha. No hay que saber en qué pantalla buscar. */
 export function BusquedaGlobal() {
   const navegar = useNavigate()
   const combobox = useCombobox({ onDropdownClose: () => combobox.resetSelectedOption() })
@@ -45,7 +53,7 @@ export function BusquedaGlobal() {
     campo.current?.blur()
   }
 
-  const grupos = (['cliente', 'solicitante', 'tramite'] as const)
+  const grupos = TIPOS
     .map((tipo) => ({ tipo, items: (resultados.data ?? []).filter((r) => r.tipo === tipo) }))
     .filter((g) => g.items.length > 0)
   const planos = grupos.flatMap((g) => g.items)
@@ -57,7 +65,7 @@ export function BusquedaGlobal() {
       onOptionSubmit={(valor) => { const r = planos[Number(valor)]; if (r) ir(r) }}>
       <Combobox.Target>
         <TextInput ref={campo} value={texto} w={{ base: 180, sm: 340 }} size="sm"
-          placeholder="Buscar persona, teléfono, documento…" aria-label="Buscar en todo el sistema"
+          placeholder="Buscar persona, documento, pago…" aria-label="Buscar en todo el sistema"
           leftSection={<IconSearch size={16} />}
           rightSection={resultados.isFetching ? <Loader size={14} color="teal" /> : null}
           onChange={(e) => { setTexto(e.currentTarget.value); combobox.openDropdown() }}
@@ -89,7 +97,7 @@ export function BusquedaGlobal() {
           {!resultados.isFetching && planos.length === 0 && (
             <Combobox.Empty>
               Nada con «{buscado}». Se busca por nombre, teléfono, documento, correo, pasaporte,
-              DS-160 o n.º de solicitud.
+              DS-160, n.º de solicitud o referencia de pago.
             </Combobox.Empty>
           )}
         </Combobox.Options>
