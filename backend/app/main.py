@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 from app.admin import montar_admin
 from app.api.v1 import (auditoria, auth, casos, catalogos, clientes, conciliacion, costos,
                         exportar, fichas,
-                        oportunidades, pagos, plantillas, retencion, saas, tableros,
+                        oportunidades, pagos, plantillas, rentabilidad, retencion, saas,
+                        tableros,
                         trabajo,
                         usuarios, ventas)
 from app.core.config import ajustes
@@ -50,7 +51,8 @@ def _error_validacion(_: Request, e: RequestValidationError) -> JSONResponse:
 
 for modulo in (auditoria, auth, casos, catalogos, clientes, conciliacion, costos,
                exportar, fichas,
-               oportunidades, pagos, plantillas, retencion, saas, tableros, trabajo,
+               oportunidades, pagos, plantillas, rentabilidad, retencion, saas, tableros,
+               trabajo,
                usuarios,
                ventas):
     app.include_router(modulo.router, prefix='/api/v1')
