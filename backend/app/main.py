@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.admin import montar_admin
 from app.api.v1 import (auditoria, auth, casos, catalogos, clientes, conciliacion, costos,
+                        documentos,
                         exportar, fichas,
                         oportunidades, pagos, plantillas, retencion, saas, tableros,
                         trabajo,
@@ -49,6 +50,7 @@ def _error_validacion(_: Request, e: RequestValidationError) -> JSONResponse:
 
 
 for modulo in (auditoria, auth, casos, catalogos, clientes, conciliacion, costos,
+               documentos,
                exportar, fichas,
                oportunidades, pagos, plantillas, retencion, saas, tableros, trabajo,
                usuarios,

@@ -30,6 +30,16 @@ class Ajustes(BaseSettings):
     # sensibles. Se puede vaciar en local para agilizar pruebas manuales.
     mfa_roles_obligatorio: str = 'administradora,finanzas'
 
+    # Dónde se guardan los documentos que se suben (RNF-04). Vacío = no se
+    # guardan archivos, y subir uno se rechaza con el motivo.
+    #
+    # Es a propósito que haya que declararla. Render en el plan gratuito tiene
+    # disco efímero: lo que se escriba ahí desaparece en el siguiente
+    # despliegue, y subir el pasaporte de alguien a un disco así es perderlo sin
+    # que nadie se entere hasta que haga falta. Donde hay volumen de verdad se
+    # declara y funciona; donde no, los documentos por enlace siguen sirviendo.
+    almacenamiento_ruta: str = ''
+
     # Correo (RNF-02). Sin host ni remitente no se envía nada, y se dice en el
     # log en vez de fingir que se envió. SMTP y no un servicio con su propia
     # llave: VisaNow ya tiene correo, lo habla cualquier proveedor, y no agrega

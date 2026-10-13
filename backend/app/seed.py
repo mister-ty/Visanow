@@ -80,11 +80,18 @@ PERMISOS_EXTRA = [
     # el cliente pagó el anticipo no puede arrancar el trámite: este permiso
     # muestra si está al día, sin mostrar montos.
     ('pagos.estado', 'Ver si un cliente está al día, sin ver los montos', 'pagos'),
+    # Un documento marcado como reservado es el pasaporte escaneado, el DS-160
+    # impreso: cosas que identifican a la persona por completo. Poder ver la
+    # ficha de alguien no tiene por qué incluirlos. Lo necesita quien hace el
+    # trámite —administradora y operaciones—, no quien vende ni quien consulta.
+    ('solicitantes.reservado', 'Ver los documentos reservados de una persona '
+                               '(pasaporte escaneado, DS-160)', 'solicitantes'),
 ]
 
 # Qué puede hacer cada rol, por módulo. 'todo' = las cinco acciones.
 MATRIZ = {
-    'administradora': {m: 'todo' for m in MODULOS} | {'extra': ['casos.excepcion', 'pagos.estado']},
+    'administradora': {m: 'todo' for m in MODULOS} | {
+        'extra': ['casos.excepcion', 'pagos.estado', 'solicitantes.reservado']},
     'comercial': {
         'clientes': ['ver', 'crear', 'editar'], 'solicitantes': ['ver', 'crear', 'editar'],
         'oportunidades': 'todo', 'negocios': ['ver', 'crear', 'editar'],
@@ -100,7 +107,8 @@ MATRIZ = {
         'casos': 'todo', 'oportunidades': ['ver'], 'negocios': ['ver'],
         'importacion': ['ver', 'crear'], 'alertas': ['ver', 'editar'],
         'tableros': ['ver'], 'catalogos': ['ver'],
-        'extra': ['pagos.estado'],
+        # Operaciones hace el tramite: necesita el pasaporte escaneado.
+        'extra': ['pagos.estado', 'solicitantes.reservado'],
     },
     'finanzas': {
         'extra': ['pagos.estado'],

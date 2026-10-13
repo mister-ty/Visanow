@@ -121,6 +121,24 @@ def descifrar(cifrado: str) -> str:
         raise ValueError('No se pudo descifrar: la llave no corresponde o el dato está dañado') from e
 
 
+def cifrar_bytes(datos: bytes) -> bytes:
+    """Lo mismo pero para archivos, que no son texto.
+
+    Un comprobante de pago trae el nombre y la cuenta de una persona; un
+    pasaporte escaneado trae todo. Cifrarlo es lo que hace que un disco dado de
+    baja, o un respaldo que se pierde, no sea una fuga.
+    """
+    return _fernet().encrypt(datos)
+
+
+def descifrar_bytes(cifrado: bytes) -> bytes:
+    try:
+        return _fernet().decrypt(cifrado)
+    except InvalidToken as e:
+        raise ValueError('No se pudo descifrar el archivo: la llave no corresponde '
+                         'o el archivo está dañado') from e
+
+
 def indice_ciego(valor: str) -> str:
     """HMAC determinístico de un dato cifrado, para poder buscarlo (RF-029)
     sin descifrar la columna: el pasaporte se guarda cifrado y además se guarda

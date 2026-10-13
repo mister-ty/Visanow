@@ -33,6 +33,8 @@ services:
       CORS_ORIGINS: ${URL_UI:?define URL_UI en .env.prod}
       URL_UI: ${URL_UI}
       ZONA_HORARIA: America/Bogota
+      # El volumen 'archivos' se monta ahi abajo: aqui hay disco de verdad.
+      ALMACENAMIENTO_RUTA: /app/almacenamiento
       MFA_ROLES_OBLIGATORIO: ${MFA_ROLES_OBLIGATORIO:-administradora,finanzas}
     volumes:
       - archivos:/app/almacenamiento
