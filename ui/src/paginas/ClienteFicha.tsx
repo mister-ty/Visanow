@@ -1,5 +1,5 @@
 import {
-  ActionIcon, Alert, Anchor, Badge, Button, Card, Center, Checkbox, Group, Loader, Modal, Select,
+  ActionIcon, Alert, Anchor, Badge, Button, Card, Center, Group, Loader, Modal, Select,
   SimpleGrid, Stack, Table, Text, Textarea, TextInput, Timeline, Title, Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
@@ -15,6 +15,7 @@ import { Link as Enlace, useNavigate, useParams } from 'react-router-dom'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados, type Coincidencia } from '../componentes/AvisoDuplicados'
+import { CamposCliente, CLIENTE_VACIO } from '../componentes/CamposCliente'
 import { Documentos } from '../componentes/Documentos'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora, formatearPesos } from '../lib/formato'
@@ -376,6 +377,7 @@ function FormularioEditar({ cliente, abierto, cerrar, guardado }: {
 }) {
   const formulario = useForm({
     initialValues: {
+      ...CLIENTE_VACIO,
       nombre: cliente.nombre, tipo_documento: cliente.tipo_documento ?? '',
       numero_documento: cliente.numero_documento ?? '', telefono: cliente.telefono ?? '',
       email: cliente.email ?? '', ciudad: cliente.ciudad ?? '',
@@ -384,7 +386,6 @@ function FormularioEditar({ cliente, abierto, cerrar, guardado }: {
       canal_id: cliente.canal_id ? String(cliente.canal_id) : '',
     },
   })
-  const catalogos = useCatalogos()
   const guardar = useMutation({
     mutationFn: (v: typeof formulario.values) => exigir(api.PATCH('/api/v1/clientes/{cliente_id}', {
       params: { path: { cliente_id: cliente.id } },
@@ -402,26 +403,7 @@ function FormularioEditar({ cliente, abierto, cerrar, guardado }: {
     <Modal opened={abierto} onClose={cerrar} title="Editar cliente" size="lg">
       <form onSubmit={formulario.onSubmit((v) => guardar.mutate(v))}>
         <Stack>
-          <TextInput label="Nombre completo" {...formulario.getInputProps('nombre')} />
-          <Group grow>
-            <TextInput label="Tipo de documento" {...formulario.getInputProps('tipo_documento')} />
-            <TextInput label="Número de documento" {...formulario.getInputProps('numero_documento')} />
-          </Group>
-          <Group grow>
-            <TextInput label="Teléfono" {...formulario.getInputProps('telefono')} />
-            <TextInput label="Correo" type="email" {...formulario.getInputProps('email')} />
-          </Group>
-          <Group grow>
-            <TextInput label="Ciudad" {...formulario.getInputProps('ciudad')} />
-            <Select label="País" data={aSelect(catalogos.data?.paises)} searchable clearable
-              {...formulario.getInputProps('pais_id')} />
-          </Group>
-          <Select label="¿Por dónde llegó?" data={aSelect(catalogos.data?.canales)} clearable
-            description="Sirve para saber qué canal trae más clientes"
-            {...formulario.getInputProps('canal_id')} />
-          <TextInput label="Observaciones" {...formulario.getInputProps('observaciones')} />
-          <Checkbox label="Autorizó el tratamiento de sus datos personales"
-            {...formulario.getInputProps('consentimiento', { type: 'checkbox' })} />
+          <CamposCliente formulario={formulario} />
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
             <Button type="submit" loading={guardar.isPending}>Guardar</Button>

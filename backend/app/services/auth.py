@@ -14,7 +14,6 @@ from app.models.esquema import Usuarios
 from app.services import notificaciones
 from app.services.auditoria import auditar
 
-
 MINUTOS_TOKEN_MFA = 5
 MINUTOS_TOKEN_RECUPERACION = 30
 EMISOR_TOTP = 'VisaNow'
@@ -151,7 +150,7 @@ def verificar_segundo_factor(db: Session, token_mfa: str, codigo: str, ip: str |
     try:
         carga = seg.leer_token(token_mfa, 'mfa')
     except seg.TokenInvalido:
-        raise NoAutenticado('El paso de verificación venció. Ingrese de nuevo.', codigo='token_mfa_invalido')
+        raise NoAutenticado('El paso de verificación venció. Ingrese de nuevo.', codigo='token_mfa_invalido') from None
     u = db.get(Usuarios, int(carga['sub']), with_for_update=True)
     if u is None or not u.activo or not u.mfa_habilitado or carga.get('pv') != version_credenciales(u):
         raise NoAutenticado('El paso de verificación venció. Ingrese de nuevo.', codigo='token_mfa_invalido')
@@ -222,7 +221,7 @@ def restablecer_password(db: Session, token: str, nueva: str, ip: str | None) ->
     try:
         carga = seg.leer_token(token, 'recuperacion')
     except seg.TokenInvalido:
-        raise Invalido('El enlace de recuperación no es válido o ya venció.', codigo='enlace_invalido')
+        raise Invalido('El enlace de recuperación no es válido o ya venció.', codigo='enlace_invalido') from None
     u = db.get(Usuarios, int(carga['sub']))
     # La huella deja de coincidir en cuanto la contraseña cambia: el enlace sirve una sola vez
     if u is None or not u.activo or carga.get('pwf') != seg.huella_password(u.password_hash):

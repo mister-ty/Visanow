@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import ip_cliente, requiere
@@ -114,7 +114,10 @@ def historial(caso_id: int, _: Usuarios = Depends(requiere('casos.ver')), db: Se
                                 valor_nuevo=h.valor_nuevo,
                                 usuario=h.usuario.nombre if h.usuario else None,
                                 observacion=h.observacion, ocurrido_en=h.ocurrido_en)
-            for h, titulo in zip(filas, describir(db, filas))]
+            # strict: describir devuelve un titulo por fila. Si algun dia
+            # devolviera menos, sin esto el historial perderia entradas en
+            # silencio, que es la peor forma de perderlas.
+            for h, titulo in zip(filas, describir(db, filas), strict=True)]
 
 
 @router.post('/casos/{caso_id}/citas', response_model=esq.CitaSalida, status_code=status.HTTP_201_CREATED)

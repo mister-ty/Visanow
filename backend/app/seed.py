@@ -84,8 +84,8 @@ PERMISOS_EXTRA = [
     # impreso: cosas que identifican a la persona por completo. Poder ver la
     # ficha de alguien no tiene por qué incluirlos. Lo necesita quien hace el
     # trámite —administradora y operaciones—, no quien vende ni quien consulta.
-    ('solicitantes.reservado', 'Ver los documentos reservados de una persona '
-                               '(pasaporte escaneado, DS-160)', 'solicitantes'),
+    ('solicitantes.reservado', ('Ver los documentos reservados de una persona '
+                               '(pasaporte escaneado, DS-160)'), 'solicitantes'),
     # Reescribir la matriz es la llave maestra (RF-077): con ella se alcanza
     # cualquier otro permiso del sistema, incluido el propio. No puede ser parte
     # de «usuarios.editar», que es con lo que se le cambia el perfil a una
@@ -281,13 +281,13 @@ SERVICIOS_PROVISIONALES = ['usa_premium', 'usa_estandar', 'busqueda_cita_serv', 
 # Parámetros del negocio, editables desde la administración
 PARAMETROS = [
     ('cartera.plazo_saldo_dias', 30,
-     'Días desde la venta para pagar el saldo. Pasado este plazo el saldo está en mora. '
+     ('Días desde la venta para pagar el saldo. Pasado este plazo el saldo está en mora. '
      'Respuesta de la administradora del 19/09/2026: el saldo se paga al agendar la cita y, '
-     'si no se ha pagado al mes, está en mora.'),
+     'si no se ha pagado al mes, está en mora.')),
     ('cartera.anticipos_porcentaje', [20, 80],
      'Porcentajes de anticipo con que el cliente puede iniciar el trámite.'),
-    ('login.max_intentos', 5, 'Intentos fallidos antes de bloquear la cuenta (informativo: se '
-                              'configura en el servidor).'),
+    ('login.max_intentos', 5, ('Intentos fallidos antes de bloquear la cuenta (informativo: se '
+                              'configura en el servidor).')),
 ]
 
 CANALES = [

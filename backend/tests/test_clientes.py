@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select, text
 
 from app.core import seguridad as seg
-from app.models.esquema import Auditoria, Clientes, Fusiones, Negocios, Solicitantes
+from app.models.esquema import Auditoria, Clientes, Fusiones, Solicitantes
 from app.services import duplicados, personas
 from tests.conftest import entrar
 
@@ -376,3 +376,55 @@ def test_editar_un_grupo_queda_en_la_auditoria(cliente, db, usuario):
     # ahi sobrevive a cualquier anonimizacion posterior-.
     assert 'nombre' in registro.despues
     assert 'Prada' not in str(registro.despues), registro.despues
+
+
+# ------------------------------------------- editar un cliente de verdad (RF-001)
+
+def test_editar_un_cliente_guarda_lo_que_se_cambio(cliente, db, usuario):
+    """No habia ninguna prueba de editar un cliente. La unica que tocaba un
+    PATCH comprobaba el renglon de auditoria y nunca volvia a leer la ficha, asi
+    que un PATCH que no guardara nada habria pasado desapercibido."""
+    cab = entrar(cliente, usuario('administradora'))
+    c = cliente.post('/api/v1/clientes', headers=cab,
+                     json={'nombre': 'Editable Prueba Cliente'}).json()
+
+    r = cliente.patch(f'/api/v1/clientes/{c["id"]}', headers=cab, json={
+        'ciudad': 'Barranquilla', 'telefono': '3012223344',
+        'email': 'editable@ejemplo.com',
+        'observaciones': 'Prefiere que la llamen después de las 6'})
+    assert r.status_code == 200, r.text
+
+    leido = cliente.get(f'/api/v1/clientes/{c["id"]}', headers=cab).json()
+    assert leido['ciudad'] == 'Barranquilla'
+    assert leido['email'] == 'editable@ejemplo.com'
+    assert leido['observaciones'] == 'Prefiere que la llamen después de las 6'
+
+
+def test_las_observaciones_se_pueden_escribir_al_crear(cliente, db, usuario):
+    """La pantalla de «Nuevo cliente» no tenia el campo, aunque la API si lo
+    acepta: habia que guardar la ficha y volver a abrirla en Editar para poder
+    escribir una nota. Era un formulario copiado que se separo de su copia.
+    """
+    cab = entrar(cliente, usuario('administradora'))
+    r = cliente.post('/api/v1/clientes', headers=cab, json={
+        'nombre': 'Conobservacion Alcrear Cliente',
+        'observaciones': 'Llega por recomendación de Angie'})
+    assert r.status_code == 201, r.text
+
+    leido = cliente.get(f'/api/v1/clientes/{r.json()["id"]}', headers=cab).json()
+    assert leido['observaciones'] == 'Llega por recomendación de Angie'
+
+
+def test_revocar_el_consentimiento_borra_su_fecha(cliente, db, usuario):
+    """Si no, queda la fecha de una autorizacion que ya no esta vigente, y
+    cualquiera que mire la ficha creeria que el cliente sigue autorizando."""
+    cab = entrar(cliente, usuario('administradora'))
+    c = cliente.post('/api/v1/clientes', headers=cab, json={
+        'nombre': 'Revocada Consentimiento Cliente', 'consentimiento': True}).json()
+    assert c['consentimiento_fecha'] is not None, 'al autorizar se guarda la fecha'
+
+    cliente.patch(f'/api/v1/clientes/{c["id"]}', headers=cab, json={'consentimiento': False})
+    leido = cliente.get(f'/api/v1/clientes/{c["id"]}', headers=cab).json()
+    assert leido['consentimiento'] is False
+    assert leido['consentimiento_fecha'] is None, (
+        'quedo la fecha de una autorizacion revocada')

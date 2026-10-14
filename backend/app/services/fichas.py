@@ -19,8 +19,18 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core import seguridad as seg
 from app.core.errores import Invalido
-from app.models.esquema import (Actividades, Casos, CasosHistorial, Citas, Clientes, Grupos,
-                                Negocios, Pagos, Solicitantes, Usuarios)
+from app.models.esquema import (
+    Actividades,
+    Casos,
+    CasosHistorial,
+    Citas,
+    Clientes,
+    Grupos,
+    Negocios,
+    Pagos,
+    Solicitantes,
+    Usuarios,
+)
 from app.services import casos as serv_casos
 from app.services import historial
 from app.services.auditoria import auditar
@@ -85,7 +95,9 @@ def cronologia(db: Session, cliente_id: int, limite: int = 60) -> list[Suceso]:
         filas = list(db.scalars(select(CasosHistorial).where(CasosHistorial.caso_id.in_(casos))
                                 .options(selectinload(CasosHistorial.usuario))
                                 .order_by(CasosHistorial.ocurrido_en.desc()).limit(limite)))
-        for h, titulo in zip(filas, historial.describir(db, filas)):
+        # strict: un titulo por fila. Sin esto, si describir devolviera
+        # menos, la cronologia perderia sucesos sin que nada avisara.
+        for h, titulo in zip(filas, historial.describir(db, filas), strict=True):
             sucesos.append(Suceso(cuando=h.ocurrido_en, tipo='sistema', titulo=titulo,
                                   detalle=h.observacion, usuario=h.usuario.nombre if h.usuario else None,
                                   caso_id=h.caso_id))

@@ -5,13 +5,11 @@ tanto. Lo que vigilan estas pruebas son las dos cosas que descubrimos al cargar
 el libro del 13 de octubre, y que no fallaban en ningun lado hasta que se
 intentaba de verdad.
 """
-import datetime as dt
 
 import pytest
 from sqlalchemy import text
 
 from tests.conftest import entrar
-
 
 # --------------------------------------- una hoja que ya no esta en el libro
 

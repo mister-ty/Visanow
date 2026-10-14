@@ -38,9 +38,11 @@ def cliente_completo(cliente, admin, db, usuario):
     """
     c = cliente.post('/api/v1/clientes', headers=admin, json={
         'nombre': 'Completa Trescientos Cliente', 'telefono': '3001112233'}).json()
-    s = cliente.post('/api/v1/solicitantes', headers=admin, json={
+    # La persona hace falta para que la venta pueda crear su tramite; su id no
+    # se usa despues, y por eso no se guarda.
+    cliente.post('/api/v1/solicitantes', headers=admin, json={
         'cliente_id': c['id'], 'nombre': 'Completa Trescientos Cliente',
-        'pasaporte': 'CT3600001'}).json()
+        'pasaporte': 'CT3600001'})
 
     pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
     servicio = db.scalar(select(Servicios.id).where(Servicios.codigo == 'asesoria_usa'))

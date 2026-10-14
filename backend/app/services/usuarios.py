@@ -224,11 +224,11 @@ def crear(db: Session, actor: Usuarios | None, *, nombre: str, email: str, rol: 
     db.add(u)
     try:
         db.flush()
-    except IntegrityError:
+    except IntegrityError as e:
         # Dos altas simultáneas con el mismo correo pasan ambas la comprobación
         # de arriba; el índice único detiene a la segunda.
         db.rollback()
-        raise Conflicto('Ya existe un usuario con ese correo.', codigo='email_duplicado')
+        raise Conflicto('Ya existe un usuario con ese correo.', codigo='email_duplicado') from e
     auditar(db, operacion='insert', entidad='usuarios', usuario_id=actor.id if actor else None,
             entidad_id=u.id, despues=instantanea(u), ip=ip)
     db.commit()

@@ -22,8 +22,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.models.esquema import (CategoriasGasto, Comisiones, CostosServicio, Paises,
-                                Servicios)
+from app.models.esquema import CategoriasGasto, Comisiones, CostosServicio, Paises, Servicios
 from app.services import usuarios as servicio_usuarios
 from tests.conftest import entrar
 

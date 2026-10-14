@@ -26,8 +26,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Invalido, NoEncontrado
-from app.models.esquema import (Clientes, EstadosComerciales, MotivosPerdida, Oportunidades,
-                                Usuarios)
+from app.models.esquema import Clientes, EstadosComerciales, MotivosPerdida, Oportunidades, Usuarios
 from app.services.auditoria import auditar, instantanea
 
 BOGOTA = ZoneInfo('America/Bogota')

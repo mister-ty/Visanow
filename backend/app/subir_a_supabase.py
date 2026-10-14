@@ -156,10 +156,10 @@ def main() -> None:
 
     print('     listo')
     r = _correr([psql, '-t', '-A', '-c',
-                 "select (select count(*) from clientes) || ' clientes, ' || "
+                 ("select (select count(*) from clientes) || ' clientes, ' || "
                  "(select count(*) from negocios) || ' ventas, ' || "
                  "(select count(*) from casos) || ' tramites, ' || "
-                 "(select count(*) from pagos) || ' pagos'", destino])
+                 "(select count(*) from pagos) || ' pagos'"), destino])
     print('\nEn Supabase quedaron:', r.stdout.strip())
     print('\nNO corra el seed: el volcado ya trae el catalogo sembrado.')
 

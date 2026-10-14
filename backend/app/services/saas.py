@@ -33,15 +33,22 @@ import json
 from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import homologacion as hom
 from app.core import seguridad as seg
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.core import homologacion as hom
-from app.models.esquema import (Casos, ConflictosSincronizacion, EstadosOperativos,
-                                Importaciones, ImportacionesFilas, Sincronizaciones,
-                                Solicitantes, Usuarios)
+from app.models.esquema import (
+    Casos,
+    ConflictosSincronizacion,
+    EstadosOperativos,
+    Importaciones,
+    ImportacionesFilas,
+    Sincronizaciones,
+    Solicitantes,
+    Usuarios,
+)
 from app.services.auditoria import auditar, instantanea
 
 BOGOTA = ZoneInfo('America/Bogota')

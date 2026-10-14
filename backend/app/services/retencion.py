@@ -206,19 +206,19 @@ def eliminar(db: Session, actor: Usuarios, cliente_id: int, motivo: str, *,
     personas = _personas_de(db, cliente_id)
     p = {'c': cliente_id, 'ids': personas or [0]}
     for sql in (
-        "delete from actividades where (entidad='cliente' and entidad_id=:c) "
-        "   or (entidad='solicitante' and entidad_id = any(:ids))",
-        "delete from documentos  where (entidad='cliente' and entidad_id=:c) "
-        "   or (entidad='solicitante' and entidad_id = any(:ids))",
+        ("delete from actividades where (entidad='cliente' and entidad_id=:c) "
+        "   or (entidad='solicitante' and entidad_id = any(:ids))"),
+        ("delete from documentos  where (entidad='cliente' and entidad_id=:c) "
+        "   or (entidad='solicitante' and entidad_id = any(:ids))"),
         'delete from tareas where cliente_id = :c',
-        'delete from casos_historial where caso_id in '
-        '  (select id from casos where solicitante_id = any(:ids))',
-        'delete from casos_checklist where caso_id in '
-        '  (select id from casos where solicitante_id = any(:ids))',
-        'delete from citas where caso_id in '
-        '  (select id from casos where solicitante_id = any(:ids))',
-        'delete from alertas where caso_id in '
-        '  (select id from casos where solicitante_id = any(:ids))',
+        ('delete from casos_historial where caso_id in '
+        '  (select id from casos where solicitante_id = any(:ids))'),
+        ('delete from casos_checklist where caso_id in '
+        '  (select id from casos where solicitante_id = any(:ids))'),
+        ('delete from citas where caso_id in '
+        '  (select id from casos where solicitante_id = any(:ids))'),
+        ('delete from alertas where caso_id in '
+        '  (select id from casos where solicitante_id = any(:ids))'),
         'delete from casos where solicitante_id = any(:ids)',
         'delete from solicitantes where id = any(:ids)',
         'delete from grupos where cliente_contacto_id = :c',

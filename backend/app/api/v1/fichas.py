@@ -38,8 +38,8 @@ def ficha_360(cliente_id: int, actor: Usuarios = Depends(requiere('clientes.ver'
     pagos, saldo, tareas, alertas, documentos y cronología. Antes había dos, y
     lo demás estaba repartido entre siete pantallas distintas.
     """
-    from app.api.v1.clientes import detalle as detalle_cliente
     from app.api.v1.casos import _salida as caso_salida
+    from app.api.v1.clientes import detalle as detalle_cliente
 
     cliente = personas.obtener(db, cliente_id)
     puede = permisos_de_rol(db, actor.rol_id)

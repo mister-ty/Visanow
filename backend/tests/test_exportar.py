@@ -11,7 +11,7 @@ import io
 import pytest
 from sqlalchemy import select, text
 
-from app.models.esquema import Exportaciones, Paises, Servicios
+from app.models.esquema import Exportaciones, Paises
 from tests.conftest import entrar
 
 
@@ -102,8 +102,9 @@ def test_el_pasaporte_solo_sale_para_quien_puede_exportar_personas(cliente, usua
 # ------------------------------------------------------- el alcance (RNF-03)
 
 def _un_tramite(cliente, cab, db, nombre, responsable_id):
-    from app.models.esquema import Casos, EstadosOperativos
     import datetime as dt
+
+    from app.models.esquema import Casos, EstadosOperativos
     c = un_cliente(cliente, cab, nombre)
     s = cliente.post('/api/v1/solicitantes', headers=cab,
                      json={'cliente_id': c['id'], 'nombre': nombre}).json()

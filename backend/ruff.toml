@@ -1,0 +1,55 @@
+# Linter del backend.
+#
+# Se agrega el 14/10 porque no habia ninguno: la primera corrida saco 543 avisos,
+# de los cuales 408 eran el mismo falso positivo. Un linter que grita sobre todo
+# se deja de leer a la semana, asi que lo que importa aqui es QUE SE APAGA y por
+# que.
+
+target-version = "py313"
+line-length = 100
+
+# Generado por sqlacodegen a partir de la base: se reescribe entero cada vez que
+# cambia una tabla, asi que corregirlo a mano no tiene sentido.
+exclude = ["app/models/esquema.py", "alembic/versions"]
+
+[lint]
+select = [
+    "F",      # errores de verdad: nombres sin definir, variables sin usar
+    "E", "W", # estilo de PEP 8
+    "I",      # orden de los imports
+    "B",      # trampas conocidas (bugbear)
+    "SIM",    # simplificaciones que de verdad se leen mejor
+    "ISC",    # concatenacion implicita: la coma que falta en una lista
+    "RUF",
+]
+
+ignore = [
+    # B008: "no llames funciones en un valor por omision". Es EL idioma de
+    # FastAPI -Depends(), Query(), File()- y son 408 de los 543 avisos. Con esto
+    # encendido el linter no se puede leer, y lo que se deja de leer no sirve.
+    "B008",
+    # E501: la longitud de linea la vigila `line-length`; no hace falta que
+    # ademas lo repita como error en cada cadena de SQL larga.
+    "E501",
+    "B905", "B007", "RUF005", "RUF015", "RUF059", "E731", "SIM110", "RUF001",
+]
+
+# Lo que queda encendido pero no vale la pena perseguir en este proyecto, y por
+# que. Si algun dia se decide lo contrario, esta escrito de donde salio.
+#   B905  zip sin strict: en app/ ya estan los dos que importaban; los de
+#         app/migracion son de una herramienta de una sola corrida.
+#   B007  variable de bucle sin usar: son desempaquetados de tuplas donde el
+#         nombre documenta que trae cada posicion.
+#   RUF005, RUF015, RUF059, E731, SIM110: formas de escribir lo mismo. Cambiarlas
+#         no arregla nada y mueve codigo que ya esta probado.
+#   RUF001 caracteres ambiguos: son tildes y comillas angulares en textos en
+#         espanol, que es el idioma del proyecto.
+[lint.per-file-ignores]
+# En las pruebas, un import que parece sin usar suele ser una fixture, y las
+# comparaciones con True/False son a proposito: dicen que el valor es ese y no
+# solo que es verdadero.
+"tests/*" = ["E712"]
+"app/migracion/*" = ["B905", "B007"]
+
+[lint.isort]
+known-first-party = ["app", "tests"]

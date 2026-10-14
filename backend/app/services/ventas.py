@@ -30,8 +30,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.models.esquema import (Casos, EstadosOperativos, Grupos, Negocios, Oportunidades,
-                                Servicios, Solicitantes, Tarifas, Usuarios)
+from app.models.esquema import (
+    Casos,
+    EstadosOperativos,
+    Grupos,
+    Negocios,
+    Servicios,
+    Solicitantes,
+    Tarifas,
+    Usuarios,
+)
 from app.services import comisiones
 from app.services import oportunidades as serv_oportunidades
 from app.services.auditoria import auditar, instantanea

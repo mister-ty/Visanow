@@ -28,9 +28,19 @@ from sqlalchemy.orm import Session
 
 from app.core import seguridad as seg
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.models.esquema import (Actividades, Clientes, Documentos, Fusiones, Grupos,
-                                MigracionFilas, Negocios, Oportunidades, Solicitantes, Tareas,
-                                Usuarios)
+from app.models.esquema import (
+    Actividades,
+    Clientes,
+    Documentos,
+    Fusiones,
+    Grupos,
+    MigracionFilas,
+    Negocios,
+    Oportunidades,
+    Solicitantes,
+    Tareas,
+    Usuarios,
+)
 from app.services.auditoria import auditar, instantanea
 
 PARECIDO_MINIMO = 0.35      # por debajo de esto no se muestra

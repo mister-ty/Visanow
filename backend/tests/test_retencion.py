@@ -5,7 +5,6 @@ de Comercio obliga a conservar la contabilidad. Las dos cosas son ciertas a la
 vez, y lo que estas pruebas vigilan es que el sistema resuelva la tension de la
 forma correcta: anonimizar cuando hay plata, eliminar cuando no.
 """
-import datetime as dt
 
 import pytest
 from sqlalchemy import select, text

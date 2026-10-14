@@ -1,6 +1,6 @@
 """Configuración leída del .env (en local) o de las variables de entorno (en producción)."""
-from functools import lru_cache
 import pathlib
+from functools import lru_cache
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict

@@ -24,10 +24,20 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.errores import Conflicto, Invalido, NoEncontrado, Prohibido
-from app.models.esquema import (Casos, CasosChecklist, CasosColaboradores, CasosHistorial,
-                                ChecklistItems, Checklists, Citas, EstadosOperativos,
-                                Solicitantes, TransicionesOperativas, Usuarios)
+from app.core.errores import Conflicto, Invalido, NoEncontrado
+from app.models.esquema import (
+    Casos,
+    CasosChecklist,
+    CasosColaboradores,
+    CasosHistorial,
+    ChecklistItems,
+    Checklists,
+    Citas,
+    EstadosOperativos,
+    Solicitantes,
+    TransicionesOperativas,
+    Usuarios,
+)
 from app.services.auditoria import auditar
 
 BOGOTA = ZoneInfo('America/Bogota')
@@ -362,10 +372,10 @@ def actualizar_cita(db: Session, actor: Usuarios, cita_id: int, cambios: dict,
     antes_fecha, antes_estado = cita.inicia_en, cita.estado
     cambiados = []
     for campo, valor in cambios.items():
-        if campo in ('sede_id', 'inicia_en', 'zona_horaria', 'estado', 'observaciones'):
-            if getattr(cita, campo) != valor:
-                setattr(cita, campo, valor)
-                cambiados.append(campo)
+        if (campo in ('sede_id', 'inicia_en', 'zona_horaria', 'estado', 'observaciones')
+                and getattr(cita, campo) != valor):
+            setattr(cita, campo, valor)
+            cambiados.append(campo)
 
     # Una sola línea de historial por acción. Mover una cita cambia la fecha, el
     # estado y la observación a la vez, y escribir una entrada por campo dejaba
@@ -494,7 +504,11 @@ def agregar_colaborador(db: Session, actor: Usuarios, caso_id: int, usuario_id: 
 def quitar_colaborador(db: Session, actor: Usuarios, caso_id: int, usuario_id: int, *,
                        ip: str | None = None) -> list[dict]:
     """Lo saca del trámite, y con eso deja de verlo si su alcance es limitado."""
-    caso = obtener(db, caso_id, actor=actor)
+    # No se guarda el resultado a propósito: esta línea ES el control de acceso
+    # (RNF-03), no una consulta. Asignarla a una variable que nadie usa la hacía
+    # parecer borrable, y borrarla deja a cualquiera sacando colaboradores de
+    # trámites que no puede ni abrir.
+    obtener(db, caso_id, actor=actor)
     fila = db.get(CasosColaboradores, (caso_id, usuario_id))
     if fila is None:
         raise NoEncontrado('Esa persona no está colaborando en este trámite.')

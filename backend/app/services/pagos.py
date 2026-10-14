@@ -25,8 +25,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.models.esquema import (AjustesNegocio, CuotasNegocio, Negocios, Pagos, Parametros,
-                                Usuarios)
+from app.models.esquema import AjustesNegocio, CuotasNegocio, Negocios, Pagos, Parametros, Usuarios
 from app.services import comisiones
 from app.services.auditoria import auditar, instantanea
 

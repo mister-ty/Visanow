@@ -117,8 +117,8 @@ def _contar(url: str) -> dict[str, int]:
        and table_name <> 'alembic_version'
      order by table_name;"""
     r = _correr([_bin('psql'), '-t', '-A', '-F', '|', '-c', sql, url])
-    return {l.split('|')[0]: int(l.split('|')[1])
-            for l in r.stdout.strip().splitlines() if '|' in l}
+    return {fila.split('|')[0]: int(fila.split('|')[1])
+            for fila in r.stdout.strip().splitlines() if '|' in fila}
 
 
 def _extensiones_de(url: str) -> list[str]:
@@ -132,9 +132,9 @@ def _extensiones_de(url: str) -> list[str]:
     correcto.
     """
     r = _correr([_bin('psql'), '-t', '-A', '-c',
-                 "select extname from pg_extension e "
+                 ("select extname from pg_extension e "
                  "join pg_namespace n on n.oid = e.extnamespace "
-                 "where n.nspname = 'public'", url])
+                 "where n.nspname = 'public'"), url])
     return [x.strip() for x in r.stdout.splitlines() if x.strip()]
 
 

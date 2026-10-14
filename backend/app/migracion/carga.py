@@ -28,15 +28,26 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import seguridad as seg
-from app.migracion import fuentes
-from app.migracion.fuentes import Aporte, Hoja
+from app.migracion.fuentes import Aporte
 from app.migracion.identidad import Persona
 from app.migracion.lectura import BOGOTA, Fila
-from app.migracion.motor import Excepcion, Migracion, Plan
+from app.migracion.motor import Excepcion, Migracion
+from app.models.esquema import (
+    Canales,
+    Casos,
+    Citas,
+    Clientes,
+    EstadosOperativos,
+    MigracionCorridas,
+    MigracionFilas,
+    Negocios,
+    Pagos,
+    Paises,
+    Sedes,
+    Solicitantes,
+    Tarifas,
+)
 from app.services.auditoria import auditar
-from app.models.esquema import (Canales, Casos, Citas, Clientes, EstadosOperativos, MigracionCorridas,
-                                MigracionFilas, Negocios, Pagos, Paises, Sedes, Servicios,
-                                Solicitantes, Tarifas)
 
 # El negocio es una agencia de visas a Estados Unidos: es el destino de la
 # inmensa mayoría de los trámites y el único que aparece en la lista de precios
@@ -381,19 +392,19 @@ DEPENDIENTES = (
     ('casos_historial', 'caso_id in (select id from casos where origen_archivo is not null)'),
     ('conflictos_sincronizacion', 'caso_id in (select id from casos where origen_archivo is not null)'),
     ('importaciones_filas', 'caso_id in (select id from casos where origen_archivo is not null)'),
-    ('alertas', 'caso_id in (select id from casos where origen_archivo is not null) '
+    ('alertas', ('caso_id in (select id from casos where origen_archivo is not null) '
                 'or cita_id in (select id from citas where origen_archivo is not null) '
-                'or negocio_id in (select id from negocios where origen_archivo is not null)'),
-    ('tareas', 'caso_id in (select id from casos where origen_archivo is not null) '
+                'or negocio_id in (select id from negocios where origen_archivo is not null)')),
+    ('tareas', ('caso_id in (select id from casos where origen_archivo is not null) '
                'or negocio_id in (select id from negocios where origen_archivo is not null) '
-               'or cliente_id in (select id from clientes where origen_archivo is not null)'),
-    ('gastos', 'caso_id in (select id from casos where origen_archivo is not null) '
-               'or negocio_id in (select id from negocios where origen_archivo is not null)'),
+               'or cliente_id in (select id from clientes where origen_archivo is not null)')),
+    ('gastos', ('caso_id in (select id from casos where origen_archivo is not null) '
+               'or negocio_id in (select id from negocios where origen_archivo is not null)')),
     ('comisiones', 'negocio_id in (select id from negocios where origen_archivo is not null)'),
     ('cuotas_negocio', 'negocio_id in (select id from negocios where origen_archivo is not null)'),
     ('ajustes_negocio', 'negocio_id in (select id from negocios where origen_archivo is not null)'),
-    ('oportunidades', 'cliente_id in (select id from clientes where origen_archivo is not null) '
-                      'or referido_por_cliente_id in (select id from clientes where origen_archivo is not null)'),
+    ('oportunidades', ('cliente_id in (select id from clientes where origen_archivo is not null) '
+                      'or referido_por_cliente_id in (select id from clientes where origen_archivo is not null)')),
     ('grupos', 'cliente_contacto_id in (select id from clientes where origen_archivo is not null)'),
 )
 

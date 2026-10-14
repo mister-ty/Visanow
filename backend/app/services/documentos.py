@@ -31,8 +31,16 @@ from sqlalchemy.orm import Session
 from app.core import seguridad as seg
 from app.core.config import ajustes
 from app.core.errores import Conflicto, Invalido, NoEncontrado, Prohibido
-from app.models.esquema import (Casos, Clientes, Documentos, Gastos, Negocios, Pagos,
-                                Solicitantes, Usuarios)
+from app.models.esquema import (
+    Casos,
+    Clientes,
+    Documentos,
+    Gastos,
+    Negocios,
+    Pagos,
+    Solicitantes,
+    Usuarios,
+)
 from app.services.auditoria import auditar
 from app.services.usuarios import permisos_de_rol
 

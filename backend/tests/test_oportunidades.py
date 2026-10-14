@@ -250,7 +250,7 @@ def test_la_regla_de_comision_de_angie_quedo_sembrada_tal_como_la_dijo(db):
 def test_la_tasa_consular_no_entra_en_la_base_de_comision(db):
     """Hay 39 ventas de tasa consular por 40 millones en los archivos. Si
     entraran en la base, la comisión saldría inflada el 11,7 %."""
-    from app.models.esquema import ComisionesReglas, Servicios
+    from app.models.esquema import ComisionesReglas
 
     assert db.scalar(select(Servicios).where(Servicios.codigo == 'pago_visa')).tipo == \
         'recaudo_terceros'

@@ -9,7 +9,6 @@ De ahí sale lo que estas pruebas vigilan: que se cruce por valor y fecha, que n
 se cruce por nombre, que lo ambiguo no se resuelva solo, y que lo que no es plata
 de un cliente se pueda sacar de la bandeja sin inventarle un pago.
 """
-import datetime as dt
 
 import pytest
 from sqlalchemy import select

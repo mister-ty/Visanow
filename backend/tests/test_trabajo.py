@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy import select, text
 
-from app.models.esquema import Alertas, AlertasTipos, Casos, EstadosOperativos, Paises, Servicios
+from app.models.esquema import Alertas, AlertasTipos, Casos, EstadosOperativos, Paises
 from tests.conftest import entrar
 
 BOGOTA = ZoneInfo('America/Bogota')

@@ -31,7 +31,6 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.errores import Invalido, NoEncontrado
 from app.models.esquema import Casos, Clientes, Negocios, Oportunidades, Tareas, Usuarios
 from app.services.auditoria import auditar, instantanea
-from app.services.casos import alcance_de
 
 BOGOTA = ZoneInfo('America/Bogota')
 

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import datetime as dt
 import pathlib
-from collections import defaultdict
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill

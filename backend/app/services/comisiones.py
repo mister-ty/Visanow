@@ -32,8 +32,16 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado
-from app.models.esquema import (AjustesNegocio, Comisiones, ComisionesReglas,
-                                LiquidacionesComision, Negocios, Pagos, Servicios, Usuarios)
+from app.models.esquema import (
+    AjustesNegocio,
+    Comisiones,
+    ComisionesReglas,
+    LiquidacionesComision,
+    Negocios,
+    Pagos,
+    Servicios,
+    Usuarios,
+)
 from app.services.auditoria import auditar, instantanea
 
 BOGOTA = ZoneInfo('America/Bogota')

@@ -13,13 +13,28 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.admin import montar_admin
-from app.api.v1 import (auditoria, auth, casos, catalogos, clientes, conciliacion, costos,
-                        documentos,
-                        exportar, fichas,
-                        oportunidades, pagos, plantillas, rentabilidad, retencion, saas,
-                        tableros,
-                        trabajo,
-                        usuarios, ventas)
+from app.api.v1 import (
+    auditoria,
+    auth,
+    casos,
+    catalogos,
+    clientes,
+    conciliacion,
+    costos,
+    documentos,
+    exportar,
+    fichas,
+    oportunidades,
+    pagos,
+    plantillas,
+    rentabilidad,
+    retencion,
+    saas,
+    tableros,
+    trabajo,
+    usuarios,
+    ventas,
+)
 from app.core.config import ajustes
 from app.core.errores import ErrorDominio
 from app.db.session import get_db

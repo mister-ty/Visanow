@@ -46,7 +46,7 @@ def usuario_actual(cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
     try:
         carga = seg.leer_token(cred.credentials, 'acceso')
     except seg.TokenInvalido:
-        raise NoAutenticado('La sesión no es válida o ya venció.', codigo='token_invalido')
+        raise NoAutenticado('La sesión no es válida o ya venció.', codigo='token_invalido') from None
     u = db.get(Usuarios, int(carga['sub']))
     if u is None or not u.activo:
         raise NoAutenticado('La sesión no es válida o ya venció.', codigo='token_invalido')

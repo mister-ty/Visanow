@@ -10,9 +10,19 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import requiere
 from app.db.session import get_db
-from app.models.esquema import (Campanias, Canales, EstadosComerciales, EstadosOperativos,
-                                Modalidades, MotivosPerdida, Paises, Sedes, Servicios, TiposVisa,
-                                Usuarios)
+from app.models.esquema import (
+    Campanias,
+    Canales,
+    EstadosComerciales,
+    EstadosOperativos,
+    Modalidades,
+    MotivosPerdida,
+    Paises,
+    Sedes,
+    Servicios,
+    TiposVisa,
+    Usuarios,
+)
 
 router = APIRouter(tags=['catálogos'])
 

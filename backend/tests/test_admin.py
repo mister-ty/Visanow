@@ -135,6 +135,7 @@ def test_las_veinte_vistas_abren_lista_creacion_y_edicion(panel):
     """Una vista mal configurada (un campo que el formulario no sabe dibujar, una
     relación rota) solo falla al abrirla. Se abren todas."""
     import re
+
     from app.admin import VISTAS
     _entrar(panel, _usuario_real('administradora'))
     fallas = []

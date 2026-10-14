@@ -10,13 +10,19 @@ Es la lógica donde un error no falla: solo paga de menos o de más, y nadie se
 entera hasta que alguien reclama.
 """
 import datetime as dt
-from decimal import Decimal
 
 import pytest
 from sqlalchemy import select, text
 
-from app.models.esquema import (Auditoria, CategoriasGasto, Comisiones,
-                                ComisionesReglas, Negocios, Paises, Servicios)
+from app.models.esquema import (
+    Auditoria,
+    CategoriasGasto,
+    Comisiones,
+    ComisionesReglas,
+    Negocios,
+    Paises,
+    Servicios,
+)
 from tests.conftest import entrar
 
 

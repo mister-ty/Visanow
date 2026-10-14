@@ -1,5 +1,5 @@
 import {
-  ActionIcon, Button, Card, Checkbox, Group, Modal, Pagination, Select, Stack, Table, Text,
+  ActionIcon, Button, Card, Checkbox, Group, Modal, Pagination, Stack, Table, Text,
   TextInput, Title,
 } from '@mantine/core'
 import { useDebouncedValue } from '@mantine/hooks'
@@ -12,8 +12,8 @@ import { useNavigate } from 'react-router-dom'
 import { BotonExportar } from '../componentes/BotonExportar'
 import { api, exigir } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
+import { CamposCliente, CLIENTE_VACIO } from '../componentes/CamposCliente'
 import { AvisoDuplicados } from '../componentes/AvisoDuplicados'
-import { aSelect, useCatalogos } from '../lib/catalogos'
 import { mostrarError } from '../lib/errores'
 
 const TAMANO = 25
@@ -112,8 +112,7 @@ function FormularioCliente({ abierto, cerrar }: { abierto: boolean; cerrar: () =
   const clienteQuery = useQueryClient()
   const navegar = useNavigate()
   const formulario = useForm({
-    initialValues: { nombre: '', tipo_documento: '', numero_documento: '', telefono: '', email: '',
-                     ciudad: '', consentimiento: false, pais_id: '', canal_id: '' },
+    initialValues: { ...CLIENTE_VACIO },
     validate: { nombre: (v) => (v.trim().length >= 2 ? null : 'Escriba el nombre completo') },
   })
   const [datos] = useDebouncedValue(formulario.values, 400)
@@ -130,7 +129,6 @@ function FormularioCliente({ abierto, cerrar }: { abierto: boolean; cerrar: () =
     enabled: abierto && datos.nombre.trim().length >= 3,
   })
   const hayFuerte = (posibles.data ?? []).some((c) => c.confianza === 'alta')
-  const catalogos = useCatalogos()
 
   const crear = useMutation({
     mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/clientes', {
@@ -155,25 +153,7 @@ function FormularioCliente({ abierto, cerrar }: { abierto: boolean; cerrar: () =
     <Modal opened={abierto} onClose={cerrar} title="Nuevo cliente" size="lg">
       <form onSubmit={formulario.onSubmit((v) => crear.mutate(v))}>
         <Stack>
-          <TextInput label="Nombre completo" data-autofocus {...formulario.getInputProps('nombre')} />
-          <Group grow>
-            <TextInput label="Tipo de documento" placeholder="CC, CE, PA" {...formulario.getInputProps('tipo_documento')} />
-            <TextInput label="Número de documento" {...formulario.getInputProps('numero_documento')} />
-          </Group>
-          <Group grow>
-            <TextInput label="Teléfono" placeholder="3105177800" {...formulario.getInputProps('telefono')} />
-            <TextInput label="Correo" type="email" {...formulario.getInputProps('email')} />
-          </Group>
-          <Group grow>
-            <TextInput label="Ciudad" {...formulario.getInputProps('ciudad')} />
-            <Select label="País" data={aSelect(catalogos.data?.paises)} searchable clearable
-              {...formulario.getInputProps('pais_id')} />
-          </Group>
-          <Select label="¿Por dónde llegó?" data={aSelect(catalogos.data?.canales)} clearable
-            description="Sirve para saber qué canal trae más clientes"
-            {...formulario.getInputProps('canal_id')} />
-          <Checkbox label="Autorizó el tratamiento de sus datos personales"
-            {...formulario.getInputProps('consentimiento', { type: 'checkbox' })} />
+          <CamposCliente formulario={formulario} autofoco />
 
           <AvisoDuplicados coincidencias={posibles.data} cargando={posibles.isFetching} />
           {hayFuerte && (

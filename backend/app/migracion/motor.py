@@ -13,7 +13,6 @@ segunda arma el plan con las personas ya resueltas.
 """
 from __future__ import annotations
 
-import datetime as dt
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field

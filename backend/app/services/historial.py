@@ -18,8 +18,16 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.esquema import (CasosHistorial, ChecklistItems, EstadosOperativos, Modalidades,
-                                Paises, Sedes, TiposVisa, Usuarios)
+from app.models.esquema import (
+    CasosHistorial,
+    ChecklistItems,
+    EstadosOperativos,
+    Modalidades,
+    Paises,
+    Sedes,
+    TiposVisa,
+    Usuarios,
+)
 
 # Campo de la tabla -> (cómo se llama en español, de qué catálogo sale el id)
 CAMPOS: dict[str, tuple[str, type | None]] = {

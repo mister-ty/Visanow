@@ -62,8 +62,9 @@ def base_de_pruebas():
         c.execute(f'drop database if exists {BASE_PRUEBAS} with (force)')
         c.execute(f'create database {BASE_PRUEBAS}')
 
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
     cfg = Config(str(RAIZ / 'backend' / 'alembic.ini'))
     cfg.set_main_option('script_location', str(RAIZ / 'backend' / 'alembic'))
     command.upgrade(cfg, 'head')

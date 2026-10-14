@@ -1,11 +1,13 @@
 """Actividad 2.1 — autenticación (RF-025 PDF, RNF-02)."""
 
-import pytest
+from typing import ClassVar
+
 import pyotp
+import pytest
 from sqlalchemy import select, text
 
 from app.core import seguridad as seg
-from app.models.esquema import Auditoria, Usuarios
+from app.models.esquema import Auditoria
 from app.services import notificaciones
 from tests.conftest import entrar
 
@@ -237,8 +239,10 @@ def test_la_auditoria_es_inalterable(db, usuario):
 
 class _ServidorFalso:
     """Un SMTP de mentira que guarda lo que le mandan, para poder mirarlo."""
-    enviados: list = []
-    arranques: list = []
+    # ClassVar a proposito: el estado es compartido porque el espia tiene que
+    # ver lo que se mando desde cualquier sitio. La fixture lo reinicia.
+    enviados: ClassVar[list] = []
+    arranques: ClassVar[list] = []
 
     def __init__(self, host, puerto, timeout=None, context=None):
         self.host, self.puerto, self.contexto = host, puerto, context
@@ -327,6 +331,7 @@ def test_sin_proveedor_no_se_finge_que_se_envio(cliente, usuario, monkeypatch):
     por no encontrar nada, que es la peor forma de pasar.
     """
     import logging
+
     from app.core.config import ajustes
     from app.services import notificaciones
 

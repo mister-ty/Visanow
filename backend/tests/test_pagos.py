@@ -5,7 +5,6 @@ hay dónde registrar un cuarto pago. Y el saldo está escrito en una celda, así
 que dos hojas dicen números distintos — entre PAGOS y REV PAGOS hay 37 millones
 de deuda fantasma. Aquí los pagos son filas y el saldo lo calcula la vista.
 """
-import datetime as dt
 
 import pytest
 from sqlalchemy import select, text

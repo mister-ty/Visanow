@@ -5,7 +5,6 @@ una son $700.000 y para cuatro $2.300.000, que no es cuatro veces. Hoy esa
 cuenta se hace de cabeza o se copia de una cotización vieja, que puede ser de
 otra época de precios.
 """
-import datetime as dt
 
 import pytest
 from sqlalchemy import select, text

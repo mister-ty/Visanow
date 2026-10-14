@@ -81,11 +81,11 @@ def crear(db: Session, actor: Usuarios, datos: dict, ip: str | None = None) -> C
     db.add(cliente)
     try:
         db.flush()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
         # El índice único de documento es la última barrera: la advertencia de
         # duplicados (RF-002) ya se muestra antes, al escribir los datos.
-        raise Conflicto('Ya existe un cliente con ese número de documento.', codigo='documento_duplicado')
+        raise Conflicto('Ya existe un cliente con ese número de documento.', codigo='documento_duplicado') from e
     auditar(db, operacion='insert', entidad='clientes', usuario_id=actor.id, entidad_id=cliente.id,
             despues=instantanea(cliente), ip=ip)
     db.commit()
@@ -98,14 +98,20 @@ def editar(db: Session, actor: Usuarios, cliente_id: int, cambios: dict, ip: str
     for campo, valor in cambios.items():
         if campo in CAMPOS_CLIENTE:
             setattr(cliente, campo, valor)
+    # La fecha acompaña a la autorización en los dos sentidos. Si al revocarla
+    # se quedara la fecha, la ficha diría «no autorizó» con la fecha en que sí
+    # lo hizo al lado, y cualquiera leería que sigue vigente. La Ley 1581 da
+    # derecho a revocar, y revocar tiene que verse.
     if cambios.get('consentimiento') and not antes.get('consentimiento'):
         cliente.consentimiento_fecha = func.now()
+    elif 'consentimiento' in cambios and not cambios['consentimiento']:
+        cliente.consentimiento_fecha = None
     cliente.actualizado_en = func.now()
     try:
         db.flush()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise Conflicto('Ya existe un cliente con ese número de documento.', codigo='documento_duplicado')
+        raise Conflicto('Ya existe un cliente con ese número de documento.', codigo='documento_duplicado') from e
     auditar(db, operacion='update', entidad='clientes', usuario_id=actor.id, entidad_id=cliente.id,
             antes=antes, despues=instantanea(cliente), ip=ip)
     db.commit()
@@ -251,9 +257,9 @@ def crear_solicitante(db: Session, actor: Usuarios, datos: dict, ip: str | None 
     db.add(solicitante)
     try:
         db.flush()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise Conflicto('Ya hay un solicitante registrado con ese pasaporte.', codigo='pasaporte_duplicado')
+        raise Conflicto('Ya hay un solicitante registrado con ese pasaporte.', codigo='pasaporte_duplicado') from e
     auditar(db, operacion='insert', entidad='solicitantes', usuario_id=actor.id, entidad_id=solicitante.id,
             despues=instantanea(solicitante), ip=ip)
     db.commit()
@@ -273,9 +279,9 @@ def editar_solicitante(db: Session, actor: Usuarios, solicitante_id: int, cambio
         _cifrar_pasaporte(solicitante, cambios['pasaporte'])
     try:
         db.flush()
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise Conflicto('Ya hay un solicitante registrado con ese pasaporte.', codigo='pasaporte_duplicado')
+        raise Conflicto('Ya hay un solicitante registrado con ese pasaporte.', codigo='pasaporte_duplicado') from e
     auditar(db, operacion='update', entidad='solicitantes', usuario_id=actor.id, entidad_id=solicitante.id,
             antes=antes, despues=instantanea(solicitante), ip=ip)
     db.commit()

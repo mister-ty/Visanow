@@ -113,6 +113,7 @@ def test_crear_admin_rechaza_un_correo_que_el_login_no_aceptaria(monkeypatch):
     """Hallazgo de la revisión: crear_admin aceptaba correos que la API rechaza,
     y quedaba una administradora activa que nunca podía ingresar."""
     import sys
+
     from app import crear_admin
     monkeypatch.setattr(sys, 'argv', ['crear_admin', '--nombre', 'X', '--email', 'admin@visanow.local'])
     with pytest.raises(SystemExit) as e:

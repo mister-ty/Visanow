@@ -25,8 +25,13 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from app.migracion.normalizacion import (clave_nombre, correo_valido, nombres_compatibles,
-                                         normalizar_telefono, tokens)
+from app.migracion.normalizacion import (
+    clave_nombre,
+    correo_valido,
+    nombres_compatibles,
+    normalizar_telefono,
+    tokens,
+)
 
 CORREO_COMPARTIDO_DESDE = 5      # un correo en 5+ filas no identifica a nadie
 

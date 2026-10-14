@@ -3,7 +3,7 @@
 import pytest
 from sqlalchemy import select
 
-from app.models.esquema import CasosHistorial, ChecklistItems, Paises, Solicitantes
+from app.models.esquema import CasosHistorial, Paises
 from tests.conftest import entrar
 
 CASOS = '/api/v1/casos'
@@ -576,8 +576,8 @@ def test_el_404_al_editar_lo_ajeno_no_puede_ser_cosmetico(
     nada, y el tramite ajeno quedaba cambiado. Un error que miente sobre lo que
     acaba de ocurrir es peor que no tener control: nadie va a ir a revisar.
     """
-    from app.services import usuarios as servicio_usuarios
     from app.models.esquema import Casos as M
+    from app.services import usuarios as servicio_usuarios
 
     admin = usuario('administradora')
     dueno = usuario('operaciones')
@@ -614,6 +614,7 @@ def test_una_visa_resuelta_de_noche_no_queda_con_la_fecha_de_manana():
     asi que comparar contra date.today() pasaria sin comprobar nada.
     """
     import datetime as dt
+
     from app.services.casos import _hoy
 
     # 11 de octubre 02:30 UTC == 10 de octubre 21:30 en Bogota
@@ -634,6 +635,7 @@ def test_el_resultado_se_guarda_con_la_fecha_de_bogota(cliente, db, usuario,
                                                        solicitante, pais_usa):
     import datetime as dt
     from zoneinfo import ZoneInfo
+
     from app.models.esquema import Casos as M
 
     dueno = usuario('operaciones')
