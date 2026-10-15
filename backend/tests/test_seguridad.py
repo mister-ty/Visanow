@@ -109,7 +109,10 @@ NO_IDENTIFICAN = {
         'ultimo_acceso', 'creado_en', 'alcance', 'intentos_fallidos', 'bloqueado_hasta',
         'password_cambiado_en', 'debe_cambiar_password'},
     'grupos': {
-        'id', 'cliente_contacto_id', 'creado_en', 'origen_archivo', 'origen_hoja',
+        # «familiar» o «de viaje» no dice nada de nadie: es una clasificacion
+        # del grupo, no de las personas. El NOMBRE si, porque es el apellido de
+        # una familia, y por eso ese va oculto.
+        'id', 'cliente_contacto_id', 'tipo', 'creado_en', 'origen_archivo', 'origen_hoja',
         'origen_fila'},
 }
 

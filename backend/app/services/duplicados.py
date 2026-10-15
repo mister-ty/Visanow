@@ -23,13 +23,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
 from app.core import seguridad as seg
-from app.core.errores import Conflicto, Invalido, NoEncontrado
+from app.core.errores import Conflicto, Invalido, NoEncontrado, Prohibido
 from app.models.esquema import (
     Actividades,
+    Casos,
     Clientes,
     Documentos,
     Fusiones,
@@ -238,6 +239,123 @@ def fusionar(db: Session, actor: Usuarios, conservado_id: int, absorbido_id: int
                     criterio=criterio, snapshot=copia, autorizado_por=actor.id))
     auditar(db, operacion='fusion', entidad='clientes', usuario_id=actor.id, entidad_id=conservado_id,
             antes={'absorbido_id': absorbido_id, 'nombre': absorbido.nombre},
+            despues={'criterio': criterio, 'movidos': movidos}, ip=ip)
+    db.commit()
+    return {'conservado_id': conservado_id, 'absorbido_id': absorbido_id, 'movidos': movidos}
+
+
+# ------------------------------------------------- fusión de solicitantes
+
+# Todo lo que apunta a una persona. Misma idea que REFERENCIAS y vigilada por la
+# misma clase de prueba: si mañana aparece otra tabla con solicitante_id y no
+# entra acá, la unión dejaría su trámite apuntando a una persona archivada.
+REFERENCIAS_SOLICITANTE = [
+    (Casos, 'solicitante_id'),
+    (MigracionFilas, 'solicitante_id'),
+]
+
+# Lo que se completa en la persona que queda, si venía vacío. El pasaporte va
+# aparte porque tiene índice único.
+COMPLETABLES_SOLICITANTE = ('tipo_documento', 'numero_documento', 'fecha_nacimiento',
+                            'nacionalidad', 'telefono', 'email', 'relacion_con_cliente',
+                            'observaciones')
+
+
+def _dueno_de(db: Session, solicitante: Solicitantes) -> int | None:
+    """De qué cliente cuelga una persona: el suyo, o el contacto de su grupo."""
+    if solicitante.cliente_id:
+        return solicitante.cliente_id
+    if solicitante.grupo_id:
+        return db.scalar(select(Grupos.cliente_contacto_id)
+                         .where(Grupos.id == solicitante.grupo_id))
+    return None
+
+
+def fusionar_solicitantes(db: Session, actor: Usuarios, conservado_id: int, absorbido_id: int,
+                          criterio: str, ip: str | None = None) -> dict:
+    """Une dos personas repetidas en una (RF-002).
+
+    Hasta ahora solo se podían unir CLIENTES, aunque la tabla de fusiones
+    siempre admitió «solicitante» y seis consultas ya descartaban a los
+    absorbidos: lo único que faltaba era quien lo escribiera. Mientras no
+    existió, dos registros de la misma persona solo se podían bloquear al
+    crearlos —y solo si llevaban pasaporte—, o borrar uno, que es perder el
+    trámite y los documentos que llevara.
+
+    Queda registro completo de lo absorbido (tabla fusiones, con copia íntegra)
+    para poder reconstruir qué se unió y por qué.
+    """
+    if conservado_id == absorbido_id:
+        raise Invalido('No se puede unir una persona consigo misma.')
+    conservado = db.get(Solicitantes, conservado_id)
+    absorbido = db.get(Solicitantes, absorbido_id)
+    if conservado is None or absorbido is None:
+        raise NoEncontrado('Alguna de las dos personas no existe.')
+    for s in (conservado, absorbido):
+        if s.fusionado_en_id is not None:
+            raise Conflicto(f'La persona {s.nombre} ya fue unida a otra.', codigo='ya_fusionado')
+    # Unirlas movería los trámites de un cliente al otro, y la ficha del primero
+    # se quedaría sin ellos sin que nadie lo hubiera pedido. Si de verdad es el
+    # mismo cliente, primero se unen las dos fichas de cliente y las personas
+    # quedan ya bajo el mismo dueño.
+    if _dueno_de(db, conservado) != _dueno_de(db, absorbido):
+        raise Conflicto('Las dos personas cuelgan de clientes distintos. Una la une a la otra '
+                        'solo dentro del mismo cliente: si es el mismo cliente con dos fichas, '
+                        'únalas primero.', codigo='otro_cliente')
+
+    # Unir mueve trámites de una persona a la otra, así que esto ESCRIBE sobre
+    # trámites y el alcance tiene que valer acá (RNF-03). Puesto solo en la
+    # ruta, quien tiene «solo lo asignado» lo saltaría llamando la API directo.
+    from app.services.casos import alcance_de
+    limite = alcance_de(actor)
+    if limite is not None:
+        ajenos = db.scalar(select(func.count()).select_from(Casos)
+                           .where(Casos.solicitante_id.in_((conservado_id, absorbido_id)),
+                                  ~limite))
+        if ajenos:
+            raise Prohibido('Estas dos personas tienen trámites que no están a su cargo: '
+                            'unirlas los movería sin que usted pueda verlos.',
+                            codigo='sin_alcance')
+
+    copia = instantanea(absorbido)
+    movidos: dict[str, int] = {}
+
+    # El pasaporte tiene índice único, así que no puede quedar en las dos. Se
+    # libera siempre en la que se archiva: si no, ese número seguiría ocupado
+    # por una persona archivada y el sistema rechazaría volver a registrarlo sin
+    # poder explicar dónde está. El valor completo queda en la copia íntegra.
+    if absorbido.pasaporte:
+        cifrado, indice = absorbido.pasaporte, absorbido.pasaporte_indice
+        absorbido.pasaporte = absorbido.pasaporte_indice = None
+        db.flush()      # se libera primero: si el índice quedara un instante en
+                        # las dos, el índice único rechazaría el cambio
+        if not conservado.pasaporte:
+            conservado.pasaporte, conservado.pasaporte_indice = cifrado, indice
+    for campo in COMPLETABLES_SOLICITANTE:
+        if not getattr(conservado, campo) and getattr(absorbido, campo):
+            setattr(conservado, campo, getattr(absorbido, campo))
+
+    for modelo, columna in REFERENCIAS_SOLICITANTE:
+        resultado = db.execute(update(modelo).where(getattr(modelo, columna) == absorbido_id)
+                               .values({columna: conservado_id}))
+        if resultado.rowcount:
+            movidos[modelo.__tablename__] = movidos.get(modelo.__tablename__, 0) + resultado.rowcount
+    for modelo in POLIMORFICAS:
+        resultado = db.execute(update(modelo)
+                               .where(modelo.entidad == 'solicitante',
+                                      modelo.entidad_id == absorbido_id)
+                               .values(entidad_id=conservado_id))
+        if resultado.rowcount:
+            movidos[modelo.__tablename__] = resultado.rowcount
+
+    absorbido.fusionado_en_id = conservado_id
+    db.add(Fusiones(entidad='solicitante', id_conservado=conservado_id, id_absorbido=absorbido_id,
+                    criterio=criterio, snapshot=copia, autorizado_por=actor.id))
+    # Sin el nombre: la auditoría es inalterable (RNF-05) y lo que entre ahí
+    # sobrevive a cualquier anonimización posterior (RNF-09). La copia íntegra
+    # de lo unido vive en `fusiones`, que es su sitio.
+    auditar(db, operacion='fusion', entidad='solicitantes', usuario_id=actor.id,
+            entidad_id=conservado_id, antes={'absorbido_id': absorbido_id},
             despues={'criterio': criterio, 'movidos': movidos}, ip=ip)
     db.commit()
     return {'conservado_id': conservado_id, 'absorbido_id': absorbido_id, 'movidos': movidos}

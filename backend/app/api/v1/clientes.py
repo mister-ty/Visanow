@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import ip_cliente, requiere
 from app.db.session import get_db
-from app.models.esquema import Clientes, Solicitantes, Usuarios
+from app.models.esquema import Clientes, Grupos, Solicitantes, Usuarios
 from app.schemas import personas as esq
 from app.services import duplicados, personas
 
@@ -17,6 +17,16 @@ def _cliente(c: Clientes) -> esq.ClienteSalida:
 def _solicitante(s: Solicitantes) -> esq.SolicitanteSalida:
     datos = esq.SolicitanteSalida.model_validate(s, from_attributes=True)
     return datos.model_copy(update={'pasaporte': personas.pasaporte_enmascarado(s)})
+
+
+def _grupo(g: Grupos, solicitantes: list[esq.SolicitanteSalida]) -> esq.GrupoSalida:
+    """El grupo como lo necesita la pantalla. Va el nombre del contacto y no
+    solo su id: RF-003 pide «contacto principal», y con dos grupos en una ficha
+    un número no dice a nombre de quién va cada uno."""
+    return esq.GrupoSalida(
+        id=g.id, nombre=g.nombre, tipo=g.tipo, cliente_contacto_id=g.cliente_contacto_id,
+        contacto_nombre=g.cliente_contacto.nombre if g.cliente_contacto else None,
+        observaciones=g.observaciones, solicitantes=solicitantes)
 
 
 # ------------------------------------------------------------------ clientes
@@ -50,9 +60,7 @@ def verificar_duplicados(datos: esq.VerificarDuplicados,
 def detalle(cliente_id: int, _: Usuarios = Depends(requiere('clientes.ver')),
             db: Session = Depends(get_db)):
     cliente = personas.obtener(db, cliente_id)
-    grupos = [esq.GrupoSalida(id=g.id, nombre=g.nombre, cliente_contacto_id=g.cliente_contacto_id,
-                              observaciones=g.observaciones,
-                              solicitantes=[_solicitante(s) for s in g.solicitantes])
+    grupos = [_grupo(g, [_solicitante(s) for s in personas.integrantes(g)])
               for g in personas.grupos_de(db, cliente_id)]
     return esq.ClienteDetalle(
         **_cliente(cliente).model_dump(), pais_id=cliente.pais_id, canal_id=cliente.canal_id,
@@ -104,8 +112,7 @@ def fusionar(cliente_id: int, datos: esq.FusionEntrada, request: Request,
 def crear_grupo(datos: esq.GrupoCrear, request: Request,
                 actor: Usuarios = Depends(requiere('solicitantes.crear')), db: Session = Depends(get_db)):
     g = personas.crear_grupo(db, actor, **datos.model_dump(), ip=ip_cliente(request))
-    return esq.GrupoSalida(id=g.id, nombre=g.nombre, cliente_contacto_id=g.cliente_contacto_id,
-                           observaciones=g.observaciones, solicitantes=[])
+    return _grupo(g, [])
 
 
 @router.patch('/grupos/{grupo_id}', response_model=esq.GrupoSalida)
@@ -114,10 +121,7 @@ def editar_grupo(grupo_id: int, datos: esq.GrupoEditar, request: Request,
                  db: Session = Depends(get_db)):
     g = personas.editar_grupo(db, actor, grupo_id, datos.model_dump(exclude_unset=True),
                               ip=ip_cliente(request))
-    return esq.GrupoSalida(id=g.id, nombre=g.nombre, cliente_contacto_id=g.cliente_contacto_id,
-                           observaciones=g.observaciones,
-                           solicitantes=[_solicitante(s) for s in
-                                         personas.solicitantes_de(db, grupo_id=g.id)])
+    return _grupo(g, [_solicitante(s) for s in personas.solicitantes_de(db, grupo_id=g.id)])
 
 
 @router.get('/solicitantes', response_model=list[esq.SolicitanteSalida])
@@ -149,6 +153,20 @@ def editar_solicitante(solicitante_id: int, datos: esq.SolicitanteEditar, reques
     return _solicitante(personas.editar_solicitante(db, actor, solicitante_id,
                                                     datos.model_dump(exclude_unset=True),
                                                     ip=ip_cliente(request)))
+
+
+@router.post('/solicitantes/{solicitante_id}/fusionar', response_model=esq.FusionSalida)
+def fusionar_solicitante(solicitante_id: int, datos: esq.FusionEntrada, request: Request,
+                         actor: Usuarios = Depends(requiere('solicitantes.eliminar')),
+                         db: Session = Depends(get_db)):
+    """Une dos registros de la misma persona dentro de un cliente (RF-002).
+
+    Exige el permiso de eliminar solicitantes, que hoy solo tiene la
+    administradora: unir mueve los trámites y el historial de una persona a la
+    otra, y RF-002 pide que la fusión sea autorizada.
+    """
+    return esq.FusionSalida(**duplicados.fusionar_solicitantes(
+        db, actor, solicitante_id, datos.absorbido_id, datos.criterio, ip=ip_cliente(request)))
 
 
 @router.get('/solicitantes/{solicitante_id}/pasaporte', response_model=esq.PasaporteSalida)

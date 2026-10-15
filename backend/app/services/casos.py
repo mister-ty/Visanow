@@ -182,7 +182,7 @@ def alcance_de(actor: Usuarios | None):
 
 
 def listar(db: Session, *, actor: Usuarios | None = None, estado: str | None = None,
-           responsable_id: int | None = None,
+           responsable_id: int | None = None, solicitante_id: int | None = None,
            pais_id: int | None = None, fuente: str | None = None, sin_asignar: bool = False,
            sin_venta: bool = False, incluir_finalizados: bool = False,
            texto: str | None = None, pagina: int = 1, tamano: int = 50) -> tuple[int, list[Casos]]:
@@ -200,6 +200,11 @@ def listar(db: Session, *, actor: Usuarios | None = None, estado: str | None = N
         consulta = consulta.where(EstadosOperativos.codigo == estado)
     if responsable_id:
         consulta = consulta.where(Casos.responsable_id == responsable_id)
+    # El historial de trámites de UNA persona (RF-004). Va después del alcance y
+    # no en su lugar: el trámite es de la persona, pero quién puede verlo sigue
+    # dependiendo de quién pregunta. Pedirlo por id no asciende a nadie.
+    if solicitante_id:
+        consulta = consulta.where(Casos.solicitante_id == solicitante_id)
     if sin_asignar:
         consulta = consulta.where(Casos.responsable_id.is_(None))
     if sin_venta:

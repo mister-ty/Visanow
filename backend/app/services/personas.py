@@ -132,10 +132,11 @@ def archivar(db: Session, actor: Usuarios, cliente_id: int, archivar_: bool,
 # -------------------------------------------------------------------- grupos
 
 def crear_grupo(db: Session, actor: Usuarios, *, nombre: str, cliente_contacto_id: int,
-                observaciones: str | None = None, ip: str | None = None) -> Grupos:
+                tipo: str = 'familiar', observaciones: str | None = None,
+                ip: str | None = None) -> Grupos:
     obtener(db, cliente_contacto_id)      # valida que el contacto exista y no esté fusionado
     grupo = Grupos(nombre=nombre.strip(), cliente_contacto_id=cliente_contacto_id,
-                   observaciones=observaciones)
+                   tipo=tipo, observaciones=observaciones)
     db.add(grupo)
     db.flush()
     auditar(db, operacion='insert', entidad='grupos', usuario_id=actor.id, entidad_id=grupo.id,
@@ -145,8 +146,12 @@ def crear_grupo(db: Session, actor: Usuarios, *, nombre: str, cliente_contacto_i
 
 
 def grupos_de(db: Session, cliente_id: int) -> list[Grupos]:
+    # El contacto se trae junto: la tarjeta del grupo dice quién contrata
+    # (RF-003) y pedirlo grupo por grupo serían tantas consultas como grupos.
     return list(db.scalars(select(Grupos).where(Grupos.cliente_contacto_id == cliente_id)
-                           .options(selectinload(Grupos.solicitantes)).order_by(Grupos.id)))
+                           .options(selectinload(Grupos.solicitantes),
+                                    selectinload(Grupos.cliente_contacto))
+                           .order_by(Grupos.id)))
 
 
 # --------------------------------------------------------------- solicitantes
@@ -217,7 +222,8 @@ def _mover(db: Session, solicitante: Solicitantes, cambios: dict) -> None:
 
 def editar_grupo(db: Session, actor: Usuarios, grupo_id: int, cambios: dict,
                  ip: str | None = None) -> Grupos:
-    """Corregir el nombre, las observaciones o quién es el contacto principal.
+    """Corregir el nombre, el tipo, las observaciones o quién es el contacto
+    principal.
 
     Hasta ahora el grupo era inmutable: un nombre mal escrito o un contacto
     equivocado no se podían arreglar desde el producto.
@@ -231,6 +237,8 @@ def editar_grupo(db: Session, actor: Usuarios, grupo_id: int, cambios: dict,
         grupo.cliente_contacto_id = cambios['cliente_contacto_id']
     if cambios.get('nombre'):
         grupo.nombre = cambios['nombre'].strip()
+    if cambios.get('tipo'):
+        grupo.tipo = cambios['tipo']
     if 'observaciones' in cambios:
         grupo.observaciones = cambios['observaciones']
     db.flush()
@@ -286,6 +294,18 @@ def editar_solicitante(db: Session, actor: Usuarios, solicitante_id: int, cambio
             antes=antes, despues=instantanea(solicitante), ip=ip)
     db.commit()
     return solicitante
+
+
+def integrantes(grupo: Grupos) -> list[Solicitantes]:
+    """Los integrantes vivos de un grupo (RF-003).
+
+    La relación `grupo.solicitantes` trae también a quien ya se unió a otra
+    persona: la fusión marca al absorbido y todas las consultas lo descartan,
+    pero una relación del ORM no sabe de eso. Sin este filtro, la persona que se
+    acabó de unir seguiría apareciendo en el grupo, que es justo lo que se
+    quería arreglar.
+    """
+    return [s for s in grupo.solicitantes if s.fusionado_en_id is None]
 
 
 def solicitantes_de(db: Session, *, cliente_id: int | None = None, grupo_id: int | None = None) -> list[Solicitantes]:

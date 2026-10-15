@@ -922,6 +922,7 @@ class ChecklistItems(Base):
 class Grupos(Base):
     __tablename__ = 'grupos'
     __table_args__ = (
+        CheckConstraint("tipo::text = ANY (ARRAY['familiar'::character varying, 'viaje'::character varying]::text[])", name='ck_grupos_tipo'),
         ForeignKeyConstraint(['cliente_contacto_id'], ['clientes.id'], name='grupos_cliente_contacto_id_fkey'),
         PrimaryKeyConstraint('id', name='grupos_pkey'),
         Index('ix_grupos_contacto', 'cliente_contacto_id'),
@@ -932,6 +933,7 @@ class Grupos(Base):
     nombre: Mapped[str] = mapped_column(String(160), nullable=False)
     cliente_contacto_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     creado_en: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False, server_default=text('now()'))
+    tipo: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'familiar'::character varying"))
     observaciones: Mapped[Optional[str]] = mapped_column(Text)
     origen_archivo: Mapped[Optional[str]] = mapped_column(String(80))
     origen_hoja: Mapped[Optional[str]] = mapped_column(String(60))
