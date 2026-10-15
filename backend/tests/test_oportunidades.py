@@ -398,9 +398,15 @@ def test_el_motivo_de_la_perdida_se_puede_leer(cliente, comercial, un_cliente):
 
 
 def test_corregir_un_lead_devuelve_el_dato_nuevo_y_no_el_de_antes(cliente, comercial, un_cliente):
-    """Un lead transcrito a la carrera se corrige. Si después de corregir la
-    pantalla sigue mostrando el dato viejo, quien corrigió cree que no se
-    guardó y lo vuelve a hacer."""
+    """Transcribir una hoja a la carrera produce leads con la fecha equivocada,
+    y eso se arregla corrigiendo el lead, no creándolo de nuevo. Lo que falta
+    comprobar es que lo que se devuelve después de corregir sea lo corregido: si
+    sale el dato de antes, quien corrigió cree que no se guardó y lo repite.
+
+    Lo que esta prueba sostiene es la fecha, que es lo que estaba roto. Que el
+    nombre del referido también se recalcule ya lo hacía SQLAlchemy sola al
+    cambiar la llave foránea; queda aquí de guardia, no como mérito.
+    """
     cab, _ = comercial
     uno = cliente.post('/api/v1/clientes', headers=cab,
                        json={'nombre': 'Ana Posada Vélez'}).json()

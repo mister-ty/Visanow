@@ -184,14 +184,11 @@ def editar(db: Session, actor: Usuarios, oportunidad_id: int, cambios: dict,
     for campo, valor in cambios.items():
         if campo in CAMPOS:
             setattr(o, campo, valor)
+    # Corregir la fecha de llegada es parte de transcribir: un lead que se
+    # digitó con el día equivocado se arregla, no se vuelve a crear.
     if cambios.get('fecha') is not None:
         o.creado_en = _llegada(cambios['fecha'])
     db.flush()
-    # Lo que se devuelve y lo que se audita salen de la base, no de lo que quedó
-    # en memoria: al corregir un id —el del referido, por ejemplo— el nombre que
-    # lo acompaña ya no es el de antes, y devolver el viejo hace que quien
-    # corrigió crea que no se guardó y lo vuelva a hacer.
-    db.expire(o)
     auditar(db, operacion='update', entidad='oportunidades', usuario_id=actor.id,
             entidad_id=o.id, antes=antes, despues=instantanea(o), ip=ip)
     db.commit()
