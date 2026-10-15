@@ -27,16 +27,24 @@ def _salida(db: Session, c: Casos) -> esq.CasoSalida:
 
 
 @router.get('/casos', response_model=esq.PaginaCasos)
-def listar(estado: str | None = None, responsable_id: int | None = None, pais_id: int | None = None,
+def listar(estado: str | None = None, responsable_id: int | None = None,
+           solicitante_id: int | None = None, pais_id: int | None = None,
            fuente: esq.Fuente | None = None, sin_asignar: bool = False, sin_venta: bool = False,
            incluir_finalizados: bool = False, texto: str | None = None, pagina: Pagina = 1, tamano: Tamano = 50,
            actor: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
-    """Tablero operativo (RF-022): por estado, responsable, país, origen y riesgo.
+    """Tablero operativo (RF-022): por estado, responsable, persona, país, origen
+    y riesgo.
+
+    Con `solicitante_id` responde el historial de trámites de una sola persona,
+    que es lo que pide RF-004: la familia compra junta, pero cada quien tiene su
+    trámite y su resultado.
 
     Lo que devuelve depende del alcance del usuario (RNF-03): quien tiene «solo
-    casos asignados» ve los suyos aunque no filtre por responsable."""
+    casos asignados» ve los suyos aunque no filtre por responsable, y pedir una
+    persona por su id no se lo salta."""
     total, filas = servicio.listar(db, actor=actor, estado=estado,
-                                   responsable_id=responsable_id, pais_id=pais_id,
+                                   responsable_id=responsable_id, solicitante_id=solicitante_id,
+                                   pais_id=pais_id,
                                    fuente=fuente, sin_asignar=sin_asignar, sin_venta=sin_venta,
                                    incluir_finalizados=incluir_finalizados, texto=texto,
                                    pagina=pagina, tamano=tamano)

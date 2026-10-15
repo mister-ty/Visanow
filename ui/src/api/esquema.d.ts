@@ -212,10 +212,16 @@ export interface paths {
         };
         /**
          * Listar
-         * @description Tablero operativo (RF-022): por estado, responsable, país, origen y riesgo.
+         * @description Tablero operativo (RF-022): por estado, responsable, persona, país, origen
+         *     y riesgo.
+         *
+         *     Con `solicitante_id` responde el historial de trámites de una sola persona,
+         *     que es lo que pide RF-004: la familia compra junta, pero cada quien tiene su
+         *     trámite y su resultado.
          *
          *     Lo que devuelve depende del alcance del usuario (RNF-03): quien tiene «solo
-         *     casos asignados» ve los suyos aunque no filtre por responsable.
+         *     casos asignados» ve los suyos aunque no filtre por responsable, y pedir una
+         *     persona por su id no se lo salta.
          */
         get: operations["listar_api_v1_casos_get"];
         put?: never;
@@ -642,6 +648,30 @@ export interface paths {
         head?: never;
         /** Editar Solicitante */
         patch: operations["editar_solicitante_api_v1_solicitantes__solicitante_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/solicitantes/{solicitante_id}/fusionar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fusionar Solicitante
+         * @description Une dos registros de la misma persona dentro de un cliente (RF-002).
+         *
+         *     Exige el permiso de eliminar solicitantes, que hoy solo tiene la
+         *     administradora: unir mueve los trámites y el historial de una persona a la
+         *     otra, y RF-002 pide que la fusión sea autorizada.
+         */
+        post: operations["fusionar_solicitante_api_v1_solicitantes__solicitante_id__fusionar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/solicitantes/{solicitante_id}/pasaporte": {
@@ -1381,6 +1411,10 @@ export interface paths {
          *
          *     Lo que devuelve depende del alcance del usuario (RNF-03): una comercial con
          *     alcance «propios» ve sus oportunidades aunque no filtre por asesor.
+         *
+         *     `pagina` y `tamano` tienen límites: una página cero daba un OFFSET negativo
+         *     y con él un error de PostgreSQL, que en pantalla se ve como «error del
+         *     servidor» sin decir qué pasó.
          */
         get: operations["listar_api_v1_oportunidades_get"];
         put?: never;
@@ -1402,6 +1436,14 @@ export interface paths {
         /**
          * Embudo
          * @description Cuántas oportunidades y cuánto dinero hay en cada paso: el Kanban en números.
+         *
+         *     Acepta los mismos filtros que la lista, y por eso: el encabezado de cada
+         *     columna del tablero muestra el total en pesos al lado del conteo de
+         *     tarjetas, y si el dinero no obedece el filtro la pantalla da dos respuestas
+         *     distintas a la misma pregunta.
+         *
+         *     El estado no se filtra acá porque en el tablero el estado es la columna, y
+         *     las cerradas tampoco: cada oportunidad cuenta en el paso en que está.
          */
         get: operations["embudo_api_v1_oportunidades_embudo_get"];
         put?: never;
@@ -4110,6 +4152,13 @@ export interface components {
             nombre: string;
             /** Cliente Contacto Id */
             cliente_contacto_id: number;
+            /**
+             * Tipo
+             * @description Familiar o de viaje. Si no se dice, familiar: es el caso de siempre en VisaNow
+             * @default familiar
+             * @enum {string}
+             */
+            tipo: "familiar" | "viaje";
             /** Observaciones */
             observaciones?: string | null;
         };
@@ -4122,6 +4171,8 @@ export interface components {
              * @description Quién contrata por el grupo
              */
             cliente_contacto_id?: number | null;
+            /** Tipo */
+            tipo?: ("familiar" | "viaje") | null;
             /** Observaciones */
             observaciones?: string | null;
         };
@@ -4131,8 +4182,16 @@ export interface components {
             id: number;
             /** Nombre */
             nombre: string;
+            /**
+             * Tipo
+             * @default familiar
+             * @enum {string}
+             */
+            tipo: "familiar" | "viaje";
             /** Cliente Contacto Id */
             cliente_contacto_id: number;
+            /** Contacto Nombre */
+            contacto_nombre?: string | null;
             /** Observaciones */
             observaciones: string | null;
             /**
@@ -4648,6 +4707,11 @@ export interface components {
             /** Cliente Id */
             cliente_id: number;
             /**
+             * Fecha
+             * @description Cuándo llegó el lead. Vacía: hoy
+             */
+            fecha?: string | null;
+            /**
              * Servicio Id
              * @description Qué le interesa
              */
@@ -4659,7 +4723,10 @@ export interface components {
              * @description Por dónde llegó
              */
             canal_id?: number | null;
-            /** Campania Id */
+            /**
+             * Campania Id
+             * @description La campaña del catálogo
+             */
             campania_id?: number | null;
             /**
              * Campania
@@ -4685,6 +4752,11 @@ export interface components {
         };
         /** OportunidadEditar */
         OportunidadEditar: {
+            /**
+             * Fecha
+             * @description Cuándo llegó el lead. Vacía: hoy
+             */
+            fecha?: string | null;
             /** Servicio Id */
             servicio_id?: number | null;
             /** Pais Id */
@@ -4756,6 +4828,13 @@ export interface components {
             campania_id: number | null;
             /** Campania */
             campania: string | null;
+            /** Referido Por Cliente Id */
+            referido_por_cliente_id: number | null;
+            /**
+             * Referido Por
+             * @description El nombre de quien lo recomendó
+             */
+            referido_por?: string | null;
             /** Valor Estimado */
             valor_estimado: number | null;
             /** Proxima Accion */
@@ -4768,9 +4847,16 @@ export interface components {
             ultimo_contacto_en: string | null;
             /** Motivo Perdida Id */
             motivo_perdida_id: number | null;
+            /** Motivo Perdida */
+            motivo_perdida?: string | null;
+            /** Motivo Perdida Nombre */
+            motivo_perdida_nombre?: string | null;
+            /** Motivo Perdida Nota */
+            motivo_perdida_nota?: string | null;
             /**
              * Creado En
              * Format: date-time
+             * @description Cuándo llegó el lead
              */
             creado_en: string;
             /** Cerrado En */
@@ -6288,6 +6374,7 @@ export interface operations {
             query?: {
                 estado?: string | null;
                 responsable_id?: number | null;
+                solicitante_id?: number | null;
                 pais_id?: number | null;
                 fuente?: ("saas" | "manual" | "hibrido") | null;
                 sin_asignar?: boolean;
@@ -7217,6 +7304,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SolicitanteSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fusionar_solicitante_api_v1_solicitantes__solicitante_id__fusionar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solicitante_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FusionEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FusionSalida"];
                 };
             };
             /** @description Validation Error */
@@ -8373,6 +8495,7 @@ export interface operations {
                 canal_id?: number | null;
                 servicio_id?: number | null;
                 campania_id?: number | null;
+                /** @description También las ganadas y las perdidas */
                 incluir_cerradas?: boolean;
                 /** @description Sin contacto hace más de N días */
                 frias_desde?: number | null;
@@ -8441,7 +8564,15 @@ export interface operations {
     };
     embudo_api_v1_oportunidades_embudo_get: {
         parameters: {
-            query?: never;
+            query?: {
+                asesor_id?: number | null;
+                canal_id?: number | null;
+                servicio_id?: number | null;
+                campania_id?: number | null;
+                /** @description Sin contacto hace más de N días */
+                frias_desde?: number | null;
+                texto?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8455,6 +8586,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PasoEmbudo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

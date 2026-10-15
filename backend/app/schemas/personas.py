@@ -4,6 +4,11 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field
 
 Criterio = Literal['documento', 'pasaporte', 'telefono', 'email', 'nombre', 'manual']
+#: RF-003 nombra dos clases de grupo y son las dos que existen. Se escriben acá
+#: para que un tipo mal digitado se devuelva como error en vez de guardarse: con
+#: el tipo en texto libre, mañana habría «Familiar», «fam» y «familia» y el
+#: conteo por tipo no se podría hacer.
+TipoGrupo = Literal['familiar', 'viaje']
 
 
 class ClienteBase(BaseModel):
@@ -70,7 +75,11 @@ class SolicitanteSalida(BaseModel):
 class GrupoSalida(BaseModel):
     id: int
     nombre: str
+    tipo: TipoGrupo = 'familiar'
     cliente_contacto_id: int
+    # El id del contacto no le dice nada a nadie: con dos grupos en una ficha,
+    # sin el nombre no se sabe a nombre de quién va cada uno (RF-003).
+    contacto_nombre: str | None = None
     observaciones: str | None
     solicitantes: list[SolicitanteSalida] = []
 
@@ -94,6 +103,9 @@ class PaginaClientes(BaseModel):
 class GrupoCrear(BaseModel):
     nombre: str = Field(min_length=2, max_length=160)
     cliente_contacto_id: int
+    tipo: TipoGrupo = Field(default='familiar',
+                            description='Familiar o de viaje. Si no se dice, familiar: '
+                                        'es el caso de siempre en VisaNow')
     observaciones: str | None = None
 
 
@@ -170,4 +182,5 @@ class PasaporteSalida(BaseModel):
 class GrupoEditar(BaseModel):
     nombre: str | None = Field(default=None, min_length=2, max_length=120)
     cliente_contacto_id: int | None = Field(default=None, description='Quién contrata por el grupo')
+    tipo: TipoGrupo | None = None
     observaciones: str | None = None

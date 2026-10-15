@@ -1,8 +1,9 @@
 import {
-  ActionIcon, Alert, Anchor, Badge, Button, Card, Center, Group, Loader, Modal, Select,
+  ActionIcon, Alert, Anchor, Badge, Button, Card, Center, Checkbox, Group, Loader, Modal, Select,
   SimpleGrid, Stack, Table, Text, Textarea, TextInput, Timeline, Title, Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
+import { useDebouncedValue } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -26,6 +27,11 @@ type Solicitante = Esquemas['SolicitanteSalida']
 type Grupo = Esquemas['GrupoSalida']
 
 const RELACIONES = ['titular', 'cónyuge', 'hijo', 'hija', 'padre', 'madre', 'otro']
+/** RF-003 nombra estas dos clases de grupo y son las dos que acepta la API. */
+const TIPOS_GRUPO = [
+  { value: 'familiar', label: 'Familiar' },
+  { value: 'viaje', label: 'De viaje' },
+]
 
 export function ClienteFicha() {
   const { id } = useParams()
@@ -39,6 +45,7 @@ export function ClienteFicha() {
   const [anotando, setAnotando] = useState(false)
   const [editandoPersona, setEditandoPersona] = useState<Solicitante | null>(null)
   const [moviendo, setMoviendo] = useState<Solicitante | null>(null)
+  const [uniendo, setUniendo] = useState<Solicitante | null>(null)
   const [editandoGrupo, setEditandoGrupo] = useState<Grupo | null>(null)
   const catalogosFicha = useCatalogos()
 
@@ -87,6 +94,9 @@ export function ClienteFicha() {
   if (ficha.isError) return <Alert color="red">No se pudo abrir la ficha. {String(ficha.error)}</Alert>
   const f = ficha.data
   const c = f.cliente
+  // Unir dos personas mueve trámites: lo autoriza quien puede eliminarlas, que
+  // hoy es solo la administradora (RF-002).
+  const puedeUnir = puede('solicitantes.eliminar') && c.solicitantes.length > 1
 
   return (
     <Stack maw={980}>
@@ -227,8 +237,17 @@ export function ClienteFicha() {
         {c.grupos.map((g) => (
           <Card key={g.id} withBorder padding="sm" mt="sm" bg="gray.0">
             <Group justify="space-between" mb="xs">
-              <Text size="sm" fw={600}>{g.nombre}</Text>
+              <div>
+                <Text size="sm" fw={600}>{g.nombre}</Text>
+                {/* Quién contrata es parte de RF-003 y la tarjeta no lo decía:
+                    con dos grupos en la ficha no se sabía a nombre de quién iba
+                    cada uno. */}
+                <Text size="xs" c="dimmed">Contrata {g.contacto_nombre ?? '—'}</Text>
+              </div>
               <Group gap="xs">
+                <Badge variant="light" size="sm" color={g.tipo === 'viaje' ? 'indigo' : 'teal'}>
+                  {g.tipo === 'viaje' ? 'De viaje' : 'Familiar'}
+                </Badge>
                 <Badge variant="light" size="sm">{g.solicitantes.length} persona(s)</Badge>
                 {puede('solicitantes.editar') && (
                   <Tooltip label="Corregir el nombre o quién contrata">
@@ -243,7 +262,8 @@ export function ClienteFicha() {
             </Group>
             <TablaSolicitantes solicitantes={g.solicitantes} tramitar={setTramitando}
               puedeTramitar={puede('casos.crear')} puedeEditar={puede('solicitantes.editar')}
-              editar={setEditandoPersona} mover={setMoviendo} />
+              editar={setEditandoPersona} mover={setMoviendo}
+              unir={setUniendo} puedeUnir={puedeUnir} tramites={f.ve_tramites ? f.tramites : undefined} />
           </Card>
         ))}
 
@@ -254,7 +274,8 @@ export function ClienteFicha() {
               <Text size="sm" fw={600} mb="xs">Sin grupo</Text>
               <TablaSolicitantes solicitantes={sueltos} tramitar={setTramitando}
                 puedeTramitar={puede('casos.crear')} puedeEditar={puede('solicitantes.editar')}
-                editar={setEditandoPersona} mover={setMoviendo} />
+                editar={setEditandoPersona} mover={setMoviendo}
+                unir={setUniendo} puedeUnir={puedeUnir} tramites={f.ve_tramites ? f.tramites : undefined} />
             </Card>
           )
         })()}
@@ -268,7 +289,8 @@ export function ClienteFicha() {
         cerrar={() => setAnotando(false)} guardado={refrescar} />
       <FormularioEditar cliente={c} abierto={editando} cerrar={() => setEditando(false)} guardado={refrescar} />
       <FormularioGrupo clienteId={clienteId} abierto={nuevoGrupo} cerrar={() => setNuevoGrupo(false)} creado={refrescar} />
-      <FormularioSolicitante destino={agregarA} cerrar={() => setAgregarA(null)} creado={refrescar} />
+      <FormularioSolicitante destino={agregarA} clienteId={clienteId}
+        cerrar={() => setAgregarA(null)} creado={refrescar} />
       <FormularioTramite solicitante={tramitando} cerrar={() => setTramitando(null)} />
       <FormularioEditarPersona solicitante={editandoPersona}
         cerrar={() => setEditandoPersona(null)} guardado={refrescar} />
@@ -278,6 +300,8 @@ export function ClienteFicha() {
         grupos={c.grupos} cerrar={() => setMoviendo(null)} guardado={refrescar} />
       <FormularioEditarGrupo grupo={editandoGrupo} cerrar={() => setEditandoGrupo(null)}
         guardado={refrescar} />
+      <FormularioUnirPersonas key={uniendo?.id ?? 'ninguna'} conservada={uniendo}
+        personas={c.solicitantes} cerrar={() => setUniendo(null)} guardado={refrescar} />
     </Stack>
   )
 }
@@ -293,9 +317,16 @@ const Dato = ({ titulo, valor }: { titulo: string; valor: string | null | undefi
   </div>
 )
 
-function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar, editar, mover }: {
+function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar, editar, mover,
+                             unir, puedeUnir, tramites }: {
   solicitantes: Solicitante[]
   tramitar: (s: Solicitante) => void
+  unir: (s: Solicitante) => void
+  puedeUnir: boolean
+  /** Los trámites del cliente, para contar los de cada persona. `undefined`
+   *  cuando a quien mira no se le muestran: la columna entonces no sale, para
+   *  no enseñar un cero que se leería como «esta persona no tiene trámites». */
+  tramites?: Esquemas['CasoSalida'][]
   puedeTramitar: boolean
   puedeEditar: boolean
   editar: (s: Solicitante) => void
@@ -324,13 +355,23 @@ function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar,
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Persona</Table.Th><Table.Th>Relación</Table.Th>
-            <Table.Th>Documento</Table.Th><Table.Th>Pasaporte</Table.Th><Table.Th w={130} />
+            <Table.Th>Documento</Table.Th><Table.Th>Pasaporte</Table.Th>
+            {tramites && <Table.Th>Trámites</Table.Th>}
+            <Table.Th w={160} />
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {solicitantes.map((s) => (
             <Table.Tr key={s.id}>
-              <Table.Td><Text size="sm">{s.nombre}</Text></Table.Td>
+              <Table.Td>
+                <Text size="sm">{s.nombre}</Text>
+                {/* Los datos propios de la persona. Existían en la base y no se
+                    veían en ninguna pantalla (RF-004). */}
+                {(s.fecha_nacimiento || s.telefono || s.email) && (
+                  <Text size="xs" c="dimmed">
+                    {[s.fecha_nacimiento, s.telefono, s.email].filter(Boolean).join(' · ')}
+                  </Text>)}
+              </Table.Td>
               <Table.Td><Text size="sm" c="dimmed">{s.relacion_con_cliente ?? '—'}</Text></Table.Td>
               <Table.Td><Text size="sm">{s.numero_documento ?? '—'}</Text></Table.Td>
               <Table.Td>
@@ -346,6 +387,12 @@ function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar,
                   </Group>
                 ) : <Text size="sm" c="dimmed">—</Text>}
               </Table.Td>
+              {tramites && (
+                <Table.Td>
+                  {/* Cada persona con los suyos, aunque la venta y el pago sean
+                      del grupo (RF-004). */}
+                  <Text size="sm">{tramites.filter((t) => t.solicitante_id === s.id).length}</Text>
+                </Table.Td>)}
               <Table.Td>
                 <Group gap={4} justify="flex-end" wrap="nowrap">
                   {puedeEditar && (
@@ -359,6 +406,11 @@ function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar,
                           onClick={() => mover(s)}><IconArrowsExchange size={13} /></ActionIcon>
                       </Tooltip>
                     </>)}
+                  {puedeUnir && (
+                    <Tooltip label="Unir a esta persona otra repetida">
+                      <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Unir personas"
+                        onClick={() => unir(s)}><IconUsersGroup size={13} /></ActionIcon>
+                    </Tooltip>)}
                   {puedeTramitar && (
                     <Button size="compact-xs" variant="light" leftSection={<IconPlaneDeparture size={12} />}
                       onClick={() => tramitar(s)}>Nuevo trámite</Button>)}
@@ -417,10 +469,13 @@ function FormularioEditar({ cliente, abierto, cerrar, guardado }: {
 function FormularioGrupo({ clienteId, abierto, cerrar, creado }: {
   clienteId: number; abierto: boolean; cerrar: () => void; creado: () => void
 }) {
-  const formulario = useForm({ initialValues: { nombre: '', observaciones: '' } })
+  const formulario = useForm({
+    initialValues: { nombre: '', tipo: 'familiar', observaciones: '' },
+  })
   const crear = useMutation({
     mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/grupos', {
-      body: { nombre: v.nombre, cliente_contacto_id: clienteId, observaciones: v.observaciones || null },
+      body: { nombre: v.nombre, cliente_contacto_id: clienteId,
+              tipo: v.tipo as 'familiar', observaciones: v.observaciones || null },
     })),
     onSuccess: () => { formulario.reset(); creado(); cerrar() },
     onError: (e) => mostrarError(e, 'No se pudo crear el grupo'),
@@ -432,6 +487,9 @@ function FormularioGrupo({ clienteId, abierto, cerrar, creado }: {
           <TextInput label="Nombre del grupo" placeholder="Familia Basante Díaz" data-autofocus
             description="Este cliente queda como contacto del grupo."
             {...formulario.getInputProps('nombre')} />
+          <Select label="¿Qué clase de grupo es?" data={TIPOS_GRUPO} allowDeselect={false}
+            description="La familia renueva junta y viaja con menores; el grupo de viaje es una vez"
+            {...formulario.getInputProps('tipo')} />
           <TextInput label="Observaciones" {...formulario.getInputProps('observaciones')} />
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
@@ -443,23 +501,48 @@ function FormularioGrupo({ clienteId, abierto, cerrar, creado }: {
   )
 }
 
-function FormularioSolicitante({ destino, cerrar, creado }: {
-  destino: { grupo_id?: number; cliente_id?: number } | null; cerrar: () => void; creado: () => void
+function FormularioSolicitante({ destino, clienteId, cerrar, creado }: {
+  destino: { grupo_id?: number; cliente_id?: number } | null; clienteId: number
+  cerrar: () => void; creado: () => void
 }) {
   const formulario = useForm({
     initialValues: { nombre: '', tipo_documento: '', numero_documento: '', pasaporte: '',
+                     fecha_nacimiento: '', telefono: '', email: '',
                      nacionalidad: '', relacion_con_cliente: '' },
     validate: { nombre: (v) => (v.trim().length >= 2 ? null : 'Escriba el nombre') },
   })
+  const [datos] = useDebouncedValue(formulario.values, 400)
+  const [confirmado, setConfirmado] = useState(false)
+
+  // El pasaporte entra en la detección ANTES de guardar (RF-002). Hasta ahora
+  // solo se comparaba cuando la ficha ya existía: al registrar, lo único que
+  // avisaba era el índice único con un «ese pasaporte ya está», que no dice de
+  // quién es ni deja ver la ficha parecida.
+  //
+  // Se excluye esta misma ficha: el solicitante casi siempre se llama igual que
+  // el cliente del que cuelga, y avisarlo sería pedir confirmación de que una
+  // persona no es ella misma.
+  const posibles = useQuery({
+    queryKey: ['duplicados-persona', clienteId, datos.nombre, datos.numero_documento,
+               datos.pasaporte, datos.telefono, datos.email],
+    queryFn: () => exigir(api.POST('/api/v1/clientes/verificar-duplicados', {
+      body: { nombre: datos.nombre, numero_documento: datos.numero_documento || undefined,
+              pasaporte: datos.pasaporte || undefined, telefono: datos.telefono || undefined,
+              email: datos.email || undefined, excluir_id: clienteId },
+    })),
+    enabled: destino !== null && datos.nombre.trim().length >= 3,
+  })
+  const hayFuerte = (posibles.data ?? []).some((c) => c.confianza === 'alta')
+
   const crear = useMutation({
     mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/solicitantes', {
       body: { ...destino, ...Object.fromEntries(Object.entries(v).filter(([, x]) => x !== '')) } as never,
     })),
-    onSuccess: () => { formulario.reset(); creado(); cerrar() },
+    onSuccess: () => { formulario.reset(); setConfirmado(false); creado(); cerrar() },
     onError: (e) => mostrarError(e, 'No se pudo agregar'),
   })
   return (
-    <Modal opened={destino !== null} onClose={cerrar} title="Agregar persona al trámite">
+    <Modal opened={destino !== null} onClose={cerrar} title="Agregar persona al trámite" size="lg">
       <form onSubmit={formulario.onSubmit((v) => crear.mutate(v))}>
         <Stack>
           <TextInput label="Nombre completo" data-autofocus {...formulario.getInputProps('nombre')} />
@@ -472,10 +555,31 @@ function FormularioSolicitante({ destino, cerrar, creado }: {
               {...formulario.getInputProps('pasaporte')} />
             <Select label="Relación" data={RELACIONES} clearable {...formulario.getInputProps('relacion_con_cliente')} />
           </Group>
-          <TextInput label="Nacionalidad" {...formulario.getInputProps('nacionalidad')} />
+          {/* Datos de la persona, no del cliente: el consulado cita a cada
+              quien por su cuenta, así que el teléfono y el correo del hijo que
+              estudia afuera no son los de la mamá que contrata (RF-004). */}
+          <Group grow>
+            <TextInput label="Fecha de nacimiento" type="date"
+              {...formulario.getInputProps('fecha_nacimiento')} />
+            <TextInput label="Nacionalidad" {...formulario.getInputProps('nacionalidad')} />
+          </Group>
+          <Group grow>
+            <TextInput label="Teléfono" placeholder="3105177800"
+              description="El de esta persona, si es distinto al del cliente"
+              {...formulario.getInputProps('telefono')} />
+            <TextInput label="Correo" type="email" {...formulario.getInputProps('email')} />
+          </Group>
+
+          <AvisoDuplicados coincidencias={posibles.data} cargando={posibles.isFetching} />
+          {hayFuerte && (
+            <Checkbox color="red" checked={confirmado} onChange={(e) => setConfirmado(e.currentTarget.checked)}
+              label="Revisé las fichas parecidas y confirmo que es una persona distinta" />
+          )}
+
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
-            <Button type="submit" loading={crear.isPending}>Agregar</Button>
+            <Button type="submit" loading={crear.isPending}
+              disabled={hayFuerte && !confirmado}>Agregar</Button>
           </Group>
         </Stack>
       </form>
@@ -762,6 +866,7 @@ function FormularioEditarPersona({ solicitante, cerrar, guardado }: {
 }) {
   const formulario = useForm({
     initialValues: { nombre: '', tipo_documento: '', numero_documento: '', pasaporte: '',
+                     fecha_nacimiento: '', telefono: '', email: '',
                      nacionalidad: '', relacion_con_cliente: '', observaciones: '' },
   })
   useEffect(() => {
@@ -769,6 +874,8 @@ function FormularioEditarPersona({ solicitante, cerrar, guardado }: {
     formulario.setValues({
       nombre: solicitante.nombre, tipo_documento: solicitante.tipo_documento ?? '',
       numero_documento: solicitante.numero_documento ?? '', pasaporte: '',
+      fecha_nacimiento: solicitante.fecha_nacimiento ?? '',
+      telefono: solicitante.telefono ?? '', email: solicitante.email ?? '',
       nacionalidad: solicitante.nacionalidad ?? '',
       relacion_con_cliente: solicitante.relacion_con_cliente ?? '',
       observaciones: solicitante.observaciones ?? '',
@@ -807,6 +914,18 @@ function FormularioEditarPersona({ solicitante, cerrar, guardado }: {
             <Select label="Relación" data={RELACIONES} clearable
               {...formulario.getInputProps('relacion_con_cliente')} />
           </Group>
+          {/* Los datos propios de la persona (RF-004). Existían en la API desde
+              el principio y no había dónde escribirlos: hoy no hay ni un
+              solicitante con fecha de nacimiento, que es lo primero que pide el
+              consulado para un menor. */}
+          <Group grow>
+            <TextInput label="Fecha de nacimiento" type="date"
+              {...formulario.getInputProps('fecha_nacimiento')} />
+            <TextInput label="Teléfono" {...formulario.getInputProps('telefono')} />
+          </Group>
+          <TextInput label="Correo" type="email"
+            description="El de esta persona, si es distinto al del cliente"
+            {...formulario.getInputProps('email')} />
           <TextInput label="Observaciones" {...formulario.getInputProps('observaciones')} />
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
@@ -866,21 +985,104 @@ function FormularioMover({ solicitante, clienteId, grupos, cerrar, guardado }: {
     </Modal>)
 }
 
+/**
+ * Unir dos registros de la misma persona (RF-002).
+ *
+ * La misma persona entra dos veces —una al cotizar, de memoria, y otra cuando
+ * llega el pasaporte— y cada copia se queda con un pedazo de la historia. Antes
+ * la única salida era borrar una, que es perder su trámite.
+ *
+ * Solo entre personas del mismo cliente: a través de clientes movería los
+ * trámites de una ficha a otra y la primera se quedaría sin ellos.
+ */
+function FormularioUnirPersonas({ conservada, personas, cerrar, guardado }: {
+  conservada: Solicitante | null; personas: Solicitante[]
+  cerrar: () => void; guardado: () => void
+}) {
+  const [absorbida, setAbsorbida] = useState<string | null>(null)
+  const candidatas = personas.filter((s) => s.id !== conservada?.id)
+
+  const unir = useMutation({
+    mutationFn: () => exigir(api.POST('/api/v1/solicitantes/{solicitante_id}/fusionar', {
+      params: { path: { solicitante_id: conservada!.id } },
+      body: { absorbido_id: Number(absorbida), criterio: 'manual' },
+    })),
+    onSuccess: (r) => {
+      const movidos = Object.entries(r.movidos).map(([t, n]) => `${n} ${t}`).join(', ')
+      notifications.show({ color: 'teal', title: 'Personas unidas',
+        message: movidos ? `Se trasladaron ${movidos}.` : 'No había registros que trasladar.' })
+      guardado(); cerrar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudieron unir'),
+  })
+
+  return (
+    <Modal opened={conservada !== null} onClose={cerrar}
+      title={`Unir otra persona a ${conservada?.nombre ?? ''}`}>
+      <Stack>
+        <Select label="¿Cuál es la repetida?" data-autofocus
+          data={candidatas.map((s) => ({ value: String(s.id), label: s.nombre }))}
+          value={absorbida} onChange={(v) => setAbsorbida(v === null ? null : String(v))}
+          description="Sus trámites, sus documentos y su pasaporte pasan a la persona que queda" />
+        {candidatas.length === 0 && (
+          <Alert color="gray" variant="light">Esta ficha solo tiene una persona.</Alert>)}
+        <Alert color="yellow" variant="light">
+          La repetida queda archivada y sale de la ficha. Queda registro de qué se unió y por qué,
+          pero no se puede deshacer.
+        </Alert>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={cerrar}>Cancelar</Button>
+          <Button color="red" disabled={!absorbida} loading={unir.isPending}
+            onClick={() => unir.mutate()}>Unir</Button>
+        </Group>
+      </Stack>
+    </Modal>)
+}
+
 /** Corregir el grupo. «Quién contrata» es el verbo que pide RF-003 y hasta
  *  ahora quedaba fijo en quien lo creó. */
 function FormularioEditarGrupo({ grupo, cerrar, guardado }: {
   grupo: Grupo | null; cerrar: () => void; guardado: () => void
 }) {
-  const formulario = useForm({ initialValues: { nombre: '', observaciones: '' } })
+  const formulario = useForm({
+    initialValues: { nombre: '', tipo: 'familiar', cliente_contacto_id: '', observaciones: '' },
+  })
   useEffect(() => {
-    if (grupo) formulario.setValues({ nombre: grupo.nombre, observaciones: grupo.observaciones ?? '' })
+    if (grupo) formulario.setValues({
+      nombre: grupo.nombre, tipo: grupo.tipo,
+      cliente_contacto_id: String(grupo.cliente_contacto_id),
+      observaciones: grupo.observaciones ?? '',
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grupo?.id])
+
+  // Quién contrata se busca escribiendo: son casi novecientas personas y un
+  // desplegable con todas no se puede usar.
+  const [texto, setTexto] = useState('')
+  const [busqueda] = useDebouncedValue(texto, 300)
+  const candidatos = useQuery({
+    queryKey: ['clientes', 'contacto-de-grupo', busqueda],
+    queryFn: () => exigir(api.GET('/api/v1/clientes', {
+      params: { query: { texto: busqueda || undefined, tamano: 20 } },
+    })),
+    enabled: grupo !== null,
+  })
+  // El contacto actual va siempre, aunque la búsqueda no lo traiga: si no, el
+  // desplegable se vería vacío y guardar lo cambiaría sin que nadie lo pidiera.
+  const opciones = [
+    ...(grupo ? [{ value: String(grupo.cliente_contacto_id),
+                   label: grupo.contacto_nombre ?? 'El contacto de ahora' }] : []),
+    ...(candidatos.data?.items ?? [])
+      .filter((c) => c.id !== grupo?.cliente_contacto_id)
+      .map((c) => ({ value: String(c.id), label: c.nombre })),
+  ]
 
   const guardar = useMutation({
     mutationFn: (v: typeof formulario.values) => exigir(api.PATCH('/api/v1/grupos/{grupo_id}', {
       params: { path: { grupo_id: grupo!.id } },
-      body: { nombre: v.nombre, observaciones: v.observaciones || null },
+      body: { nombre: v.nombre, tipo: v.tipo as 'familiar',
+              cliente_contacto_id: Number(v.cliente_contacto_id),
+              observaciones: v.observaciones || null },
     })),
     onSuccess: () => {
       notifications.show({ color: 'teal', message: 'Grupo corregido' })
@@ -894,6 +1096,13 @@ function FormularioEditarGrupo({ grupo, cerrar, guardado }: {
       <form onSubmit={formulario.onSubmit((v) => guardar.mutate(v))}>
         <Stack>
           <TextInput label="Nombre del grupo" data-autofocus {...formulario.getInputProps('nombre')} />
+          <Select label="¿Qué clase de grupo es?" data={TIPOS_GRUPO} allowDeselect={false}
+            {...formulario.getInputProps('tipo')} />
+          <Select label="Quién contrata" data={opciones} searchable allowDeselect={false}
+            description="El grupo pasa a la ficha de quien contrate, con sus personas"
+            searchValue={texto} onSearchChange={setTexto}
+            nothingFoundMessage={busqueda ? 'Ningún cliente con ese nombre' : undefined}
+            {...formulario.getInputProps('cliente_contacto_id')} />
           <TextInput label="Observaciones" {...formulario.getInputProps('observaciones')} />
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
