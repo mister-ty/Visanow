@@ -22,9 +22,14 @@ from sqlalchemy.orm import Session
 
 from app.core.errores import Invalido, Prohibido
 from app.models.esquema import Usuarios
+from app.services.casos import DIAS_RIESGO_ALTO
 from app.services.usuarios import permisos_de_rol
 
 TABLEROS = ('comercial', 'operativo', 'financiero', 'ejecutivo')
+# El umbral de «quieto» se importa de la lista de trámites (services/casos.py) y
+# no se escribe aquí: es el mismo número que la persona que trabaja el caso ve
+# cada día al lado de su fila.
+QUIETO = f"ca.ultima_actividad_en <= now() - interval '{DIAS_RIESGO_ALTO} days'"
 # Los que suman plata de la agencia: vendido, recaudado, cartera, vencido.
 CON_PLATA = ('financiero', 'ejecutivo')
 # Un día de Bogotá a partir de un instante guardado con zona
@@ -171,18 +176,25 @@ def _operativo(db: Session, f: Filtros) -> Tablero:
     if f.estado:
         c.append('e.codigo = :e')
         p['e'] = f.estado
+    # El join a negocios va por FUERA. El sistema permite abrir un trámite sin
+    # venta registrada —la operación y el dinero viven hoy en archivos distintos,
+    # y al migrar hay trámites sin venta—, y con un join por dentro este tablero
+    # los dejaba fuera de todas sus cuentas: la administradora leía menos
+    # trámites de los que su equipo estaba atendiendo, sin que nada lo avisara.
     union = """from casos ca join estados_operativos e on e.id = ca.estado_id
-               join negocios n on n.id = ca.negocio_id"""
+               left join negocios n on n.id = ca.negocio_id"""
     abiertos = ['e.es_final = false'] + c
     total, activos, sin_resp = db.execute(text(f"""
         select count(*), count(*) filter (where not e.es_final),
                count(*) filter (where not e.es_final and ca.responsable_id is null)
         {union} {_donde(c)}"""), p).first()
-    # «En riesgo»: abierto y sin actividad hace más de 15 días. El umbral sale de
-    # la operación: pasada una quincena sin moverse, la cita o el pago ya se enfriaron.
+    # «En riesgo» es la MISMA cuenta que la lista de trámites. Había dos
+    # definiciones —cinco días en la lista, quince en este tablero—, así que un
+    # trámite quieto hace una semana salía en rojo en la pantalla de quien lo
+    # trabaja y no estaba contado en este número. Dos números que se contradicen
+    # hacen que no se crea ninguno.
     riesgo = db.scalar(text(f"""
-        select count(*) {union}
-         {_donde(abiertos + ["ca.ultima_actividad_en < now() - interval '15 days'"])}"""), p)
+        select count(*) {union} {_donde(abiertos + [QUIETO])}"""), p)
     por_estado = _filas(db, f"""
         select e.nombre, count(*),
                coalesce(round(avg(extract(epoch from now() - ca.ultima_actividad_en) / 86400)), 0)
@@ -199,7 +211,7 @@ def _operativo(db: Session, f: Filtros) -> Tablero:
     return Tablero('operativo', 'Tablero operativo', [
         Indicador('tramites', 'Trámites', total),
         Indicador('activos', 'Activos', activos),
-        Indicador('riesgo', 'En riesgo (sin movimiento > 15 días)', riesgo),
+        Indicador('riesgo', f'En riesgo (quieto {DIAS_RIESGO_ALTO}+ días)', riesgo),
         Indicador('sin_responsable', 'Sin responsable', sin_resp),
     ], [
         Tabla('estado', 'Por estado', ['Estado', 'Trámites', 'Días promedio sin actividad'],

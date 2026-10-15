@@ -212,7 +212,8 @@ export interface paths {
         };
         /**
          * Listar
-         * @description Tablero operativo (RF-022): por estado, responsable, país, origen y riesgo.
+         * @description Tablero operativo (RF-022) por las siete dimensiones del requisito: estado,
+         *     responsable, país, servicio, fecha de entrada, antigüedad y riesgo.
          *
          *     Lo que devuelve depende del alcance del usuario (RNF-03): quien tiene «solo
          *     casos asignados» ve los suyos aunque no filtre por responsable.
@@ -244,6 +245,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/casos/lote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Crear Lote
+         * @description El alta de una familia en una sola pasada (RF-020).
+         *
+         *     Un trámite por cada persona que viaja —cada quien tiene su pasaporte y su
+         *     propio resultado—, con el país, el tipo de visa, la modalidad, la sede y el
+         *     equipo elegidos una sola vez. O entran todos o no entra ninguno.
+         */
+        post: operations["crear_lote_api_v1_casos_lote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/casos/{caso_id}": {
         parameters: {
             query?: never;
@@ -260,6 +285,31 @@ export interface paths {
         head?: never;
         /** Editar */
         patch: operations["editar_api_v1_casos__caso_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/casos/{caso_id}/fuente": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Marcar Fuente
+         * @description Marca el trámite como SaaS, manual o híbrido (RF-021).
+         *
+         *     Híbrido es el que nació a mano y después se amarró al SaaS: parte de lo que
+         *     dice lo escribió una persona aquí y parte llega de allá. El número de
+         *     solicitud se conserva aunque el trámite se marque manual: es la única forma
+         *     de volver a encontrarlo en el otro sistema.
+         */
+        post: operations["marcar_fuente_api_v1_casos__caso_id__fuente_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/casos/{caso_id}/estado": {
@@ -2851,6 +2901,11 @@ export interface components {
             /** Responsable Id */
             responsable_id?: number | null;
             /**
+             * Colaboradores
+             * @description Los demás que trabajan el trámite (RF-026). El responsable sigue siendo uno: un trámite con tres dueños no tiene ninguno
+             */
+            colaboradores?: number[];
+            /**
              * Negocio Id
              * @description La venta, si ya está registrada
              */
@@ -2897,6 +2952,11 @@ export interface components {
             /** Pais */
             pais: string | null;
             /**
+             * Servicio
+             * @description El servicio vendido, si hay venta
+             */
+            servicio?: string | null;
+            /**
              * Fuente
              * @enum {string}
              */
@@ -2909,6 +2969,17 @@ export interface components {
             proxima_accion: string | null;
             /** Proxima Accion Fecha */
             proxima_accion_fecha: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             * @description Fecha de entrada del trámite
+             */
+            creado_en: string;
+            /**
+             * Antiguedad Dias
+             * @description Días que lleva abierto, desde que entró. No es lo mismo que los días sin movimiento
+             */
+            antiguedad_dias: number;
             /** Dias Sin Movimiento */
             dias_sin_movimiento: number;
             /**
@@ -2939,11 +3010,6 @@ export interface components {
             resultado_fecha: string | null;
             /** Resultado Nota */
             resultado_nota: string | null;
-            /**
-             * Creado En
-             * Format: date-time
-             */
-            creado_en: string;
             /**
              * Citas
              * @default []
@@ -2979,6 +3045,48 @@ export interface components {
             /** Proxima Accion Fecha */
             proxima_accion_fecha?: string | null;
         };
+        /**
+         * CasoLoteCrear
+         * @description El alta de una familia en una sola pasada (RF-020).
+         *
+         *     La venta se cierra para el grupo y el trámite se abre por persona, así que
+         *     los mismos cinco campos se repetían una vez por cada quien que viaja.
+         *
+         *     No lleva `id_externo` a propósito: una solicitud del SaaS es de un trámite y
+         *     de uno solo, así que no hay un número que valga para toda la familia
+         *     (RF-032). Se le pone después a cada uno, al vincularlo.
+         */
+        CasoLoteCrear: {
+            /**
+             * Solicitantes
+             * @description Las personas que viajan: un trámite por cada una
+             */
+            solicitantes: number[];
+            /** Pais Id */
+            pais_id: number;
+            /** Tipo Visa Id */
+            tipo_visa_id?: number | null;
+            /** Modalidad Id */
+            modalidad_id?: number | null;
+            /** Sede Id */
+            sede_id?: number | null;
+            /** Responsable Id */
+            responsable_id?: number | null;
+            /**
+             * Colaboradores
+             * @description Los demás que trabajan el trámite (RF-026). El responsable sigue siendo uno: un trámite con tres dueños no tiene ninguno
+             */
+            colaboradores?: number[];
+            /**
+             * Negocio Id
+             * @description La venta, si ya está registrada
+             */
+            negocio_id?: number | null;
+            /** Proxima Accion */
+            proxima_accion?: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha?: string | null;
+        };
         /** CasoSalida */
         CasoSalida: {
             /** Id */
@@ -3000,6 +3108,11 @@ export interface components {
             /** Pais */
             pais: string | null;
             /**
+             * Servicio
+             * @description El servicio vendido, si hay venta
+             */
+            servicio?: string | null;
+            /**
              * Fuente
              * @enum {string}
              */
@@ -3012,6 +3125,17 @@ export interface components {
             proxima_accion: string | null;
             /** Proxima Accion Fecha */
             proxima_accion_fecha: string | null;
+            /**
+             * Creado En
+             * Format: date-time
+             * @description Fecha de entrada del trámite
+             */
+            creado_en: string;
+            /**
+             * Antiguedad Dias
+             * @description Días que lleva abierto, desde que entró. No es lo mismo que los días sin movimiento
+             */
+            antiguedad_dias: number;
             /** Dias Sin Movimiento */
             dias_sin_movimiento: number;
             /**
@@ -3964,6 +4088,22 @@ export interface components {
             entidades: string[];
             /** Operaciones */
             operaciones: string[];
+        };
+        /**
+         * FuenteEntrada
+         * @description Marcar de dónde viene el trámite: SaaS, manual o híbrido (RF-021).
+         */
+        FuenteEntrada: {
+            /**
+             * Fuente
+             * @enum {string}
+             */
+            fuente: "saas" | "manual" | "hibrido";
+            /**
+             * Id Externo
+             * @description N.º de solicitud del SaaS. Obligatorio si el trámite es del SaaS o híbrido; si se omite, se conserva el que ya tenía
+             */
+            id_externo?: string | null;
         };
         /** FusionEntrada */
         FusionEntrada: {
@@ -6289,11 +6429,20 @@ export interface operations {
                 estado?: string | null;
                 responsable_id?: number | null;
                 pais_id?: number | null;
+                servicio_id?: number | null;
                 fuente?: ("saas" | "manual" | "hibrido") | null;
+                riesgo?: ("ninguno" | "bajo" | "medio" | "alto") | null;
+                /** @description Entró desde este día de Bogotá */
+                desde?: string | null;
+                /** @description Entró hasta este día de Bogotá */
+                hasta?: string | null;
+                /** @description Lleva abierto al menos estos días */
+                antiguedad_min?: number | null;
                 sin_asignar?: boolean;
                 sin_venta?: boolean;
                 incluir_finalizados?: boolean;
                 texto?: string | null;
+                orden?: "quieto" | "antiguedad";
                 pagina?: number;
                 tamano?: number;
             };
@@ -6376,6 +6525,39 @@ export interface operations {
             };
         };
     };
+    crear_lote_api_v1_casos_lote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CasoLoteCrear"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasoDetalle"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     detalle_api_v1_casos__caso_id__get: {
         parameters: {
             query?: never;
@@ -6419,6 +6601,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CasoEditar"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CasoDetalle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    marcar_fuente_api_v1_casos__caso_id__fuente_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                caso_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FuenteEntrada"];
             };
         };
         responses: {

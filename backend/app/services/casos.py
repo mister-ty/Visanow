@@ -18,10 +18,10 @@ Las reglas que este servicio hace cumplir, y que hoy ningún Excel puede:
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Date, Select, and_, cast, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado
@@ -34,6 +34,7 @@ from app.models.esquema import (
     Checklists,
     Citas,
     EstadosOperativos,
+    Negocios,
     Solicitantes,
     TransicionesOperativas,
     Usuarios,
@@ -42,8 +43,21 @@ from app.services.auditoria import auditar
 
 BOGOTA = ZoneInfo('America/Bogota')
 ESTADO_INICIAL = 'registrado'
+#: El umbral de «quieto» del producto. Vive aquí y en un solo lugar a propósito:
+#: el tablero de indicadores tenía el suyo —quince días— y la lista de trámites
+#: este, así que un trámite quieto hace una semana salía en rojo en la pantalla
+#: de quien lo trabaja y no estaba contado en el «En riesgo» que mira la
+#: administradora. Dos números que se contradicen hacen que no se crea ninguno.
 DIAS_RIESGO_MEDIO, DIAS_RIESGO_ALTO = 3, 5
 RESULTADOS = ('aprobada', 'negada', 'proceso_administrativo', 'cancelado', 'no_continuo')
+#: Los tres orígenes de RF-021. «Híbrido» es el trámite mixto: nació a mano y
+#: después se amarró al SaaS, así que parte de lo que dice lo escribió una
+#: persona aquí y parte llega de allá.
+FUENTES = ('manual', 'saas', 'hibrido')
+NIVELES_RIESGO = ('ninguno', 'bajo', 'medio', 'alto')
+#: Cómo se ordena el tablero. Son las dos preguntas distintas de RF-022: cuánto
+#: lleva el trámite sin moverse, y cuánto lleva abierto.
+ORDENES = ('quieto', 'antiguedad')
 
 CAMPOS_CASO = ('pais_id', 'tipo_visa_id', 'modalidad_id', 'sede_id', 'responsable_id', 'negocio_id',
                'proxima_accion', 'proxima_accion_fecha', 'id_externo', 'fuente')
@@ -110,6 +124,18 @@ def dias_sin_movimiento(caso: Casos) -> int:
     return (_ahora() - caso.ultima_actividad_en).days
 
 
+def antiguedad(caso: Casos) -> int:
+    """Días que lleva abierto el trámite, contados desde que entró (RF-022).
+
+    No es lo mismo que `dias_sin_movimiento`, y confundirlos fue el error de la
+    primera versión del tablero: un trámite que entró hace cien días y se movió
+    ayer no está quieto, pero lleva cien días sin resolverse. La primera
+    pregunta es «¿se le olvidó a alguien?» y la segunda «¿nos estamos
+    demorando?». Para responder la segunda hace falta esta.
+    """
+    return (_ahora() - caso.creado_en).days
+
+
 def riesgo(caso: Casos) -> str:
     """RF-022. Un caso final no corre riesgo por quedarse quieto."""
     if caso.estado.es_final:
@@ -118,15 +144,70 @@ def riesgo(caso: Casos) -> str:
     return 'alto' if dias >= DIAS_RIESGO_ALTO else 'medio' if dias >= DIAS_RIESGO_MEDIO else 'bajo'
 
 
+def _filtro_riesgo(nivel: str, ahora: datetime):
+    """La misma cuenta de `riesgo()`, pero en SQL, para poder filtrar por ella.
+
+    El riesgo se calculaba y se devolvía fila por fila, y no se podía filtrar:
+    para encontrar los trece trámites en rojo había que recorrer las doscientas
+    filas a ojo. Los umbrales son los de arriba —no hay un número escrito aquí—
+    porque el día que la operación decida que «quieto» son otros días, la
+    columna y el filtro tienen que moverse juntos.
+
+    El corte se calcula en Python y no con `interval` de SQL para que sea el
+    mismo instante que usa `riesgo()` al pintar la fila.
+    """
+    corte_medio = ahora - timedelta(days=DIAS_RIESGO_MEDIO)
+    corte_alto = ahora - timedelta(days=DIAS_RIESGO_ALTO)
+    if nivel == 'ninguno':
+        return EstadosOperativos.es_final.is_(True)
+    abierto = EstadosOperativos.es_final.is_(False)
+    if nivel == 'alto':
+        return and_(abierto, Casos.ultima_actividad_en <= corte_alto)
+    if nivel == 'medio':
+        return and_(abierto, Casos.ultima_actividad_en <= corte_medio,
+                    Casos.ultima_actividad_en > corte_alto)
+    return and_(abierto, Casos.ultima_actividad_en > corte_medio)
+
+
+def _dia_bogota(columna):
+    """El día de Bogotá de una columna con zona, para compararla contra una fecha.
+
+    El servidor corre en UTC y la agencia atiende de noche: un trámite abierto a
+    las 8 p. m. del 9 queda guardado como el 10. Quien pregunta «qué entró el
+    martes» pregunta por el martes de la oficina (RN-10).
+    """
+    return cast(func.timezone('America/Bogota', columna), Date)
+
+
 # --------------------------------------------------------------------- alta
 
-def crear(db: Session, actor: Usuarios, datos: dict, ip: str | None = None) -> Casos:
-    solicitante = db.get(Solicitantes, datos.get('solicitante_id'))
-    if solicitante is None:
-        raise NoEncontrado('El solicitante no existe.')
-    if not datos.get('pais_id'):
-        raise Invalido('Falta el país del trámite.')
+def _sumar_colaboradores(db: Session, actor: Usuarios, caso: Casos, usuarios: list[int]) -> None:
+    """Los demás que van a trabajar el trámite, puestos desde el alta (RF-020, RF-026).
 
+    RF-020 habla de «responsables» en plural y el responsable sigue siendo uno
+    solo a propósito: RN-04 pide que todo trámite activo tenga responsable, y un
+    trámite con tres dueños no tiene ninguno. El plural son los colaboradores. Lo
+    que no tenía sentido era que la única forma de sumarlos fuera abrir el
+    trámite primero y acordarse después, cuando el reparto del trabajo se decide
+    justo al dar de alta.
+    """
+    for usuario_id in dict.fromkeys(usuarios):
+        if usuario_id == caso.responsable_id:
+            continue      # ya responde por el trámite: nombrarlo dos veces no suma a nadie
+        quien = db.get(Usuarios, usuario_id)
+        if quien is None or not quien.activo:
+            raise Invalido('Esa persona no existe o está inactiva.', codigo='usuario_invalido')
+        db.add(CasosColaboradores(caso_id=caso.id, usuario_id=usuario_id, agregado_por=actor.id))
+        _historial(db, caso.id, 'colaborador', None, quien.nombre, actor.id,
+                   'Entra a colaborar en el trámite.')
+
+
+def _abrir(db: Session, actor: Usuarios, solicitante: Solicitantes, datos: dict) -> Casos:
+    """Un trámite nuevo con su línea de historial, sin confirmar la transacción.
+
+    Queda sin `commit` porque el alta de una familia abre varios de una vez y o
+    entran todos o no entra ninguno.
+    """
     fuente = datos.get('fuente') or ('saas' if datos.get('id_externo') else 'manual')
     caso = Casos(solicitante_id=solicitante.id, estado=_estado(db, ESTADO_INICIAL), fuente=fuente,
                  ultima_actividad_en=_ahora(),
@@ -135,10 +216,59 @@ def crear(db: Session, actor: Usuarios, datos: dict, ip: str | None = None) -> C
     db.flush()
     _historial(db, caso.id, 'creado', None, ESTADO_INICIAL, actor.id,
                f'Trámite creado ({fuente}) para {solicitante.nombre}')
+    _sumar_colaboradores(db, actor, caso, datos.get('colaboradores') or [])
+    return caso
+
+
+def crear(db: Session, actor: Usuarios, datos: dict, ip: str | None = None) -> Casos:
+    solicitante = db.get(Solicitantes, datos.get('solicitante_id'))
+    if solicitante is None:
+        raise NoEncontrado('El solicitante no existe.')
+    if not datos.get('pais_id'):
+        raise Invalido('Falta el país del trámite.')
+
+    caso = _abrir(db, actor, solicitante, datos)
     auditar(db, operacion='insert', entidad='casos', usuario_id=actor.id, entidad_id=caso.id,
-            despues={'solicitante_id': solicitante.id, 'fuente': fuente}, ip=ip)
+            despues={'solicitante_id': solicitante.id, 'fuente': caso.fuente}, ip=ip)
     db.commit()
     return caso
+
+
+def crear_varios(db: Session, actor: Usuarios, datos: dict,
+                 ip: str | None = None) -> list[Casos]:
+    """El alta de una familia en una sola pasada (RF-020).
+
+    La venta se cierra para el grupo y el trámite se abre por persona —cada
+    quien tiene su pasaporte, su DS-160 y su resultado (D-02)—, así que para una
+    familia de cuatro había que pasar cuatro veces por el mismo formulario
+    eligiendo cuatro veces el mismo país, la misma modalidad y la misma sede. La
+    cuarta salía distinta de la primera, y esa es exactamente la clase de
+    diferencia que nadie encuentra después. Aquí los campos se eligen una vez y
+    valen para todos.
+    """
+    personas_ids = list(dict.fromkeys(datos.get('solicitantes') or []))
+    if not personas_ids:
+        raise Invalido('Diga quiénes viajan: el trámite se abre sobre la persona, '
+                       'no sobre el cliente.', codigo='sin_solicitantes')
+    if not datos.get('pais_id'):
+        raise Invalido('Falta el país del trámite.')
+
+    # Se buscan todas antes de abrir nada: media familia dada de alta es peor
+    # que ninguna, porque nadie sabe cuáles quedaron y el segundo intento
+    # duplica los que sí entraron.
+    personas = []
+    for solicitante_id in personas_ids:
+        persona = db.get(Solicitantes, solicitante_id)
+        if persona is None:
+            raise NoEncontrado(f'La persona #{solicitante_id} no existe.')
+        personas.append(persona)
+
+    casos = [_abrir(db, actor, persona, datos) for persona in personas]
+    auditar(db, operacion='insert', entidad='casos', usuario_id=actor.id, entidad_id=casos[0].id,
+            despues={'solicitantes': [p.id for p in personas], 'casos': [c.id for c in casos],
+                     'fuente': casos[0].fuente}, ip=ip)
+    db.commit()
+    return casos
 
 
 def editar(db: Session, actor: Usuarios, caso_id: int, cambios: dict, ip: str | None = None) -> Casos:
@@ -155,6 +285,77 @@ def editar(db: Session, actor: Usuarios, caso_id: int, cambios: dict, ip: str | 
     caso.ultima_actividad_en = _ahora()
     auditar(db, operacion='update', entidad='casos', usuario_id=actor.id, entidad_id=caso.id,
             despues=cambios, ip=ip)
+    db.commit()
+    return caso
+
+
+# -------------------------------------------------------------- procedencia
+
+def fuente_al_vincular(anterior: str | None) -> str:
+    """Qué origen le queda a un trámite cuando se le amarra una solicitud del SaaS.
+
+    RF-021 nombra tres: SaaS, manual e híbrido. El híbrido es justo este caso:
+    alguien abrió el trámite a mano, lo cotizó y lo empezó a trabajar, y después
+    apareció la solicitud en el SaaS y se amarraron. Llamarlo «saas» borra esa
+    mitad de la historia, y es la mitad que explica por qué hay datos que el
+    SaaS nunca va a traer y por qué el responsable no sale de ninguna
+    importación. El que sí nació en el SaaS sigue siendo del SaaS.
+    """
+    return 'saas' if anterior == 'saas' else 'hibrido'
+
+
+def anotar_fuente(db: Session, caso: Casos, anterior: str | None, actor: Usuarios,
+                  observacion: str | None = None) -> None:
+    """Deja el cambio de origen en el historial del trámite, no solo en auditoría.
+
+    Auditoría la lee quien audita; el historial del trámite lo lee quien atiende
+    al cliente (RF-028). Que un trámite pase de manual a híbrido cambia de dónde
+    sale cada dato y por qué de un día para otro la etapa se movió sola, y eso
+    tiene que poder leerse en la ficha y no en una tabla técnica.
+    """
+    _historial(db, caso.id, 'fuente', anterior, caso.fuente, actor.id, observacion)
+
+
+def marcar_fuente(db: Session, actor: Usuarios, caso_id: int, *, fuente: str,
+                  id_externo: str | None = None, ip: str | None = None) -> Casos:
+    """RF-021: marca el trámite como SaaS, manual o híbrido, con su número de solicitud.
+
+    Vive en el servicio y no en la ruta por dos razones. La primera es que decide
+    quién puede tocar cuál trámite (RNF-03) y una comprobación que solo esté en
+    la pantalla se la salta cualquiera que llame la API directo. La segunda es
+    que el número de solicitud es único: si dos trámites lo tienen, la
+    importación siguiente no sabe a cuál de los dos actualizar (RF-032).
+    """
+    if fuente not in FUENTES:
+        raise Invalido(f'Origen inválido. Opciones: {", ".join(FUENTES)}.')
+    caso = obtener(db, caso_id, actor=actor)
+
+    numero = (caso.id_externo if id_externo is None else id_externo) or ''
+    numero = numero.strip() or None
+    if fuente in ('saas', 'hibrido') and not numero:
+        raise Invalido('Un trámite del SaaS necesita su número de solicitud: es la llave '
+                       'con la que la importación lo reconoce.', codigo='falta_numero')
+    if numero and numero != caso.id_externo:
+        otro = db.scalars(select(Casos).where(Casos.id_externo == numero,
+                                              Casos.id != caso.id)).first()
+        if otro is not None:
+            raise Conflicto(f'El número de solicitud ya es del trámite #{otro.id}. '
+                            f'Una solicitud del SaaS no puede ser de dos trámites.',
+                            codigo='solicitud_ya_vinculada')
+
+    antes_fuente, antes_numero = caso.fuente, caso.id_externo
+    # Volverlo «manual» no le borra el número: el trámite sí pasó por el SaaS y
+    # ese número es la única forma de volver a encontrarlo allá. RF-021 pide
+    # conservar el identificador externo, no sincronizar con él.
+    caso.fuente, caso.id_externo = fuente, numero
+    if caso.id_externo != antes_numero:
+        _historial(db, caso.id, 'id_externo', antes_numero, caso.id_externo, actor.id)
+    if caso.fuente != antes_fuente:
+        anotar_fuente(db, caso, antes_fuente, actor)
+    caso.ultima_actividad_en = _ahora()
+    auditar(db, operacion='update', entidad='casos', usuario_id=actor.id, entidad_id=caso.id,
+            antes={'fuente': antes_fuente, 'id_externo': antes_numero},
+            despues={'fuente': caso.fuente, 'id_externo': caso.id_externo}, ip=ip)
     db.commit()
     return caso
 
@@ -183,14 +384,38 @@ def alcance_de(actor: Usuarios | None):
 
 def listar(db: Session, *, actor: Usuarios | None = None, estado: str | None = None,
            responsable_id: int | None = None,
-           pais_id: int | None = None, fuente: str | None = None, sin_asignar: bool = False,
+           pais_id: int | None = None, servicio_id: int | None = None,
+           fuente: str | None = None, riesgo_nivel: str | None = None,
+           desde: date | None = None, hasta: date | None = None,
+           antiguedad_min: int | None = None, sin_asignar: bool = False,
            sin_venta: bool = False, incluir_finalizados: bool = False,
-           texto: str | None = None, pagina: int = 1, tamano: int = 50) -> tuple[int, list[Casos]]:
+           texto: str | None = None, orden: str = 'quieto',
+           pagina: int = 1, tamano: int = 50) -> tuple[int, list[Casos]]:
+    """El tablero operativo por las siete dimensiones de RF-022.
+
+    Estado, responsable, país, servicio, fecha de entrada, antigüedad y riesgo.
+    Las tres últimas no existían: la fecha de entrada no se podía ni filtrar ni
+    ver, la antigüedad se confundía con el tiempo sin movimiento, y el riesgo se
+    calculaba solo para pintarlo.
+    """
+    if riesgo_nivel is not None and riesgo_nivel not in NIVELES_RIESGO:
+        raise Invalido(f'Riesgo inválido. Opciones: {", ".join(NIVELES_RIESGO)}.')
+    if orden not in ORDENES:
+        raise Invalido(f'Orden inválido. Opciones: {", ".join(ORDENES)}.')
+    ahora = _ahora()
+
     consulta: Select = (select(Casos)
                         .join(EstadosOperativos, EstadosOperativos.id == Casos.estado_id)
                         .join(Solicitantes, Solicitantes.id == Casos.solicitante_id)
+                        # El servicio vendido es una de las siete dimensiones y vive
+                        # en la venta. El join va por fuera: un trámite sin venta es
+                        # un trámite real —la operación y el dinero viven hoy en
+                        # archivos distintos— y con un join por dentro desaparecían
+                        # de la lista sin que nadie lo hubiera pedido.
+                        .outerjoin(Negocios, Negocios.id == Casos.negocio_id)
                         .options(selectinload(Casos.solicitante), selectinload(Casos.estado),
-                                 selectinload(Casos.responsable), selectinload(Casos.pais)))
+                                 selectinload(Casos.responsable), selectinload(Casos.pais),
+                                 selectinload(Casos.negocio).selectinload(Negocios.servicio)))
     limite = alcance_de(actor)
     if limite is not None:
         consulta = consulta.where(limite)
@@ -206,8 +431,19 @@ def listar(db: Session, *, actor: Usuarios | None = None, estado: str | None = N
         consulta = consulta.where(Casos.negocio_id.is_(None))
     if pais_id:
         consulta = consulta.where(Casos.pais_id == pais_id)
+    if servicio_id:
+        consulta = consulta.where(Negocios.servicio_id == servicio_id)
     if fuente:
         consulta = consulta.where(Casos.fuente == fuente)
+    if riesgo_nivel:
+        consulta = consulta.where(_filtro_riesgo(riesgo_nivel, ahora))
+    # Fecha de entrada: el día de Bogotá en que se abrió el trámite.
+    if desde:
+        consulta = consulta.where(_dia_bogota(Casos.creado_en) >= desde)
+    if hasta:
+        consulta = consulta.where(_dia_bogota(Casos.creado_en) <= hasta)
+    if antiguedad_min:
+        consulta = consulta.where(Casos.creado_en <= ahora - timedelta(days=antiguedad_min))
     if texto := (texto or '').strip():
         consulta = consulta.where(or_(
             Solicitantes.nombre_busqueda.like(func.lower(func.sin_tildes(f'%{texto}%'))),
@@ -215,7 +451,11 @@ def listar(db: Session, *, actor: Usuarios | None = None, estado: str | None = N
 
     total = db.scalar(select(func.count()).select_from(consulta.subquery()))
     pagina, tamano = max(1, pagina), min(max(1, tamano), 200)
-    filas = db.scalars(consulta.order_by(Casos.ultima_actividad_en)
+    # Los dos órdenes del requisito: el más quieto primero, o el que lleva más
+    # tiempo abierto primero. El id desempata para que dos páginas seguidas no
+    # puedan repetir ni saltarse una fila.
+    por = Casos.creado_en if orden == 'antiguedad' else Casos.ultima_actividad_en
+    filas = db.scalars(consulta.order_by(por, Casos.id)
                        .offset((pagina - 1) * tamano).limit(tamano)).unique().all()
     return total, list(filas)
 

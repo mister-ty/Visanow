@@ -37,6 +37,11 @@ CAMPOS: dict[str, tuple[str, type | None]] = {
     'modalidad_id': ('Modalidad', Modalidades),
     'responsable_id': ('Responsable', Usuarios),
     'negocio_id': ('Venta asociada', None),
+    # De dónde viene el trámite y con qué número lo conoce el SaaS (RF-021).
+    # «fuente» e «id_externo» son nombres de la base: en la ficha se lee «Origen:
+    # manual → hibrido», que es lo que entiende quien atiende al cliente.
+    'fuente': ('Origen', None),
+    'id_externo': ('N.º de solicitud', None),
     'proxima_accion': ('Próxima acción', None),
     'proxima_accion_fecha': ('Fecha de la próxima acción', None),
 }
