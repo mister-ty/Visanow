@@ -191,6 +191,32 @@ def subir(db: Session, actor: Usuarios, *, entidad: str, entidad_id: int,
     return doc
 
 
+def visible_para(actor: Usuarios | None, doc: Documentos, *, permisos: set[str]) -> bool:
+    """Si esta persona puede enterarse de que este documento existe.
+
+    Es la regla de `listar` y `obtener` puesta en un solo lugar, porque los
+    documentos ya no se muestran solo en su pantalla: la cronología del cliente
+    también los nombra (RF-064). Dos copias de una regla de acceso aguantan
+    hasta el día que alguien cambia una, y entonces el agujero aparece en la
+    pantalla que nadie estaba mirando.
+
+    Pide los permisos ya resueltos a propósito: quien recorre una lista los
+    pregunta una sola vez, no una por documento.
+
+    Lo que NO comprueba es el alcance del trámite (RNF-03), que cuesta una
+    consulta por documento. Quien pasa por acá y de verdad quiere el archivo
+    tiene que pedirlo por `obtener`/`descargar`, y ahí sí se aplica.
+    """
+    if actor is None:
+        return False
+    permiso_ver, _, _ = ENTIDADES.get(doc.entidad, (None, None, None))
+    if permiso_ver is None or permiso_ver not in permisos:
+        return False
+    # Se omiten, no se muestran en gris: saber que existe un documento
+    # restringido sobre alguien ya dice algo de esa persona.
+    return not doc.restringido or PERMISO_RESTRINGIDO in permisos
+
+
 def listar(db: Session, actor: Usuarios, entidad: str, entidad_id: int) -> list[Documentos]:
     """Los documentos de una ficha, sin los restringidos si no le corresponden."""
     _exigir_entidad(db, actor, entidad, entidad_id, escribir=False)
@@ -198,11 +224,8 @@ def listar(db: Session, actor: Usuarios, entidad: str, entidad_id: int) -> list[
                       .where(Documentos.entidad == entidad,
                              Documentos.entidad_id == entidad_id)
                       .order_by(Documentos.creado_en.desc())).all()
-    if _puede(db, actor, PERMISO_RESTRINGIDO):
-        return list(docs)
-    # Se omiten, no se muestran en gris: saber que existe un documento
-    # restringido sobre alguien ya dice algo de esa persona.
-    return [d for d in docs if not d.restringido]
+    permisos = permisos_de_rol(db, actor.rol_id)
+    return [d for d in docs if visible_para(actor, d, permisos=permisos)]
 
 
 def obtener(db: Session, actor: Usuarios, documento_id: int) -> Documentos:

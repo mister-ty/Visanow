@@ -587,3 +587,204 @@ def test_quien_contrata_y_viaja_no_sale_dos_veces(cliente, comercial, familia):
     assert [r['tipo'] for r in encontrados] == ['cliente']
     # Sus hijos, que no son el contacto, sí tienen que aparecer
     assert [r['titulo'] for r in buscar(cliente, cab, 'Tomás Restrepo')] == ['Tomás Restrepo Gómez']
+
+
+# ------------------------------- el teléfono de quien viaja (RF-029)
+
+@pytest.fixture
+def hijo_con_celular(cliente, comercial, familia):
+    """Un hijo que viaja y tiene su propio celular.
+
+    Es lo normal en VisaNow: la mamá contrata y pone su número en la ficha del
+    cliente, pero el que contesta cuando se llama por la cita es el muchacho.
+    """
+    cab, _ = comercial
+    r = cliente.post('/api/v1/solicitantes', headers=cab, json={
+        'cliente_id': familia, 'nombre': 'Mateo Restrepo Gómez',
+        'telefono': '+57 320 444 1122'})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+@pytest.mark.parametrize('consulta', [
+    '3204441122',            # como lo dicta el cliente
+    '+57 320 444 1122',      # como está guardado en el celular
+    '320-444-1122',          # con guiones
+])
+def test_el_celular_de_quien_viaja_tambien_encuentra(
+        cliente, comercial, familia, hijo_con_celular, consulta):
+    """RF-029 pide buscar por teléfono, y el teléfono no es solo el de quien
+    contrata: quien viaja tiene su propia columna y hasta ahora no se miraba,
+    así que escribir el celular del hijo no encontraba absolutamente nada.
+    """
+    cab, _ = comercial
+    hallado = [x for x in buscar(cliente, cab, consulta) if x['tipo'] == 'solicitante']
+    assert [x['titulo'] for x in hallado] == ['Mateo Restrepo Gómez'], (
+        f'«{consulta}» no encontró a quien viaja: {hallado}')
+    assert hallado[0]['coincidio_por'] == 'teléfono'
+    # Se atiende desde la ficha de quien contrata, igual que el pasaporte
+    assert hallado[0]['ruta'] == f'/clientes/{familia}'
+
+
+# ---------------------------- los adjuntos de la cronología (RF-064)
+#
+# RF-064 enumera cinco cosas —cronología, comunicaciones, eventos, autor y
+# adjuntos— y la quinta no existía: `actividades.documento_id` estaba en el
+# esquema desde el núcleo y nadie la escribía. El módulo de documentos ya sabe
+# subir cifrado, enlazar y cerrar los reservados; lo que faltaba era poder
+# colgar uno de un suceso y verlo ahí.
+
+
+@pytest.fixture
+def operaciones(cliente, usuario):
+    """Quien hace el trámite: es el rol que sí ve los documentos reservados."""
+    return entrar(cliente, usuario('operaciones'))
+
+
+def enlazar(cliente, cab, *, entidad, entidad_id, nombre, reservado=False):
+    r = cliente.post('/api/v1/documentos/enlace', headers=cab, json={
+        'entidad': entidad, 'entidad_id': entidad_id, 'nombre': nombre,
+        'url': f'https://drive.google.com/{entidad}/{entidad_id}',
+        'restringido': reservado})
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def suceso(cliente, cab, cliente_id, titulo):
+    sucesos = ficha(cliente, cab, cliente_id)['cronologia']
+    hallado = [s for s in sucesos if s['titulo'] == titulo]
+    assert hallado, f'«{titulo}» no está en la cronología: {[s["titulo"] for s in sucesos]}'
+    return hallado[0]
+
+
+def test_una_nota_puede_llevar_el_documento_del_que_habla(cliente, comercial, familia):
+    """«Mandó el comprobante por WhatsApp» y el comprobante, en el mismo renglón.
+
+    Hasta ahora el documento quedaba en la pantalla de documentos y la nota en
+    la cronología, y quien leía la historia después no tenía cómo saber cuál de
+    los archivos era el que llegó ese día.
+    """
+    cab, _ = comercial
+    doc = enlazar(cliente, cab, entidad='cliente', entidad_id=familia,
+                  nombre='Comprobante del anticipo')
+    r = cliente.post(f'/api/v1/clientes/{familia}/notas', headers=cab, json={
+        'tipo': 'whatsapp', 'asunto': 'Mandó el comprobante', 'documento_id': doc['id']})
+    assert r.status_code == 201, r.text
+
+    s = suceso(cliente, cab, familia, 'Mandó el comprobante')
+    assert s['adjunto'], 'el suceso tiene que traer su adjunto'
+    assert s['adjunto']['id'] == doc['id']
+    assert s['adjunto']['nombre'] == 'Comprobante del anticipo'
+    assert s['adjunto']['almacenamiento'] == 'enlace'
+    assert s['adjunto']['url'] == doc['url']
+
+
+def test_la_nota_del_tramite_tambien_lleva_su_soporte(
+        cliente, comercial, operaciones, familia, db):
+    """El soporte se adjunta donde se trabaja —el trámite— y la cronología del
+    cliente lo muestra igual: es una sola historia (RF-064)."""
+    cab, _ = comercial
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    persona = ficha(cliente, cab, familia)['cliente']['grupos'][0]['solicitantes'][0]
+    caso = cliente.post('/api/v1/casos', headers=operaciones,
+                        json={'solicitante_id': persona['id'], 'pais_id': pais}).json()
+    doc = enlazar(cliente, operaciones, entidad='caso', entidad_id=caso['id'],
+                  nombre='Carta laboral')
+    r = cliente.post(f'/api/v1/casos/{caso["id"]}/notas', headers=operaciones, json={
+        'tipo': 'correo', 'asunto': 'Mandó la carta laboral', 'documento_id': doc['id']})
+    assert r.status_code == 201, r.text
+
+    s = suceso(cliente, cab, familia, 'Mandó la carta laboral')
+    assert s['adjunto']['nombre'] == 'Carta laboral'
+    assert s['caso_id'] == caso['id']
+
+
+def test_un_adjunto_reservado_no_asoma_por_la_cronologia(
+        cliente, comercial, operaciones, familia):
+    """La cronología se le muestra a cualquiera que pueda abrir la ficha, y el
+    pasaporte escaneado no lo ve cualquiera: para eso está
+    `solicitantes.reservado`. Si el adjunto reservado apareciera acá, la
+    cronología abriría por detrás lo que la pantalla de documentos cierra.
+    """
+    doc = enlazar(cliente, operaciones, entidad='cliente', entidad_id=familia,
+                  nombre='Pasaporte escaneado', reservado=True)
+    r = cliente.post(f'/api/v1/clientes/{familia}/notas', headers=operaciones, json={
+        'tipo': 'correo', 'asunto': 'Llegó el pasaporte escaneado',
+        'documento_id': doc['id']})
+    assert r.status_code == 201, r.text
+
+    de_ops = suceso(cliente, operaciones, familia, 'Llegó el pasaporte escaneado')
+    assert de_ops['adjunto']['nombre'] == 'Pasaporte escaneado', 'quien tramita sí lo ve'
+
+    cab, _ = comercial
+    del_comercial = suceso(cliente, cab, familia, 'Llegó el pasaporte escaneado')
+    assert del_comercial['adjunto'] is None, (
+        'el comercial lee el suceso, pero el documento reservado no es para él')
+
+
+def test_no_se_puede_adjuntar_un_documento_reservado_sin_el_permiso(
+        cliente, comercial, operaciones, familia):
+    """Y no basta con esconderlo al leer: si se pudiera adjuntar a ciegas, el
+    comercial pondría en la cronología un documento que ni él puede abrir."""
+    doc = enlazar(cliente, operaciones, entidad='cliente', entidad_id=familia,
+                  nombre='DS-160 impreso', reservado=True)
+    cab, _ = comercial
+    r = cliente.post(f'/api/v1/clientes/{familia}/notas', headers=cab, json={
+        'tipo': 'nota', 'asunto': 'Lo vi de refilón', 'documento_id': doc['id']})
+    # 404 y no 403: decir «existe pero no es para usted» ya revela que hay algo
+    # reservado sobre esa persona. Es la misma respuesta de la pantalla.
+    assert r.status_code == 404, r.text
+
+
+def test_no_se_puede_colgar_en_una_ficha_el_documento_de_otro_cliente(
+        cliente, comercial, familia):
+    """El id llega en el cuerpo de la petición, así que no se puede dar por
+    bueno. Sin esta comprobación, la cronología de Lucía le mostraría el nombre
+    de un documento de otro cliente a cualquiera que pueda abrir su ficha."""
+    cab, _ = comercial
+    otro = cliente.post('/api/v1/clientes', headers=cab,
+                        json={'nombre': 'Ajeno Pérez Pérez'}).json()
+    doc = enlazar(cliente, cab, entidad='cliente', entidad_id=otro['id'],
+                  nombre='Carpeta del ajeno')
+    r = cliente.post(f'/api/v1/clientes/{familia}/notas', headers=cab, json={
+        'tipo': 'nota', 'asunto': 'Nota con adjunto ajeno', 'documento_id': doc['id']})
+    assert r.status_code == 422, r.text
+    assert 'no es de este cliente' in r.json()['detalle'].lower(), r.text
+
+
+def test_borrar_el_documento_adjunto_no_se_lleva_el_suceso(cliente, operaciones, familia):
+    """La llamada ocurrió: el suceso se queda aunque el archivo se quite.
+
+    Y al revés también importa: si la base no dejara borrar un documento que
+    está nombrado en la cronología, adjuntar uno habría dejado inservible el
+    botón de eliminar de la pantalla de documentos.
+    """
+    doc = enlazar(cliente, operaciones, entidad='cliente', entidad_id=familia,
+                  nombre='Soporte provisional')
+    r = cliente.post(f'/api/v1/clientes/{familia}/notas', headers=operaciones, json={
+        'tipo': 'llamada', 'asunto': 'Repasamos el soporte', 'documento_id': doc['id']})
+    assert r.status_code == 201, r.text
+
+    assert cliente.delete(f'/api/v1/documentos/{doc["id"]}',
+                          headers=operaciones).status_code == 204
+    s = suceso(cliente, operaciones, familia, 'Repasamos el soporte')
+    assert s['adjunto'] is None, 'el adjunto se fue con el documento'
+
+
+def test_los_documentos_de_una_persona_del_grupo_salen_en_la_ficha(
+        cliente, comercial, familia):
+    """En VisaNow el que contrata casi nunca viaja solo: la familia cuelga de un
+    grupo. «Los documentos de la ficha» son también los de esas personas —así lo
+    dice el bloque de documentos— y los que colgaban del grupo no aparecían, así
+    que tampoco se podían adjuntar a la cronología.
+    """
+    cab, _ = comercial
+    persona = ficha(cliente, cab, familia)['cliente']['grupos'][0]['solicitantes'][0]
+    doc = enlazar(cliente, cab, entidad='solicitante', entidad_id=persona['id'],
+                  nombre='Cédula del hijo')
+    nombres = {d['nombre'] for d in ficha(cliente, cab, familia)['documentos']}
+    assert 'Cédula del hijo' in nombres, nombres
+
+    r = cliente.post(f'/api/v1/clientes/{familia}/notas', headers=cab, json={
+        'tipo': 'whatsapp', 'asunto': 'Mandó la cédula', 'documento_id': doc['id']})
+    assert r.status_code == 201, r.text

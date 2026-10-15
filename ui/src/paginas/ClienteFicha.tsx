@@ -9,7 +9,8 @@ import { notifications } from '@mantine/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   IconArchive, IconArrowsExchange, IconBrandWhatsapp, IconCalendarEvent, IconEye, IconHistory,
-  IconMail, IconMessage2, IconPencil, IconPhone, IconPlaneDeparture, IconPlus, IconUsersGroup,
+  IconLock, IconMail, IconMessage2, IconPaperclip, IconPencil, IconPhone, IconPlaneDeparture,
+  IconPlus, IconUsersGroup,
 } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { Link as Enlace, useNavigate, useParams } from 'react-router-dom'
@@ -18,6 +19,7 @@ import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados, type Coincidencia } from '../componentes/AvisoDuplicados'
 import { CamposCliente, CLIENTE_VACIO } from '../componentes/CamposCliente'
 import { Documentos } from '../componentes/Documentos'
+import { descargarDocumento } from '../lib/descargas'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora, formatearPesos } from '../lib/formato'
 import { aSelect, type Opcion, porPais, useAsignables, useCatalogos } from '../lib/catalogos'
@@ -285,8 +287,8 @@ export function ClienteFicha() {
 
       <Cronologia sucesos={f.cronologia} />
 
-      <FormularioNota clienteId={clienteId} tramites={f.tramites} abierto={anotando}
-        cerrar={() => setAnotando(false)} guardado={refrescar} />
+      <FormularioNota clienteId={clienteId} tramites={f.tramites} documentos={f.documentos}
+        abierto={anotando} cerrar={() => setAnotando(false)} guardado={refrescar} />
       <FormularioEditar cliente={c} abierto={editando} cerrar={() => setEditando(false)} guardado={refrescar} />
       <FormularioGrupo clienteId={clienteId} abierto={nuevoGrupo} cerrar={() => setNuevoGrupo(false)} creado={refrescar} />
       <FormularioSolicitante destino={agregarA} clienteId={clienteId}
@@ -752,6 +754,40 @@ const ICONO_SUCESO: Record<string, typeof IconMessage2> = {
   reunion: IconUsersGroup, nota: IconMessage2, sistema: IconHistory,
 }
 
+/** El documento del que habla un suceso (RF-064).
+ *
+ *  Va dentro del renglón de la cronología a propósito: lo que le falta a quien
+ *  lee la historia meses después no es la lista de archivos —esa ya está más
+ *  abajo— sino saber cuál de todos es el que llegó ese día.
+ *
+ *  Lo que no esté acá no es que no exista: el servidor no manda el adjunto
+ *  cuando el documento es reservado y quien mira no tiene cómo verlo. */
+function AdjuntoDelSuceso({ adjunto }: { adjunto: Esquemas['AdjuntoDeSuceso'] }) {
+  const bajar = () => descargarDocumento(adjunto.id, adjunto.nombre).catch((e: unknown) => {
+    notifications.show({
+      color: 'red', title: 'No se pudo descargar',
+      message: e instanceof Error ? e.message : 'Error inesperado',
+    })
+  })
+  const contenido = (
+    <Group gap={4} wrap="nowrap">
+      <IconPaperclip size={13} />
+      <Text size="xs" truncate>{adjunto.nombre}</Text>
+      {adjunto.restringido && (
+        <Tooltip label="Reservado: solo quien hace el trámite">
+          <IconLock size={12} color="var(--mantine-color-orange-6)" />
+        </Tooltip>)}
+    </Group>
+  )
+  return adjunto.almacenamiento === 'enlace' ? (
+    <Anchor href={adjunto.url ?? '#'} target="_blank" rel="noopener noreferrer" mt={4}
+      aria-label={`Abrir ${adjunto.nombre}`}>{contenido}</Anchor>
+  ) : (
+    <Anchor component="button" type="button" onClick={bajar} mt={4}
+      aria-label={`Descargar ${adjunto.nombre}`}>{contenido}</Anchor>
+  )
+}
+
 /** Lo que el sistema registró y lo que la gente anotó, en una sola línea de
  *  tiempo: la historia del cliente, que hoy vive en la memoria de quien
  *  atendió la llamada. */
@@ -782,6 +818,7 @@ function Cronologia({ sucesos }: { sucesos: Esquemas['SucesoSalida'][] }) {
                       <Anchor size="xs" component={Enlace} to={`/casos/${s.caso_id}`}>· ver el trámite</Anchor>
                     )}
                   </Group>
+                  {s.adjunto && <AdjuntoDelSuceso adjunto={s.adjunto} />}
                 </Timeline.Item>
               )
             })}
@@ -804,18 +841,24 @@ const TIPOS_CONTACTO = [
 ]
 
 /** RF-012: la llamada que hoy se anota en un cuaderno, o no se anota. Puede ir
- *  contra el cliente o contra uno de sus trámites. */
-function FormularioNota({ clienteId, tramites, abierto, cerrar, guardado }: {
+ *  contra el cliente o contra uno de sus trámites, y puede llevar colgado el
+ *  documento del que se habló (RF-064). */
+function FormularioNota({ clienteId, tramites, documentos, abierto, cerrar, guardado }: {
   clienteId: number; tramites: Esquemas['CasoSalida'][]
+  documentos: Esquemas['DocumentoEnFicha'][]
   abierto: boolean; cerrar: () => void; guardado: () => void
 }) {
   const formulario = useForm({
-    initialValues: { tipo: 'llamada', asunto: '', cuerpo: '', caso_id: '' },
+    initialValues: { tipo: 'llamada', asunto: '', cuerpo: '', caso_id: '', documento_id: '' },
     validate: { asunto: (v, t) => (v.trim() || t.cuerpo.trim() ? null : 'Escriba al menos el asunto') },
   })
   const guardar = useMutation({
     mutationFn: (v: typeof formulario.values) => {
-      const nota = { tipo: v.tipo as 'llamada', asunto: v.asunto.trim() || null, cuerpo: v.cuerpo.trim() || null }
+      const nota = {
+        tipo: v.tipo as 'llamada', asunto: v.asunto.trim() || null,
+        cuerpo: v.cuerpo.trim() || null,
+        documento_id: v.documento_id ? Number(v.documento_id) : null,
+      }
       return v.caso_id
         ? exigir(api.POST('/api/v1/casos/{caso_id}/notas', {
           params: { path: { caso_id: Number(v.caso_id) } }, body: nota,
@@ -849,6 +892,19 @@ function FormularioNota({ clienteId, tramites, abierto, cerrar, guardado }: {
           <Textarea label="Qué se habló" autosize minRows={3} maxRows={8}
             placeholder="Lo que quede escrito aquí es lo que va a leer quien atienda la próxima llamada."
             {...formulario.getInputProps('cuerpo')} />
+          {documentos.length > 0 && (
+            // Se escoge entre los documentos que ya están en la ficha: acá no se
+            // sube nada. Subir es otra pantalla, con su cifrado y su tope de
+            // tamaño, y duplicarla aquí sería tener dos formas de guardar lo
+            // mismo. Si el documento aún no está, se sube abajo y se vuelve.
+            <Select label="¿Se habló de algún documento?" clearable searchable
+              placeholder="Ninguno" description="Queda colgado de este suceso en la cronología"
+              data={documentos.map((d) => ({
+                value: String(d.id),
+                label: `${d.nombre} (${d.sobre})${d.restringido ? ' · reservado' : ''}`,
+              }))}
+              {...formulario.getInputProps('documento_id')} />
+          )}
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
             <Button type="submit" loading={guardar.isPending}>Registrar</Button>

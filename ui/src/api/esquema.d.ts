@@ -1373,6 +1373,9 @@ export interface paths {
         /**
          * Anotar Cliente
          * @description Deja constancia de una llamada, un WhatsApp o una nota (RF-012).
+         *
+         *     Con `documento_id` queda además colgado de ese suceso el documento del que
+         *     habla, para que la cronología lo muestre al lado (RF-064).
          */
         post: operations["anotar_cliente_api_v1_clientes__cliente_id__notas_post"];
         delete?: never;
@@ -1390,7 +1393,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Anotar Caso */
+        /**
+         * Anotar Caso
+         * @description Lo mismo, pero sobre el trámite: es donde se trabaja y donde llega el
+         *     soporte, y la cronología del cliente lo recoge igual (RF-064).
+         */
         post: operations["anotar_caso_api_v1_casos__caso_id__notas_post"];
         delete?: never;
         options?: never;
@@ -2650,6 +2657,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdjuntoDeSuceso
+         * @description El documento del que habla un suceso de la cronología (RF-064).
+         *
+         *     Trae lo justo para nombrarlo y abrirlo: el contenido del archivo sigue
+         *     saliendo solo por la pantalla de documentos, que es donde queda constancia
+         *     de quién se lo llevó.
+         */
+        AdjuntoDeSuceso: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Almacenamiento
+             * @description 'local' se descarga; 'enlace' se abre donde vive
+             */
+            almacenamiento: string;
+            /** Url */
+            url: string | null;
+            /** Mime */
+            mime: string | null;
+            /** Restringido */
+            restringido: boolean;
+        };
         /** AjusteCrear */
         AjusteCrear: {
             /**
@@ -4674,6 +4706,11 @@ export interface components {
             asunto?: string | null;
             /** Cuerpo */
             cuerpo?: string | null;
+            /**
+             * Documento Id
+             * @description Un documento que ya está en la ficha, para dejarlo colgado de este suceso: el comprobante que acaba de llegar, la carta que se mandó
+             */
+            documento_id?: number | null;
         };
         /** NotaSalida */
         NotaSalida: {
@@ -4685,6 +4722,8 @@ export interface components {
             asunto: string | null;
             /** Cuerpo */
             cuerpo: string | null;
+            /** Documento Id */
+            documento_id?: number | null;
             /**
              * Ocurrido En
              * Format: date-time
@@ -5582,6 +5621,8 @@ export interface components {
             usuario: string | null;
             /** Caso Id */
             caso_id: number | null;
+            /** @description El documento adjunto, si lo hay y si quien pregunta puede verlo */
+            adjunto?: components["schemas"]["AdjuntoDeSuceso"] | null;
         };
         /** SugerenciasSalida */
         SugerenciasSalida: {

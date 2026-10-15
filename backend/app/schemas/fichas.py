@@ -9,6 +9,21 @@ from app.schemas.personas import ClienteDetalle
 TipoNota = Literal['nota', 'llamada', 'whatsapp', 'correo', 'reunion']
 
 
+class AdjuntoDeSuceso(BaseModel):
+    """El documento del que habla un suceso de la cronología (RF-064).
+
+    Trae lo justo para nombrarlo y abrirlo: el contenido del archivo sigue
+    saliendo solo por la pantalla de documentos, que es donde queda constancia
+    de quién se lo llevó.
+    """
+    id: int
+    nombre: str
+    almacenamiento: str = Field(description="'local' se descarga; 'enlace' se abre donde vive")
+    url: str | None
+    mime: str | None
+    restringido: bool
+
+
 class SucesoSalida(BaseModel):
     cuando: datetime
     tipo: str = Field(description="'sistema' para lo que registró el sistema; si no, el tipo de la nota")
@@ -16,6 +31,9 @@ class SucesoSalida(BaseModel):
     detalle: str | None
     usuario: str | None
     caso_id: int | None
+    adjunto: AdjuntoDeSuceso | None = Field(
+        default=None,
+        description='El documento adjunto, si lo hay y si quien pregunta puede verlo')
 
 
 class CitaProxima(BaseModel):
@@ -141,6 +159,10 @@ class NotaCrear(BaseModel):
     tipo: TipoNota = 'nota'
     asunto: str | None = Field(default=None, max_length=200)
     cuerpo: str | None = None
+    documento_id: int | None = Field(
+        default=None,
+        description='Un documento que ya está en la ficha, para dejarlo colgado de este '
+                    'suceso: el comprobante que acaba de llegar, la carta que se mandó')
 
 
 class NotaSalida(BaseModel):
@@ -148,6 +170,7 @@ class NotaSalida(BaseModel):
     tipo: str
     asunto: str | None
     cuerpo: str | None
+    documento_id: int | None = None
     ocurrido_en: datetime
 
 
