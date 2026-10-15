@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 import pathlib
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Callable, Literal
 
@@ -32,7 +33,44 @@ FUENTE = pathlib.Path(__file__).resolve().parents[4] / '02_Datos_Fuente'
 # Columnas que no se leen nunca: son credenciales de portales consulares en
 # texto plano. La decisión D-09 las excluye de la migración y RNF-10 dice que el
 # sistema nuevo no tiene dónde guardarlas.
-COLUMNAS_PROHIBIDAS = {'CONTRASEÑA', 'CONTRASENA', 'CLAVE', 'PASSWORD'}
+#
+# Esto se compara por PEDAZO y sobre el encabezado normalizado, no por igualdad.
+# Antes era un conjunto de nombres exactos y funcionaba por casualidad: las dos
+# hojas reales traen literalmente «CONTRASEÑA». Un libro que mañana diga
+# «Contraseña», «CONTRASEÑA PORTAL» o «Clave consular» habría pasado sin que
+# nada fallara, y la credencial se habría leído. Un filtro de seguridad que
+# depende de cómo alguien escribió un título en Excel no es un filtro.
+#
+# El riesgo de buscar por pedazo es al revés: botar una columna que no era
+# credencial —un «palabra clave» hipotético—. Esa equivocación es la barata: se
+# pierde un dato que se puede volver a pedir. La otra termina con la contraseña
+# del consulado de alguien dentro de la base.
+PALABRAS_DE_CREDENCIAL = ('CONTRASENA', 'CLAVE', 'PASSWORD', 'PASSWD')
+
+
+def _sin_tildes(texto: str) -> str:
+    """«CONTRASEÑA» y «Contraseña» tienen que dar lo mismo que «CONTRASENA»."""
+    return ''.join(c for c in unicodedata.normalize('NFD', texto)
+                   if unicodedata.category(c) != 'Mn')
+
+
+def es_columna_de_credencial(encabezado: object) -> bool:
+    """Si ese título de columna puede estar tapando una credencial."""
+    plano = ' '.join(_sin_tildes(str(encabezado or '')).upper().split())
+    return any(palabra in plano for palabra in PALABRAS_DE_CREDENCIAL)
+
+
+def sin_credenciales(celdas: dict) -> list[str]:
+    """Saca del diccionario las columnas de credencial. Devuelve cuáles sacó.
+
+    Modifica el diccionario en el sitio, antes de que nadie lea la fila: el
+    valor no se copia, no se registra y no sale de acá. `migracion_filas` solo
+    guarda archivo, hoja, número de fila y huella, nunca el contenido.
+    """
+    sacadas = [c for c in list(celdas) if es_columna_de_credencial(c)]
+    for columna in sacadas:
+        del celdas[columna]
+    return sacadas
 
 
 @dataclass
@@ -417,8 +455,9 @@ def recorrer(hoja: Hoja):
     """Las filas de una hoja, ya convertidas en aportes."""
     ruta = FUENTE / hoja.archivo
     for fila in leer_hoja(ruta, hoja.nombre, fila_encabezado=hoja.fila_encabezado):
-        for prohibida in COLUMNAS_PROHIBIDAS:
-            fila.celdas.pop(prohibida, None)
+        # Primero que nada, antes de que nadie mire la fila: si el libro trae
+        # una columna de credencial, acá se queda.
+        sin_credenciales(fila.celdas)
         aporte = hoja.extraer(fila)
         aporte.problemas.extend(fila.problemas)
         yield fila, aporte
