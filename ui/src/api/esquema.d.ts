@@ -3439,6 +3439,12 @@ export interface components {
             /** Consentimiento Fecha */
             consentimiento_fecha: string | null;
             /**
+             * Migrado
+             * @description Si la ficha vino de los Excel y no se creó en el sistema
+             * @default false
+             */
+            migrado: boolean;
+            /**
              * Grupos
              * @default []
              */

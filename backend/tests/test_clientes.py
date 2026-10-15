@@ -911,3 +911,28 @@ def test_el_pasaporte_repetido_avisa_aunque_sea_en_la_misma_ficha(cliente, admin
         f'{hallados}')
     assert 'pasaporte' in mismo[0]['criterios']
     assert mismo[0]['confianza'] == 'alta'
+
+
+def test_la_ficha_dice_si_el_cliente_vino_de_los_excel(cliente, admin, db):
+    """Por que los 895 clientes migrados salen sin documento, correo ni ciudad.
+
+    No es que el sistema no los traiga: esas columnas NO EXISTIAN en los libros.
+    Contado sobre el origen: «documento» no aparece en ninguna hoja de ningun
+    libro, «ciudad» solo en las dos hojas de LEADS -la de pauta y la del
+    formulario-, y de los 84 correos que si hay, 81 estan en la misma fila que
+    la columna CONTRASEÑA, o sea que son el usuario del portal consular y D-09
+    los deja fuera junto con la clave.
+
+    Sin este dato la ficha muestra tres guiones y quien la mira concluye que
+    algo esta roto, que es exactamente lo que paso.
+    """
+    from app.models.esquema import Clientes
+
+    c = crear_cliente(cliente, admin, nombre='Nacida En El Sistema')
+    assert cliente.get(f"/api/v1/clientes/{c['id']}", headers=admin).json()['migrado'] is False
+
+    # Una ficha con origen, como las que dejo la carga de los Excel.
+    db.get(Clientes, c['id']).origen_archivo = 'CUENTAS VISANOW.xlsx'
+    db.commit()
+
+    assert cliente.get(f"/api/v1/clientes/{c['id']}", headers=admin).json()['migrado'] is True

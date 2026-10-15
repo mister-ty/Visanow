@@ -89,6 +89,9 @@ class ClienteDetalle(ClienteSalida):
     canal_id: int | None
     observaciones: str | None
     consentimiento_fecha: datetime | None
+    migrado: bool = Field(
+        default=False,
+        description='Si la ficha vino de los Excel y no se creó en el sistema')
     grupos: list[GrupoSalida] = []
     solicitantes: list[SolicitanteSalida] = Field(default=[], description='Propios y de sus grupos')
 

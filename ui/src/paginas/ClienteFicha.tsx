@@ -146,6 +146,17 @@ export function ClienteFicha() {
           <Dato titulo="Llegó por" valor={nombreDe(catalogosFicha.data?.canales, c.canal_id)} />
           <Dato titulo="Consentimiento" valor={c.consentimiento ? 'Autorizado' : 'Sin autorizar'} />
         </Group>
+        {/* Los 895 clientes que vinieron de los Excel salen con tres guiones en
+            documento, correo y ciudad, y lo primero que uno piensa es que el
+            sistema no los está trayendo. No es eso: esas columnas no existían
+            en los libros. Decirlo acá evita la pregunta y señala qué hacer. */}
+        {c.migrado && !c.numero_documento && !c.ciudad && (
+          <Text size="xs" c="dimmed" mt="md">
+            Esta ficha vino de los archivos de Excel, que no traían documento,
+            correo ni ciudad: esas columnas no existían. Se llenan con «Editar»
+            la próxima vez que se hable con el cliente.
+          </Text>
+        )}
         {c.observaciones && <Text size="sm" mt="md">{c.observaciones}</Text>}
       </Card>
 

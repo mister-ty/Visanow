@@ -66,6 +66,11 @@ def detalle(cliente_id: int, _: Usuarios = Depends(requiere('clientes.ver')),
     return esq.ClienteDetalle(
         **_cliente(cliente).model_dump(), pais_id=cliente.pais_id, canal_id=cliente.canal_id,
         observaciones=cliente.observaciones, consentimiento_fecha=cliente.consentimiento_fecha,
+        # Para poder decirlo en la ficha: los 895 clientes que vinieron de los
+        # Excel no traen documento ni ciudad porque esas columnas no existían en
+        # ningún libro. Sin este dato, la ficha muestra tres guiones y quien la
+        # mira concluye que el sistema no los está trayendo.
+        migrado=cliente.origen_archivo is not None,
         grupos=grupos,
         solicitantes=[_solicitante(s) for s in personas.solicitantes_de(db, cliente_id=cliente_id)])
 
