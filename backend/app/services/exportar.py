@@ -34,6 +34,7 @@ from app.core.deps import permisos_de_rol
 from app.core.errores import Conflicto, Invalido, Prohibido
 from app.models.esquema import Exportaciones, Usuarios
 from app.services.cartera import ETIQUETA_TRAMO
+from app.services.casos import DIAS_RIESGO_ALTO, DIAS_RIESGO_MEDIO
 
 BOGOTA = ZoneInfo('America/Bogota')
 
@@ -42,6 +43,18 @@ BOGOTA = ZoneInfo('America/Bogota')
 # y el archivo llamen igual al mismo tramo.
 TRAMO_EN_PALABRAS = 'case v.tramo_mora ' + ' '.join(
     f"when '{codigo}' then '{nombre}'" for codigo, nombre in ETIQUETA_TRAMO.items()) + ' end'
+
+# Un día de Bogotá a partir de un instante guardado con zona: el servidor corre
+# en UTC y un trámite abierto a las 8 p. m. del 9 se bajaba con fecha del 10.
+_DIA = "(({col}) at time zone 'America/Bogota')::date"
+
+# El riesgo se arma con los umbrales de services/casos.py y no con números
+# escritos aquí: el archivo que baja operaciones no puede pintar en rojo otra
+# cosa que la pantalla (RF-022).
+RIESGO_EN_PALABRAS = f"""case when eo.es_final then 'ninguno'
+             when ca.ultima_actividad_en <= now() - interval '{DIAS_RIESGO_ALTO} days' then 'alto'
+             when ca.ultima_actividad_en <= now() - interval '{DIAS_RIESGO_MEDIO} days' then 'medio'
+             else 'bajo' end"""
 FORMATOS = ('xlsx', 'csv')
 # Una exportacion sin tope es una forma de vaciar la base en una peticion. Con
 # 866 personas hoy no se nota; el tope es para el dia que si.
@@ -107,16 +120,25 @@ RECURSOS: dict[str, Recurso] = {
 
     'casos': Recurso(
         nombre='casos', permiso='casos.exportar',
-        sql="""select ca.id, so.nombre as solicitante, cl.nombre as cliente,
-                      p.nombre as pais, eo.nombre as estado, u.nombre as responsable,
+        # Las siete dimensiones del tablero (RF-022) tienen que viajar en el
+        # archivo: quien reparte el trabajo del día lo hace sobre esta descarga,
+        # y sin el servicio, la fecha de entrada, la antigüedad y el riesgo
+        # tenía que volver a la pantalla a mirar caso por caso.
+        sql=f"""select ca.id, so.nombre as solicitante, cl.nombre as cliente,
+                      p.nombre as pais, sv.nombre as servicio,
+                      eo.nombre as estado, u.nombre as responsable,
                       ca.proxima_accion, ca.proxima_accion_fecha, ca.resultado,
+                      {_DIA.format(col='ca.creado_en')} as entrada,
+                      extract(day from now() - ca.creado_en)::int as antiguedad,
                       ca.ultima_actividad_en::date as ultima_actividad,
-                      n.valor_pactado
+                      {RIESGO_EN_PALABRAS} as riesgo,
+                      ca.fuente, ca.id_externo, n.valor_pactado
                  from casos ca
                  join solicitantes so on so.id = ca.solicitante_id
                  join estados_operativos eo on eo.id = ca.estado_id
                  join paises p on p.id = ca.pais_id
                  left join negocios n on n.id = ca.negocio_id
+                 left join servicios sv on sv.id = n.servicio_id
                  left join clientes cl on cl.id = n.cliente_id
                  left join usuarios u on u.id = ca.responsable_id
                 where :alcance
@@ -125,11 +147,17 @@ RECURSOS: dict[str, Recurso] = {
         columnas=[
             Columna('id', 'Trámite'), Columna('solicitante', 'Solicitante'),
             Columna('cliente', 'Cliente'), Columna('pais', 'País'),
+            Columna('servicio', 'Servicio'),
             Columna('estado', 'Estado'), Columna('responsable', 'Responsable'),
             Columna('proxima_accion', 'Próxima acción'),
             Columna('proxima_accion_fecha', 'Para cuándo'),
             Columna('resultado', 'Resultado'),
+            Columna('entrada', 'Entrada'),
+            Columna('antiguedad', 'Antigüedad (días)'),
             Columna('ultima_actividad', 'Última actividad'),
+            Columna('riesgo', 'Riesgo'),
+            Columna('fuente', 'Origen'),
+            Columna('id_externo', 'N.º de solicitud'),
             Columna('valor_pactado', 'Valor de la venta', 'pagos.ver')]),
 
     'cartera': Recurso(

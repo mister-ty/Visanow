@@ -18,6 +18,7 @@ import { useSesion } from '../auth/sesion'
 import { mostrarError } from '../lib/errores'
 import { aSelect, porPais, useAsignables, useCatalogos } from '../lib/catalogos'
 import { formatearFechaHora } from '../lib/formato'
+import { OPCIONES_ORIGEN, ORIGEN, type Origen } from '../lib/origen'
 
 type Detalle = Esquemas['CasoDetalle']
 
@@ -42,6 +43,7 @@ export function CasoFicha() {
   const [agendando, setAgendando] = useState(false)
   const [escribiendo, setEscribiendo] = useState(false)
   const [registrando, setRegistrando] = useState(false)
+  const [marcando, setMarcando] = useState(false)
   const [reprogramando, setReprogramando] = useState<Esquemas['CitaSalida'] | null>(null)
 
   const ficha = useQuery({
@@ -101,9 +103,13 @@ export function CasoFicha() {
           <Group gap="xs">
             <Title order={2}>{c.solicitante}</Title>
             <Badge size="lg" variant="light" color={c.es_final ? 'gray' : 'teal'}>{c.estado_nombre}</Badge>
+            {/* Los tres orígenes de RF-021 se distinguen: antes bastaba con no ser
+                manual para rotularse «SaaS», y un trámite híbrido —abierto a mano y
+                amarrado al SaaS después— nunca se veía como lo que es. */}
             {c.fuente !== 'manual' && (
-              <Badge variant="light" leftSection={<IconCloudDownload size={12} />}>
-                SaaS {c.id_externo}
+              <Badge variant="light" color={ORIGEN[c.fuente].color}
+                leftSection={<IconCloudDownload size={12} />}>
+                {ORIGEN[c.fuente].nombre} {c.id_externo}
               </Badge>)}
             {c.riesgo === 'alto' && (
               <Badge color="red" variant="light" leftSection={<IconAlertTriangle size={12} />}>
@@ -152,6 +158,15 @@ export function CasoFicha() {
                     onChange={(v) => editar.mutate({ tipo_visa_id: v ? Number(v) : null })} clearable />
                 </Grid.Col>
                 <Grid.Col span={6}>
+                  {/* La modalidad solo se podía escribir al dar de alta: una mal
+                      elegida se corregía por API o por SQL. */}
+                  <Select label="Modalidad" size="xs" disabled={!puedeEditar}
+                    value={c.modalidad_id ? String(c.modalidad_id) : null}
+                    data={aSelect(catalogos.data?.modalidades)}
+                    description="Cómo se tramita: primera vez, renovación, grupal o menores"
+                    onChange={(v) => editar.mutate({ modalidad_id: v ? Number(v) : null })} clearable />
+                </Grid.Col>
+                <Grid.Col span={6}>
                   <Select label="Sede de la cita" size="xs" disabled={!puedeEditar}
                     value={c.sede_id ? String(c.sede_id) : null}
                     data={aSelect(catalogos.data?.sedes)}
@@ -167,6 +182,24 @@ export function CasoFicha() {
                 <Grid.Col span={6}>
                   <Colaboradores casoId={c.id} responsableId={c.responsable_id}
                     editable={puedeEditar} />
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <Text size="xs" fw={500} mb={4}>Origen del trámite</Text>
+                  <Group gap="xs">
+                    <Badge variant="light" color={ORIGEN[c.fuente].color}>
+                      {ORIGEN[c.fuente].nombre}
+                    </Badge>
+                    <Text size="xs" c={c.id_externo ? undefined : 'dimmed'}>
+                      {c.id_externo ?? 'sin n.º de solicitud'}
+                    </Text>
+                    {puedeEditar && (
+                      <Tooltip label="Marcar el origen">
+                        <ActionIcon variant="subtle" color="gray" size="sm"
+                          aria-label="Marcar el origen" onClick={() => setMarcando(true)}>
+                          <IconPencil size={14} />
+                        </ActionIcon>
+                      </Tooltip>)}
+                  </Group>
                 </Grid.Col>
                 <Grid.Col span={12}>
                   <ProximaAccion caso={c} editable={puedeEditar}
@@ -241,6 +274,7 @@ export function CasoFicha() {
         </Grid.Col>
       </Grid>
 
+      {marcando && <ModalOrigen caso={c} cerrar={() => setMarcando(false)} hecho={refrescar} />}
       <ModalMover caso={c} abierto={moviendo} cerrar={() => setMoviendo(false)} hecho={refrescar} />
       <ModalCita casoId={casoId} abierto={agendando} cerrar={() => setAgendando(false)} hecho={refrescar} />
       <ModalResultado casoId={casoId} abierto={registrando} cerrar={() => setRegistrando(false)} hecho={refrescar} />
@@ -261,6 +295,56 @@ function ProximaAccion({ caso, editable, guardar }: {
       {editable && texto !== (caso.proxima_accion ?? '') && (
         <Button size="compact-sm" onClick={() => guardar(texto)}>Guardar</Button>)}
     </Group>)
+}
+
+/**
+ * Marcar de dónde viene el trámite (RF-021).
+ *
+ * El origen se derivaba solo: si traía número de solicitud era del SaaS y si no,
+ * manual. No había pantalla para decirlo ni para corregirlo, así que un trámite
+ * mal marcado solo se arreglaba por API; y «híbrido» —el más común de los tres,
+ * porque es el que se abrió a mano y se amarró al SaaS después— no se podía
+ * elegir en ninguna parte.
+ *
+ * Se monta cada vez que se abre, para que arranque con lo que el trámite tiene
+ * hoy y no con lo que se escribió en un intento anterior.
+ */
+function ModalOrigen({ caso, cerrar, hecho }: {
+  caso: Detalle; cerrar: () => void; hecho: () => void
+}) {
+  const formulario = useForm({
+    initialValues: { fuente: caso.fuente as Origen, id_externo: caso.id_externo ?? '' },
+  })
+  const marcar = useMutation({
+    mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/casos/{caso_id}/fuente', {
+      params: { path: { caso_id: caso.id } },
+      body: { fuente: v.fuente, id_externo: v.id_externo.trim() || null },
+    })),
+    onSuccess: () => {
+      notifications.show({ color: 'teal', message: 'Origen del trámite actualizado' })
+      hecho(); cerrar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo marcar el origen'),
+  })
+  return (
+    <Modal opened onClose={cerrar} title="Origen del trámite">
+      <form onSubmit={formulario.onSubmit((v) => marcar.mutate(v))}>
+        <Stack>
+          <Select label="De dónde viene" data={OPCIONES_ORIGEN} allowDeselect={false} data-autofocus
+            description="Híbrido: se abrió aquí y después se amarró a una solicitud del SaaS"
+            value={formulario.values.fuente}
+            onChange={(v) => v && formulario.setFieldValue('fuente', v as Origen)} />
+          <TextInput label="N.º de solicitud del SaaS"
+            description="Obligatorio si el trámite es del SaaS o híbrido. Se conserva aunque se
+                         marque manual: es la única forma de volver a encontrarlo allá"
+            {...formulario.getInputProps('id_externo')} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={cerrar}>Cancelar</Button>
+            <Button type="submit" loading={marcar.isPending}>Guardar</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>)
 }
 
 function ModalMover({ caso, abierto, cerrar, hecho }: {

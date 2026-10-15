@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, Request, status
+from datetime import date
+
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.paginacion import Pagina, Tamano
@@ -19,9 +21,12 @@ def _salida(db: Session, c: Casos) -> esq.CasoSalida:
         id=c.id, solicitante_id=c.solicitante_id, solicitante=c.solicitante.nombre,
         estado=c.estado.codigo, estado_nombre=c.estado.nombre, es_final=c.estado.es_final,
         responsable=c.responsable.nombre if c.responsable else None, responsable_id=c.responsable_id,
-        pais=c.pais.nombre if c.pais else None, fuente=c.fuente, id_externo=c.id_externo,
+        pais=c.pais.nombre if c.pais else None,
+        servicio=c.negocio.servicio.nombre if c.negocio else None,
+        fuente=c.fuente, id_externo=c.id_externo,
         resultado=c.resultado, proxima_accion=c.proxima_accion,
         proxima_accion_fecha=c.proxima_accion_fecha,
+        creado_en=c.creado_en, antiguedad_dias=servicio.antiguedad(c),
         dias_sin_movimiento=servicio.dias_sin_movimiento(c), riesgo=servicio.riesgo(c),
         sin_venta=c.negocio_id is None, ultima_actividad_en=c.ultima_actividad_en)
 
@@ -29,15 +34,22 @@ def _salida(db: Session, c: Casos) -> esq.CasoSalida:
 @router.get('/casos', response_model=esq.PaginaCasos)
 def listar(estado: str | None = None, responsable_id: int | None = None,
            solicitante_id: int | None = None, pais_id: int | None = None,
-           fuente: esq.Fuente | None = None, sin_asignar: bool = False, sin_venta: bool = False,
-           incluir_finalizados: bool = False, texto: str | None = None, pagina: Pagina = 1, tamano: Tamano = 50,
+           servicio_id: int | None = None, fuente: esq.Fuente | None = None,
+           riesgo: esq.NivelRiesgo | None = None,
+           desde: date | None = Query(default=None, description='Entró desde este día de Bogotá'),
+           hasta: date | None = Query(default=None, description='Entró hasta este día de Bogotá'),
+           antiguedad_min: int | None = Query(default=None, ge=0,
+                                              description='Lleva abierto al menos estos días'),
+           sin_asignar: bool = False, sin_venta: bool = False,
+           incluir_finalizados: bool = False, texto: str | None = None,
+           orden: esq.OrdenTablero = 'quieto', pagina: Pagina = 1, tamano: Tamano = 50,
            actor: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
-    """Tablero operativo (RF-022): por estado, responsable, persona, país, origen
-    y riesgo.
+    """Tablero operativo (RF-022) por las siete dimensiones del requisito: estado,
+    responsable, país, servicio, fecha de entrada, antigüedad y riesgo.
 
-    Con `solicitante_id` responde el historial de trámites de una sola persona,
-    que es lo que pide RF-004: la familia compra junta, pero cada quien tiene su
-    trámite y su resultado.
+    Con `solicitante_id` responde además el historial de trámites de una sola
+    persona, que es lo que pide RF-004: la familia compra junta, pero cada quien
+    tiene su trámite y su resultado.
 
     Lo que devuelve depende del alcance del usuario (RNF-03): quien tiene «solo
     casos asignados» ve los suyos aunque no filtre por responsable, y pedir una
@@ -45,9 +57,11 @@ def listar(estado: str | None = None, responsable_id: int | None = None,
     total, filas = servicio.listar(db, actor=actor, estado=estado,
                                    responsable_id=responsable_id, solicitante_id=solicitante_id,
                                    pais_id=pais_id,
-                                   fuente=fuente, sin_asignar=sin_asignar, sin_venta=sin_venta,
+                                   servicio_id=servicio_id, fuente=fuente, riesgo_nivel=riesgo,
+                                   desde=desde, hasta=hasta, antiguedad_min=antiguedad_min,
+                                   sin_asignar=sin_asignar, sin_venta=sin_venta,
                                    incluir_finalizados=incluir_finalizados, texto=texto,
-                                   pagina=pagina, tamano=tamano)
+                                   orden=orden, pagina=pagina, tamano=tamano)
     return esq.PaginaCasos(total=total, pagina=pagina, tamano=tamano,
                            items=[_salida(db, c) for c in filas])
 
@@ -64,6 +78,21 @@ def crear(datos: esq.CasoCrear, request: Request,
     return detalle(caso.id, actor, db)
 
 
+@router.post('/casos/lote', response_model=list[esq.CasoDetalle],
+             status_code=status.HTTP_201_CREATED)
+def crear_lote(datos: esq.CasoLoteCrear, request: Request,
+               actor: Usuarios = Depends(requiere('casos.crear')), db: Session = Depends(get_db)):
+    """El alta de una familia en una sola pasada (RF-020).
+
+    Un trámite por cada persona que viaja —cada quien tiene su pasaporte y su
+    propio resultado—, con el país, el tipo de visa, la modalidad, la sede y el
+    equipo elegidos una sola vez. O entran todos o no entra ninguno.
+    """
+    casos = servicio.crear_varios(db, actor, datos.model_dump(exclude_unset=True),
+                                  ip=ip_cliente(request))
+    return [detalle(caso.id, actor, db) for caso in casos]
+
+
 @router.get('/casos/{caso_id}', response_model=esq.CasoDetalle)
 def detalle(caso_id: int, actor: Usuarios = Depends(requiere('casos.ver')),
             db: Session = Depends(get_db)):
@@ -71,7 +100,7 @@ def detalle(caso_id: int, actor: Usuarios = Depends(requiere('casos.ver')),
     return esq.CasoDetalle(
         **_salida(db, c).model_dump(), pais_id=c.pais_id, tipo_visa_id=c.tipo_visa_id, modalidad_id=c.modalidad_id,
         sede_id=c.sede_id, negocio_id=c.negocio_id, etapa_saas=c.etapa_saas,
-        resultado_fecha=c.resultado_fecha, resultado_nota=c.resultado_nota, creado_en=c.creado_en,
+        resultado_fecha=c.resultado_fecha, resultado_nota=c.resultado_nota,
         citas=[esq.CitaSalida.model_validate(x, from_attributes=True) for x in servicio.citas_de(db, c.id)],
         checklist=[esq.ItemChecklist(item_id=i.id, codigo=i.codigo, nombre=i.nombre,
                                      obligatorio=i.obligatorio, cumplido=cumplido)
@@ -84,6 +113,22 @@ def detalle(caso_id: int, actor: Usuarios = Depends(requiere('casos.ver')),
 def editar(caso_id: int, datos: esq.CasoEditar, request: Request,
            actor: Usuarios = Depends(requiere('casos.editar')), db: Session = Depends(get_db)):
     servicio.editar(db, actor, caso_id, datos.model_dump(exclude_unset=True), ip=ip_cliente(request))
+    return detalle(caso_id, actor, db)
+
+
+@router.post('/casos/{caso_id}/fuente', response_model=esq.CasoDetalle)
+def marcar_fuente(caso_id: int, datos: esq.FuenteEntrada, request: Request,
+                  actor: Usuarios = Depends(requiere('casos.editar')),
+                  db: Session = Depends(get_db)):
+    """Marca el trámite como SaaS, manual o híbrido (RF-021).
+
+    Híbrido es el que nació a mano y después se amarró al SaaS: parte de lo que
+    dice lo escribió una persona aquí y parte llega de allá. El número de
+    solicitud se conserva aunque el trámite se marque manual: es la única forma
+    de volver a encontrarlo en el otro sistema.
+    """
+    servicio.marcar_fuente(db, actor, caso_id, fuente=datos.fuente,
+                           id_externo=datos.id_externo, ip=ip_cliente(request))
     return detalle(caso_id, actor, db)
 
 

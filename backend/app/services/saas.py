@@ -49,6 +49,7 @@ from app.models.esquema import (
     Solicitantes,
     Usuarios,
 )
+from app.services import casos as serv_casos
 from app.services.auditoria import auditar, instantanea
 
 BOGOTA = ZoneInfo('America/Bogota')
@@ -416,9 +417,17 @@ def vincular(db: Session, actor: Usuarios, caso_id: int, id_externo: str, *,
                         codigo='solicitud_ya_vinculada')
 
     antes = instantanea(caso)
+    antes_fuente = caso.fuente
     caso.id_externo = id_externo
-    caso.fuente = 'saas'
+    # Un trámite que nació a mano y ahora se amarra al SaaS queda **híbrido**, no
+    # «saas»: la mitad de lo que tiene lo escribió una persona aquí antes de que
+    # el SaaS supiera que existía, y es la mitad que explica por qué hay datos
+    # que ninguna importación va a traer (RF-021).
+    caso.fuente = serv_casos.fuente_al_vincular(antes_fuente)
     caso.sincronizado_en = _ahora()
+    if caso.fuente != antes_fuente:
+        serv_casos.anotar_fuente(db, caso, antes_fuente, actor,
+                                 f'Vinculado a la solicitud {id_externo} del SaaS.')
     db.flush()
     auditar(db, operacion='update', entidad='casos', usuario_id=actor.id, entidad_id=caso.id,
             antes=antes, despues=instantanea(caso), ip=ip)
