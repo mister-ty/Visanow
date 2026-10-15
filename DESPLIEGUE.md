@@ -74,6 +74,35 @@ Pasos:
    `VITE_API_URL` con la URL de Render (sin barra final). Cuando Vercel asigne
    el dominio, pongalo en `CORS_ORIGINS` y `URL_UI` de Render.
 
+### Lo que hay montado hoy (15/10/2026)
+
+| | Donde | Dominio |
+|---|---|---|
+| API | Render, servicio `visanow-api` (`srv-db4krb2d0e5s73co8m4g`) | <https://visanow-api.onrender.com> |
+| Pantalla | Vercel, proyecto `visanow`, raiz `ui` | <https://visanow-omega.vercel.app> |
+| Base | Supabase, proyecto `visanow-crm` | session pooler, puerto 5432 |
+
+Comprobado el 15/10 con las variables ya puestas: la API responde
+`{"estado":"ok"}` sin `falta_configurar`, devuelve
+`access-control-allow-origin: https://visanow-omega.vercel.app` cuando la
+peticion viene de la pantalla, y **vacio** cuando viene de otro origen —no es un
+comodin—. Tambien viajan las tres cabeceras de la exportacion
+(`Content-Disposition`, `X-Filas`, `X-Columnas-Omitidas`), que sin
+`expose_headers` el navegador escondia.
+
+Para comprobarlo de nuevo en diez segundos, sin entrar a ningun panel:
+
+    curl https://visanow-api.onrender.com/salud
+
+Si contesta `"estado":"configuracion_incompleta"` dice ademas cuales variables
+faltan por llenar.
+
+**Pendiente de decidir antes de usarlo de verdad:** el plan Hobby de Vercel
+**prohibe el uso comercial** en sus terminos, y VisaNow es una agencia. Para la
+operacion diaria hay que pasar a Pro (USD 20 al mes) o servir la pantalla desde
+el VPS, que es la arquitectura de la primera mitad de este documento. Lo que hay
+hoy sirve para probar y para la entrega; no es una respuesta permanente.
+
 Al pasar al VPS no cambia nada del codigo: es el mismo Dockerfile y el mismo
 script de arranque, con el `docker-compose.prod.yml` de mas arriba.
 
