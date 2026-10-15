@@ -490,6 +490,9 @@ def test_la_lista_filtrable_del_embudo_existe_como_vista():
     assert '<Table' in texto, 'el embudo solo pinta el tablero: la lista no existe como vista'
     assert 'motivo_perdida' in texto, 'sin el motivo a la vista, perder no explica nada'
     assert 'referido_por' in texto, 'quién lo recomendó no se ve en ninguna parte'
+    # Capturar la fecha de llegada y no mostrarla en ningún lado deja la mitad
+    # del trabajo hecha: de esa fecha sale el conteo de leads de cada pauta.
+    assert 'creado_en' in texto, 'la fecha en que llegó el lead no se ve'
 
 
 def test_la_pantalla_del_embudo_no_se_come_en_silencio_las_tarjetas_que_sobran():

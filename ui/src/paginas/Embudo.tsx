@@ -36,6 +36,11 @@ const TAMANO = 100
 const hoyEnBogota = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' })
 
+// El día en que llegó el lead, en hora de Bogotá (RN-10): de esa fecha sale
+// «cuántos leads trajo la pauta de septiembre», así que tiene que verse.
+const diaCorto = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeZone: 'America/Bogota' })
+const formatearDia = (iso: string | null | undefined) => (iso ? diaCorto.format(new Date(iso)) : '—')
+
 /** El nombre de una opción de catálogo a partir de su id. */
 const nombreDe = (opciones: Opcion[] | undefined, id: number | null | undefined) =>
   (id === null || id === undefined ? null : opciones?.find((o) => o.id === id)?.nombre ?? null)
@@ -271,7 +276,7 @@ function Lista({ items, catalogos, abrir, mover, contactar, ganar, puedeGanar, e
         <Table verticalSpacing="sm" highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Cliente</Table.Th><Table.Th>Paso</Table.Th>
+              <Table.Th>Cliente</Table.Th><Table.Th>Llegó</Table.Th><Table.Th>Paso</Table.Th>
               <Table.Th>De dónde salió</Table.Th><Table.Th>Le interesa</Table.Th>
               <Table.Th>Valor estimado</Table.Th><Table.Th>Próxima acción</Table.Th>
               <Table.Th>Sin contacto</Table.Th><Table.Th>Asesor</Table.Th>
@@ -286,6 +291,9 @@ function Lista({ items, catalogos, abrir, mover, contactar, ganar, puedeGanar, e
                     {o.cliente}
                   </Text>
                 </Table.Td>
+                {/* Cuándo llegó, no cuándo se digitó: es la fecha con la que se
+                    cuentan los leads de una pauta o de un mes. */}
+                <Table.Td><Text size="sm">{formatearDia(o.creado_en)}</Text></Table.Td>
                 <Table.Td>
                   <Badge variant="light" color={o.es_cierre ? 'gray' : 'teal'}>{o.estado_nombre}</Badge>
                   {/* Lo único que queda de un negocio perdido (RF-015). Sin
@@ -341,7 +349,7 @@ function Lista({ items, catalogos, abrir, mover, contactar, ganar, puedeGanar, e
               </Table.Tr>
             ))}
             {items.length === 0 && (
-              <Table.Tr><Table.Td colSpan={editable ? 9 : 8}>
+              <Table.Tr><Table.Td colSpan={editable ? 10 : 9}>
                 <Text size="sm" c="dimmed" ta="center" py="lg">
                   No hay oportunidades con estos filtros.
                 </Text>
