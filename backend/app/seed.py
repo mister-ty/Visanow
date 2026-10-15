@@ -554,11 +554,18 @@ def sembrar_catalogo(cur) -> tuple[int, int, int]:
             insert into servicios (codigo, nombre, pais_id, tipo, crea_casos,
                                    tasa_consular_valor, tasa_consular_moneda, tasa_consular_nota, activo)
             values (%s, %s, (select id from paises where iso2 = %s), %s, %s, %s, %s, %s, true)
-            on conflict (codigo) do update set
-              nombre = excluded.nombre, pais_id = excluded.pais_id, tipo = excluded.tipo,
-              crea_casos = excluded.crea_casos, tasa_consular_valor = excluded.tasa_consular_valor,
-              tasa_consular_moneda = excluded.tasa_consular_moneda,
-              tasa_consular_nota = excluded.tasa_consular_nota, activo = true""",
+            -- Solo si no existe, igual que los parámetros. Estaba con `do update
+            -- set ... activo = true`, y `arranque.sh` siembra en CADA arranque
+            -- del contenedor: en el plan gratuito eso no es una vez por
+            -- despliegue, es cada vez que el servicio despierta de los quince
+            -- minutos de sueño, o sea varias veces al día. Así que un servicio
+            -- que la administradora desactivara volvía a aparecer, y un nombre
+            -- que corrigiera volvía al del código, sin error y sin aviso.
+            --
+            -- Publicar una lista de precios nueva es un acto deliberado, no un
+            -- efecto secundario de que el contenedor se despierte. Para eso está
+            -- el panel, o una migración.
+            on conflict (codigo) do nothing""",
                     (codigo, nombre, pais, tipo, crea, tasa, moneda, nota))
     cur.execute('update servicios set activo = false where codigo = any(%s)', (SERVICIOS_PROVISIONALES,))
     retirados = cur.rowcount
@@ -571,9 +578,12 @@ def sembrar_catalogo(cur) -> tuple[int, int, int]:
         cur.execute("""
             insert into tarifas (servicio_id, personas, valor, modalidad, valor_minimo, moneda, vigente_desde)
             select id, %s, %s, %s, %s, 'COP', %s::date from servicios where codigo = %s
-            on conflict (servicio_id, personas, vigente_desde) do update set
-              valor = excluded.valor, modalidad = excluded.modalidad,
-              valor_minimo = excluded.valor_minimo""",
+            -- Igual que arriba, y acá cuesta menos de lo que parece: la llave
+            -- incluye `vigente_desde`, así que una lista de precios nueva crea
+            -- filas nuevas de todas formas. El `do update` solo pisaba cuando la
+            -- fecha era la misma, o sea justo cuando alguien había corregido un
+            -- valor a mano.
+            on conflict (servicio_id, personas, vigente_desde) do nothing""",
                     (personas, valor, modalidad, minimo, FECHA_LISTA_PRECIOS, codigo))
     return len(SERVICIOS), len(TARIFAS), retirados
 

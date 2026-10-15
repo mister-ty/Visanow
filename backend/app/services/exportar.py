@@ -30,6 +30,7 @@ from openpyxl import Workbook
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core import seguridad as seg
 from app.core.deps import permisos_de_rol
 from app.core.errores import Conflicto, Invalido, Prohibido
 from app.models.esquema import Exportaciones, Usuarios
@@ -112,8 +113,18 @@ RECURSOS: dict[str, Recurso] = {
             Columna('id', 'ID'), Columna('nombre', 'Solicitante'),
             Columna('cliente', 'Cliente'), Columna('tipo_documento', 'Tipo doc.'),
             Columna('numero_documento', 'Documento', 'solicitantes.ver'),
-            # El pasaporte es el dato mas sensible que guarda el sistema.
-            Columna('pasaporte', 'Pasaporte', 'solicitantes.exportar'),
+            # El pasaporte es el dato mas sensible que guarda el sistema, y la
+            # columna estaba mal por los dos lados. El permiso era
+            # `solicitantes.exportar`, que es el mismo que ya exige la ruta
+            # entera: o sea que no era un segundo permiso, era el mismo otra vez,
+            # y el pasaporte salia para todo el que pudiera exportar. Ahora pide
+            # `solicitantes.reservado`, que es el que existe para esto.
+            #
+            # Y el SQL seleccionaba `s.pasaporte`, que es la columna CIFRADA, asi
+            # que la celda del Excel no traia el pasaporte: traia el token de
+            # Fernet («gAAAAABq0Det...»). Una columna inservible, y justo la que
+            # la clienta iba a mirar. Se descifra en `_filas`.
+            Columna('pasaporte', 'Pasaporte', 'solicitantes.reservado'),
             Columna('fecha_nacimiento', 'Nacimiento'),
             Columna('nacionalidad', 'Nacionalidad'),
             Columna('telefono', 'Teléfono'), Columna('email', 'Correo')]),
@@ -244,14 +255,43 @@ def _filas(db: Session, actor: Usuarios, recurso: Recurso,
             p['actor'] = actor.id
         else:
             sql = sql.replace(':alcance', 'true')
-    crudas = db.execute(text(sql), p).mappings().all()
+    # El tope se le pide a Postgres, no a la memoria. Antes se traian TODAS las
+    # filas y el `if` venia despues: para cuando se enteraba de que eran
+    # demasiadas, ya estaban adentro, y el comentario de arriba dice que una
+    # exportacion sin tope es una forma de vaciar la base en una peticion. Con un
+    # solo trabajador y 512 MB, eso no es una queja: es el proceso que se muere.
+    # Se piden MAX_FILAS + 1 para poder distinguir «justo el tope» de «se paso».
+    crudas = db.execute(text(f'select * from ({sql}) q limit {MAX_FILAS + 1}'), p).mappings().all()
     if len(crudas) > MAX_FILAS:
         raise Conflicto(
-            f'La consulta trae {len(crudas):,} filas y el tope por archivo es de '
-            f'{MAX_FILAS:,}. Filtre antes de exportar.'.replace(',', '.'),
+            f'La consulta trae mas de {MAX_FILAS:,} filas y ese es el tope por '
+            f'archivo. Filtre antes de exportar.'.replace(',', '.'),
             'demasiadas_filas')
     nombres = [c.campo for c in columnas]
-    return [[_inerte(fila.get(n)) for n in nombres] for fila in crudas]
+    return [[_inerte(_legible(n, fila.get(n))) for n in nombres] for fila in crudas]
+
+
+#: Columnas que la base guarda cifradas. Si salen tal cual, la celda del Excel
+#: trae el token de Fernet («gAAAAABq0Det…») en vez del dato: una columna
+#: inservible, y justo la que la clienta iba a mirar. Quién puede pedirla lo
+#: decide el permiso de la columna, no esto.
+CIFRADAS = {'pasaporte'}
+
+
+def _legible(campo: str, valor):
+    """Descifra lo que la base guarda cifrado, para que la celda tenga el dato.
+
+    Falla en silencio hacia el enmascarado y no hacia el token: si la llave no
+    descifra ese valor —un dato de antes de un cambio de llave, por ejemplo— es
+    mejor una celda que dice «no se pudo leer» que una con un token que nadie
+    entiende y que alguien va a copiar creyendo que es el pasaporte.
+    """
+    if campo not in CIFRADAS or not valor:
+        return valor
+    try:
+        return seg.descifrar(valor)
+    except Exception:
+        return '(no se pudo leer)'
 
 
 def _inerte(v):

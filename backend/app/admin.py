@@ -103,7 +103,17 @@ class AccesoAdministracion(AuthenticationBackend):
         self.middlewares = [Middleware(
             SessionMiddleware, secret_key=ajustes().app_secret, session_cookie='visanow_admin',
             max_age=DURACION_SESION_HORAS * 3600,
-            same_site='strict',              # ningún sitio ajeno puede enviar formularios con esta sesión
+            # 'lax' y no 'strict'. Strict es justamente la que el navegador NO manda
+            # cuando uno llega navegando desde otro sitio, y en produccion el boton
+            # de Administracion esta en la pantalla de Vercel y el panel en Render:
+            # con strict, cada clic pedia correo, contrasena y codigo otra vez,
+            # aunque la persona acabara de entrar. En desarrollo no se notaba porque
+            # el proxy de Vite hace que todo sea el mismo origen.
+            #
+            # Lax sigue bloqueando lo que el comentario queria proteger -que un sitio
+            # ajeno envie FORMULARIOS con esta sesion, que son POST- y deja pasar la
+            # llegada por un enlace, que es GET.
+            same_site='lax',
             https_only=not ajustes().es_local)]
 
     @staticmethod

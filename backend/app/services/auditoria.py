@@ -47,6 +47,49 @@ DATOS_PERSONALES: dict[str, set[str]] = {
     'usuarios': {'nombre', 'email'},
     # El nombre de un grupo es el apellido de una familia.
     'grupos': {'nombre', 'observaciones'},
+
+    # Lo de abajo faltaba, y el diccionario tenía cinco entidades cuando se
+    # auditan veintiocho. La tabla de auditoría NO SE PUEDE BORRAR (RNF-05, la
+    # defiende un trigger), así que un dato personal que entra acá se queda para
+    # siempre: no es una fuga que se tapa después, es una que hay que no cometer.
+    #
+    # La más grave era `actividades`: su cuerpo es, literalmente, lo que se le
+    # dijo al cliente o lo que el cliente contó. Y `pagos`, que volcaba el
+    # nombre de quien consignó, la observación y la referencia enteros.
+    'actividades': {'asunto', 'cuerpo'},
+    'pagos': {'pagador_nombre', 'observacion', 'referencia', 'comprobante_url'},
+    # El título de una tarea casi siempre nombra a la persona: «llamar a Ana al
+    # 310…».
+    'tareas': {'titulo', 'descripcion'},
+    # El nombre de un archivo también: «pasaporte de Ana Pérez.pdf».
+    'documentos': {'nombre', 'url', 'ruta'},
+    'movimientos_banco': {'descripcion', 'referencia', 'nota_cliente', 'nota_abono',
+                          'observacion', 'motivo_descarte'},
+    'negocios': {'observaciones'},
+    'oportunidades': {'proxima_accion', 'motivo_perdida_nota'},
+    'citas': {'observaciones'},
+    'gastos': {'concepto', 'observacion', 'comprobante_url'},
+    # El mensaje de una alerta nombra a quien la causó: «a Ana se le vence el
+    # pasaporte en 30 días».
+    'alertas': {'mensaje', 'clave_dedupe'},
+    # Los valores que se están reconciliando contra el SaaS pueden ser el
+    # nombre, el teléfono o el pasaporte: es el contenido del campo en disputa.
+    'conflictos_sincronizacion': {'valor_visanow', 'valor_saas'},
+    'importaciones': {'archivo_nombre', 'mensaje_error'},
+    'liquidaciones_comision': {'observaciones'},
+    'cuotas_negocio': {'concepto'},
+    'ajustes_negocio': {'motivo'},
+
+    # Y las que se auditan y NO llevan nada de nadie, declaradas a propósito con
+    # el conjunto vacío. Vale escribirlas: así la prueba puede exigir que toda
+    # entidad auditada esté en esta lista, y agregar una tabla obliga a decidir
+    # de qué lado va en vez de dejarla filtrar en silencio.
+    'comisiones': set(),
+    'casos_colaboradores': set(),
+    'roles_permisos': set(),
+    # Son plantillas, con marcadores de posición, no datos de nadie.
+    'plantillas_mensaje': set(),
+    'alertas_tipos': set(),
 }
 OCULTO = '«dato personal»'
 

@@ -112,9 +112,19 @@ def salud(db: Session = Depends(get_db)):
     """
     db.execute(text('select 1'))
     commit = os.environ.get('RENDER_GIT_COMMIT') or os.environ.get('GIT_COMMIT')
-    return {
+    respuesta = {
         'estado': 'ok',
         'entorno': ajustes().app_env,
         'version': commit[:7] if commit else 'desconocida',
         'migracion': db.execute(text('select version_num from alembic_version')).scalar(),
     }
+    # Las variables que quedaron con el valor del portátil. Se contestan acá
+    # porque CORS falla en silencio: no da error en el servidor ni deja rastro en
+    # el log, el navegador bloquea la respuesta y la pantalla se queda sin
+    # cargar. Buscarlo desde ahí son horas, y serían las del día de la entrega.
+    # Así son un curl, y se puede mirar desde el teléfono.
+    pendientes = ajustes().configuracion_de_desarrollo_en_produccion
+    if pendientes:
+        respuesta['estado'] = 'configuracion_incompleta'
+        respuesta['falta_configurar'] = pendientes
+    return respuesta

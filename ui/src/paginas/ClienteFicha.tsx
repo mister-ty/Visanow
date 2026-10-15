@@ -270,7 +270,8 @@ export function ClienteFicha() {
             <TablaSolicitantes solicitantes={g.solicitantes} tramitar={setTramitando}
               puedeTramitar={puede('casos.crear')} puedeEditar={puede('solicitantes.editar')}
               editar={setEditandoPersona} mover={setMoviendo}
-              unir={setUniendo} puedeUnir={puedeUnir} tramites={f.ve_tramites ? f.tramites : undefined} />
+              unir={setUniendo} puedeUnir={puedeUnir} tramites={f.ve_tramites ? f.tramites : undefined}
+              puedeVerPasaporte={puede('solicitantes.reservado')} />
           </Card>
         ))}
 
@@ -282,7 +283,8 @@ export function ClienteFicha() {
               <TablaSolicitantes solicitantes={sueltos} tramitar={setTramitando}
                 puedeTramitar={puede('casos.crear')} puedeEditar={puede('solicitantes.editar')}
                 editar={setEditandoPersona} mover={setMoviendo}
-                unir={setUniendo} puedeUnir={puedeUnir} tramites={f.ve_tramites ? f.tramites : undefined} />
+                unir={setUniendo} puedeUnir={puedeUnir} tramites={f.ve_tramites ? f.tramites : undefined}
+                puedeVerPasaporte={puede('solicitantes.reservado')} />
             </Card>
           )
         })()}
@@ -325,11 +327,14 @@ const Dato = ({ titulo, valor }: { titulo: string; valor: string | null | undefi
 )
 
 function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar, editar, mover,
-                             unir, puedeUnir, tramites }: {
+                             unir, puedeUnir, tramites, puedeVerPasaporte }: {
   solicitantes: Solicitante[]
   tramitar: (s: Solicitante) => void
   unir: (s: Solicitante) => void
   puedeUnir: boolean
+  /** Ver el pasaporte COMPLETO, que no es lo mismo que ver la ficha: con el
+   *  permiso de ver la ficha lo alcanzaban cinco de los seis roles. */
+  puedeVerPasaporte: boolean
   /** Los trámites del cliente, para contar los de cada persona. `undefined`
    *  cuando a quien mira no se le muestran: la columna entonces no sale, para
    *  no enseñar un cero que se leería como «esta persona no tiene trámites». */
@@ -385,12 +390,17 @@ function TablaSolicitantes({ solicitantes, tramitar, puedeTramitar, puedeEditar,
                 {s.pasaporte ? (
                   <Group gap={4}>
                     <Text size="sm" ff="monospace">{s.pasaporte}</Text>
+                    {/* El botón solo a quien le corresponde: con el permiso de
+                        ver la ficha lo alcanzaban cinco de los seis roles, y
+                        ofrecerlo a quien va a recibir un 403 es prometer algo
+                        que no se puede dar. */}
+                    {puedeVerPasaporte && (
                     <Tooltip label="Ver completo (queda registrado)">
                       <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Ver pasaporte"
                         loading={ver.isPending} onClick={() => ver.mutate(s.id)}>
                         <IconEye size={14} />
                       </ActionIcon>
-                    </Tooltip>
+                    </Tooltip>)}
                   </Group>
                 ) : <Text size="sm" c="dimmed">—</Text>}
               </Table.Td>

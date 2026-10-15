@@ -172,8 +172,21 @@ def fusionar_solicitante(solicitante_id: int, datos: esq.FusionEntrada, request:
 
 @router.get('/solicitantes/{solicitante_id}/pasaporte', response_model=esq.PasaporteSalida)
 def ver_pasaporte(solicitante_id: int, request: Request,
-                  actor: Usuarios = Depends(requiere('solicitantes.ver')), db: Session = Depends(get_db)):
-    """Devuelve el pasaporte completo y deja constancia de quién lo consultó (RNF-04)."""
+                  actor: Usuarios = Depends(requiere('solicitantes.reservado')),
+                  db: Session = Depends(get_db)):
+    """Devuelve el pasaporte completo y deja constancia de quién lo consultó (RNF-04).
+
+    Exige `solicitantes.reservado`, no `solicitantes.ver`. Con el permiso de ver
+    la ficha lo alcanzaban cinco de los seis roles —comercial, apoyo externo y
+    solo lectura entre ellos—, y a dos de esos el sistema no les pide ni doble
+    factor. El propio sembrado dice lo contrario con todas las letras al definir
+    este permiso: «poder ver la ficha de alguien no tiene por qué incluirlos; lo
+    necesita quien hace el trámite —administradora y operaciones—, no quien vende
+    ni quien consulta». El código decía otra cosa.
+
+    La pantalla enmascara el pasaporte en la tabla y este es el botón para verlo
+    completo, así que el permiso de aquí es el que de verdad lo protege.
+    """
     return esq.PasaporteSalida(solicitante_id=solicitante_id,
                                pasaporte=personas.ver_pasaporte(db, actor, solicitante_id,
                                                                 ip=ip_cliente(request)))

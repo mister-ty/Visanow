@@ -195,6 +195,82 @@ NO_IDENTIFICAN = {
         # una familia, y por eso ese va oculto.
         'id', 'cliente_contacto_id', 'tipo', 'creado_en', 'origen_archivo', 'origen_hoja',
         'origen_fila'},
+    # --- Las entidades que entraron al enmascarado el 15/10. Lo que lleva texto
+    # de una persona quedo en DATOS_PERSONALES; esto es lo demas, revisado
+    # columna por columna. Dos que vale aclarar porque el nombre engana:
+    # `actividades.direccion` es «entrante» o «saliente», no una direccion de
+    # casa; y `conflictos_sincronizacion.campo` es el NOMBRE del campo en
+    # disputa, no su valor -los dos valores si se enmascaran-.
+    'actividades': {
+        'id', 'entidad', 'entidad_id', 'tipo', 'direccion', 'documento_id',
+        'ocurrido_en', 'creado_en', 'usuario_id', 'origen_archivo', 'origen_hoja',
+        'origen_fila'},
+    'pagos': {
+        'id', 'negocio_id', 'fecha', 'monto_bruto', 'monto_neto', 'costo_medio',
+        'moneda', 'estado', 'medio_pago_id', 'banco_cuenta_id', 'registrado_por',
+        'creado_en', 'migrado_en', 'origen_archivo', 'origen_hoja', 'origen_fila'},
+    'tareas': {
+        'id', 'responsable_id', 'prioridad', 'estado', 'origen', 'caso_id',
+        'negocio_id', 'oportunidad_id', 'cliente_id', 'vence_en', 'cerrada_en',
+        'creado_en', 'creado_por'},
+    'documentos': {
+        'id', 'entidad', 'entidad_id', 'tipo', 'almacenamiento', 'mime', 'sha256',
+        'tamano_bytes', 'restringido', 'subido_por', 'creado_en'},
+    'movimientos_banco': {
+        'id', 'banco', 'banco_cuenta_id', 'fecha', 'valor', 'moneda', 'estado',
+        'huella', 'pago_id', 'duplicado_de_id', 'conciliado_en', 'conciliado_por',
+        'creado_en', 'origen_archivo', 'origen_hoja', 'origen_fila'},
+    'negocios': {
+        'id', 'cliente_id', 'grupo_id', 'oportunidad_id', 'servicio_id', 'canal_id',
+        'vendedor_id', 'cantidad_solicitantes', 'valor_lista', 'valor_pactado',
+        'descuento', 'moneda', 'fecha_venta', 'negocio_principal_id', 'creado_en',
+        'migrado_en', 'origen_archivo', 'origen_hoja', 'origen_fila'},
+    'oportunidades': {
+        'id', 'cliente_id', 'servicio_id', 'pais_id', 'canal_id', 'campania',
+        'campania_id', 'asesor_id', 'estado_id', 'valor_estimado',
+        'motivo_perdida_id', 'referido_por_cliente_id', 'proxima_accion_fecha',
+        'ultimo_contacto_en', 'cerrado_en', 'creado_en'},
+    'citas': {
+        'id', 'caso_id', 'tipo', 'sede_id', 'inicia_en', 'zona_horaria', 'estado',
+        'creado_en', 'origen_archivo', 'origen_hoja', 'origen_fila'},
+    'gastos': {
+        'id', 'caso_id', 'negocio_id', 'categoria_id', 'proveedor_id', 'fecha',
+        'monto', 'moneda', 'estado', 'medio_pago_id', 'banco_cuenta_id',
+        'registrado_por', 'creado_en'},
+    'alertas': {
+        'id', 'tipo_id', 'estado', 'caso_id', 'negocio_id', 'oportunidad_id',
+        'cita_id', 'tarea_id', 'destinatario_id', 'generada_en', 'vence_en',
+        'pospuesta_hasta', 'resuelta_en', 'resuelta_por'},
+    'conflictos_sincronizacion': {
+        'id', 'importacion_id', 'caso_id', 'campo', 'estado', 'detectado_en',
+        'resuelto_en', 'resuelto_por'},
+    'importaciones': {
+        'id', 'origen', 'archivo_sha256', 'estado', 'filas_totales', 'nuevos',
+        'actualizados', 'sin_cambios', 'rechazados', 'conflictos', 'iniciada_en',
+        'aplicada_en', 'ejecutada_por'},
+    'liquidaciones_comision': {
+        'id', 'vendedor_id', 'periodo', 'cantidad', 'total', 'estado', 'creada_en',
+        'liquidada_por', 'pagada_en'},
+    'cuotas_negocio': {
+        'id', 'negocio_id', 'numero', 'monto', 'fecha_pactada', 'creado_en',
+        'origen_archivo', 'origen_hoja', 'origen_fila'},
+    'ajustes_negocio': {
+        'id', 'negocio_id', 'tipo', 'monto', 'fecha', 'autorizado_por', 'creado_en'},
+    # Y las que se declararon con el conjunto vacio en DATOS_PERSONALES: no
+    # llevan nada de nadie, pero sus columnas tambien hay que clasificarlas.
+    'comisiones': {
+        'id', 'negocio_id', 'vendedor_id', 'periodo', 'base_calculo', 'monto',
+        'regla_id', 'regla_aplicada', 'estado', 'liquidacion_id', 'creado_en'},
+    'casos_colaboradores': {'caso_id', 'usuario_id', 'agregado_en', 'agregado_por'},
+    'roles_permisos': {'rol_id', 'permiso_id'},
+    # Son plantillas, con marcadores de posicion: el cuerpo no es de nadie.
+    'plantillas_mensaje': {
+        'id', 'evento', 'nombre', 'canal', 'asunto', 'cuerpo', 'activa', 'creada_en',
+        'creada_por', 'actualizada_en'},
+    'alertas_tipos': {
+        'id', 'codigo', 'nombre', 'entidad', 'anticipacion_valor',
+        'anticipacion_unidad', 'repeticiones', 'canal', 'severidad', 'activo',
+        'destinatario_rol_id'},
 }
 
 
@@ -268,3 +344,47 @@ def test_salud_dice_que_version_esta_corriendo(cliente, monkeypatch):
     monkeypatch.delenv('RENDER_GIT_COMMIT')
     assert cliente.get('/salud').json()['version'] == 'desconocida', (
         'fuera de Render no se inventa una version')
+
+
+# ------------------- lo que entra en la auditoria se queda para siempre
+
+def test_toda_entidad_que_se_audita_esta_declarada_en_el_enmascarado():
+    """La auditoria no se puede borrar, asi que un dato personal que entra se queda.
+
+    `sin_datos_personales` enmascara POR ENTIDAD, y el diccionario tenia cinco
+    cuando se auditan veintiocho. Las que faltaban volcaban la fila entera:
+    `actividades` guardaba el cuerpo de lo que se le dijo al cliente, `pagos` el
+    nombre de quien consigno con su observacion y su referencia. Un trigger
+    impide modificar esa tabla (RNF-05), que es justo lo que hace que esto no se
+    pueda arreglar despues.
+
+    Esta prueba no decide que se enmascara: exige que alguien lo haya DECIDIDO.
+    Una entidad nueva, aunque se declare con el conjunto vacio, obliga a mirar
+    sus columnas; sin esto, una tabla nueva filtra sola y nadie se entera.
+    """
+    import pathlib
+    import re
+
+    from app.services.auditoria import DATOS_PERSONALES
+
+    #: Los documentos se auditan nombrando la entidad de la que cuelgan, en
+    #: singular. No son tablas: se resuelven a la suya.
+    ALIAS = {'cliente': 'clientes', 'solicitante': 'solicitantes',
+             'caso': 'casos', 'negocio': 'negocios'}
+
+    app_dir = pathlib.Path(__file__).resolve().parents[1] / 'app'
+    auditadas = set()
+    for archivo in sorted(app_dir.rglob('*.py')):
+        if 'migracion' in archivo.parts:   # herramienta de una sola corrida
+            continue
+        texto = archivo.read_text(encoding='utf-8')
+        for m in re.finditer(r"""entidad=['"]([a-z_]+)['"]""", texto):
+            auditadas.add(ALIAS.get(m.group(1), m.group(1)))
+
+    assert auditadas, 'no se encontro ninguna llamada a auditar; la prueba no mira nada'
+    sin_declarar = sorted(auditadas - set(DATOS_PERSONALES))
+    assert not sin_declarar, (
+        f'Estas entidades se auditan y nadie decidio que se les enmascara: '
+        f'{sin_declarar}. Revise sus columnas de texto y agreguelas a '
+        f'DATOS_PERSONALES en app/services/auditoria.py, con el conjunto vacio '
+        f'si de verdad no llevan datos de nadie.')

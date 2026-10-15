@@ -737,6 +737,17 @@ export interface paths {
         /**
          * Ver Pasaporte
          * @description Devuelve el pasaporte completo y deja constancia de quién lo consultó (RNF-04).
+         *
+         *     Exige `solicitantes.reservado`, no `solicitantes.ver`. Con el permiso de ver
+         *     la ficha lo alcanzaban cinco de los seis roles —comercial, apoyo externo y
+         *     solo lectura entre ellos—, y a dos de esos el sistema no les pide ni doble
+         *     factor. El propio sembrado dice lo contrario con todas las letras al definir
+         *     este permiso: «poder ver la ficha de alguien no tiene por qué incluirlos; lo
+         *     necesita quien hace el trámite —administradora y operaciones—, no quien vende
+         *     ni quien consulta». El código decía otra cosa.
+         *
+         *     La pantalla enmascara el pasaporte en la tabla y este es el botón para verlo
+         *     completo, así que el permiso de aquí es el que de verdad lo protege.
          */
         get: operations["ver_pasaporte_api_v1_solicitantes__solicitante_id__pasaporte_get"];
         put?: never;

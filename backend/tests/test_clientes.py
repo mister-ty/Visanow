@@ -115,15 +115,43 @@ def test_el_pasaporte_se_guarda_cifrado_y_se_puede_buscar(cliente, comercial, db
 
 
 def test_ver_el_pasaporte_completo_queda_auditado(cliente, comercial, db, usuario):
+    """A quien le corresponde sí, y queda registrado quién lo miró (RNF-04)."""
     contacto = crear_cliente(cliente, comercial, nombre='Contacto Auditoría')
     s = cliente.post('/api/v1/solicitantes', headers=comercial,
                      json={'cliente_id': contacto['id'], 'nombre': 'Persona Dos',
                            'pasaporte': 'CD7654321'}).json()
-    r = cliente.get(f"/api/v1/solicitantes/{s['id']}/pasaporte", headers=comercial)
+    cab = entrar(cliente, usuario('operaciones'))
+    r = cliente.get(f"/api/v1/solicitantes/{s['id']}/pasaporte", headers=cab)
     assert r.status_code == 200 and r.json()['pasaporte'] == 'CD7654321'
     assert db.scalar(select(Auditoria).where(Auditoria.entidad == 'solicitantes',
                                              Auditoria.entidad_id == s['id'],
                                              Auditoria.operacion == 'ver_pasaporte'))
+
+
+def test_ver_la_ficha_no_alcanza_para_ver_el_pasaporte_completo(cliente, comercial, usuario):
+    """La ruta exigía `solicitantes.ver`, que tienen cinco de los seis roles.
+
+    Comercial, apoyo externo y solo lectura lo alcanzaban, y a dos de esos el
+    sistema no les pide ni doble factor. El propio sembrado dice lo contrario con
+    todas las letras al definir `solicitantes.reservado`: «poder ver la ficha de
+    alguien no tiene por qué incluirlos; lo necesita quien hace el trámite
+    —administradora y operaciones—, no quien vende ni quien consulta». El código
+    decía otra cosa.
+    """
+    contacto = crear_cliente(cliente, comercial, nombre='Contacto Reservado')
+    s = cliente.post('/api/v1/solicitantes', headers=comercial,
+                     json={'cliente_id': contacto['id'], 'nombre': 'Persona Reservada',
+                           'pasaporte': 'EF1239876'}).json()
+
+    # La tabla sí le muestra el enmascarado: eso no cambia.
+    ficha = cliente.get(f"/api/v1/clientes/{contacto['id']}", headers=comercial).json()
+    enmascarado = next(p['pasaporte'] for p in ficha['solicitantes'] if p['id'] == s['id'])
+    assert enmascarado and 'EF1239876' not in enmascarado
+
+    for rol in ('comercial', 'apoyo_externo', 'solo_lectura'):
+        cab = entrar(cliente, usuario(rol))
+        r = cliente.get(f"/api/v1/solicitantes/{s['id']}/pasaporte", headers=cab)
+        assert r.status_code == 403, f'{rol} recibió el pasaporte completo: {r.text}'
 
 
 def test_un_solicitante_no_puede_quedar_suelto(cliente, comercial):

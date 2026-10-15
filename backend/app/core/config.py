@@ -96,6 +96,45 @@ class Ajustes(BaseSettings):
                 raise ValueError(f'{nombre.upper()} debe tener al menos 32 caracteres')
         return self
 
+    @property
+    def configuracion_de_desarrollo_en_produccion(self) -> list[str]:
+        """Las variables que quedaron con el valor del portátil en producción.
+
+        Avisa, no revienta, y la diferencia importa: cuando escribí esto,
+        `CORS_ORIGINS` en Render estaba sin llenar —va declarada con
+        `sync: false`— así que un validador que reventara habría impedido
+        arrancar a la API y habría tumbado una producción que hoy funciona. Un
+        arreglo que apaga el sistema para avisar de un problema que todavía no
+        muerde no es un arreglo.
+
+        Lo que sí hace falta es que no se descubra el 16 por la mañana. Esto se
+        ve en el log al arrancar y en `/salud`, que es un curl y se puede mirar
+        desde el teléfono.
+
+        `cors_origins` y `url_ui` tienen por omisión `http://localhost:5180`, que
+        es el valor del portátil, y en Render las dos van declaradas con
+        `sync: false`, o sea en blanco hasta que alguien las llene. Si se queda
+        así, el único origen que la API acepta es el portátil: cuando la pantalla
+        salga a Vercel no va a poder ni ingresar.
+
+        Y lo peor es cómo falla. CORS no da error en el servidor ni deja rastro
+        en el log: el navegador bloquea la respuesta y la pantalla se queda en
+        blanco o diciendo que no hay conexión. Buscarlo desde ahí son horas, y
+        serían las horas del día de la entrega.
+
+        `url_ui` falla todavía más calladito: es la base del enlace de «olvidé mi
+        contraseña», así que el correo saldría con un enlace a localhost y quien
+        lo reciba no tendría forma de saber por qué no funciona.
+
+        Es la misma familia del `fetch` con dirección relativa: cosas que andan
+        en desarrollo porque algo local las tapa.
+        """
+        if self.es_local:
+            return []
+        return sorted(nombre.upper() for nombre in ('cors_origins', 'url_ui')
+                      if 'localhost' in getattr(self, nombre)
+                      or '127.0.0.1' in getattr(self, nombre))
+
 
 @lru_cache
 def ajustes() -> Ajustes:
