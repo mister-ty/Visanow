@@ -235,6 +235,29 @@ VISTA_COSTOS = _vista(m.CostosServicio, 'Costo del servicio', 'Costos por servic
 VISTA_COSTOS.column_formatters = {'monto': _pesos}
 VISTA_COSTOS.column_default_sort = [('servicio_id', False), ('vigente_desde', True)]
 
+# El mapa de estados: qué movimiento es legal y qué exige cada uno (RF-023).
+# Es la única configuración del proceso que no se podía tocar desde ninguna
+# parte: estaba solo en app/seed.py, así que abrir una salida nueva —o pedir un
+# soporte más antes de la entrevista— necesitaba un despliegue. La operación
+# cambia cuando el consulado cambia, y eso no espera a un despliegue.
+#
+# Origen y destino no se editan después de creados: son la identidad de la
+# regla, como el código de un catálogo. Para cambiarlos se crea la otra.
+# Tampoco se borra, igual que el resto del panel: quitar una transición puede
+# dejar un estado sin ninguna salida, que es justo el callejón sin salida que
+# tenía «excepción» y el que más caro sale (un trámite que nadie puede mover).
+VISTA_TRANSICIONES = _vista(
+    m.TransicionesOperativas, 'Transición', 'Transiciones entre estados', 'fa-right-left',
+    solo=['estado_origen', 'estado_destino', 'requiere_checklist', 'campos_obligatorios'],
+    lista=['estado_origen', 'estado_destino', 'requiere_checklist', 'campos_obligatorios'])
+VISTA_TRANSICIONES.form_edit_rules = ['requiere_checklist', 'campos_obligatorios']
+VISTA_TRANSICIONES.form_args = {
+    'requiere_checklist': {'description': 'Exige el checklist obligatorio completo antes de dejar '
+                                          'hacer este movimiento (RN-05).'},
+    'campos_obligatorios': {'description': 'Qué tiene que estar lleno para avanzar, como lista: '
+                                           '["sede_id"], ["resultado"]. Si no exige nada: []'},
+}
+
 VISTAS = [
     _vista(m.Servicios, 'Servicio', 'Servicios', 'fa-briefcase',
            lista=['codigo', 'nombre', 'tipo', 'pais', 'crea_casos', 'tasa_consular_valor',
@@ -259,6 +282,7 @@ VISTAS = [
     _vista(m.EstadosOperativos, 'Estado operativo', 'Estados operativos', 'fa-diagram-project',
            crear=False, solo=['nombre', 'orden', 'requiere_motivo', 'activo'],
            lista=['codigo', 'nombre', 'fase', 'orden', 'es_final', 'requiere_motivo', 'activo']),
+    VISTA_TRANSICIONES,
     _vista(m.EstadosComerciales, 'Estado comercial', 'Estados comerciales', 'fa-filter',
            crear=False, solo=['nombre', 'orden', 'requiere_motivo', 'activo'],
            lista=['codigo', 'nombre', 'orden', 'es_cierre', 'requiere_motivo', 'activo']),

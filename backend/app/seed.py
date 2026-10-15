@@ -343,6 +343,30 @@ TRANSICIONES = [
     ('con_resultado',         'entrega_documento'),
     ('con_resultado',         'finalizado'),
     ('entrega_documento',     'finalizado'),
+
+    # Un trámite se daña TARDE. Hasta aquí solo se podía declarar la excepción
+    # en los primeros estados —donde todavía no ha pasado nada— y no desde los
+    # de más adelante, que es donde el cliente desiste porque le negaron la
+    # cita, se le vence el pasaporte o no aparece el día de la entrevista. Sin
+    # estas salidas, la única forma de cerrar uno de esos era pedirle a la
+    # administradora que se saltara el proceso, y entonces lo normal del
+    # negocio quedaba registrado como una excepción.
+    ('formulario_enviado',    'excepcion'),
+    ('cita_confirmada',       'excepcion'),
+    ('preparacion',           'excepcion'),
+    ('checklist',             'excepcion'),
+    ('esperando_resultado',   'excepcion'),
+    ('con_resultado',         'excepcion'),
+    ('entrega_documento',     'excepcion'),
+
+    # Y una salida DE la excepción. «Cancelado / no continuó / suspendido» es
+    # un estado final, pero el cliente que aplazó en marzo vuelve en agosto: sin
+    # esto el trámite quedaba enterrado para siempre y había que crear otro,
+    # perdiendo el historial y contándolo dos veces. Se retoma pidiéndole otra
+    # vez la información —los documentos y el DS-160 ya están vencidos— o se
+    # cierra formalmente dejando el resultado registrado.
+    ('excepcion',             'esperando_info'),
+    ('excepcion',             'finalizado'),
 ]
 
 # Transiciones que exigen checklist completo antes de avanzar (RN-05).
@@ -408,8 +432,17 @@ TIPOS_VISA = [
 # Checklists de documentos (RF-025). El checklist se exige antes de dejar avanzar
 # el caso a «esperando resultado»: es lo que evita que alguien llegue a la
 # entrevista sin un soporte.
+#
+# (código, nombre, país ISO2, tipo de visa, MODALIDAD, ítems)
+# Al trámite se le aplica el más específico de los que encajan, y la modalidad
+# pesa más que el tipo de visa (ver services/casos.py → checklist_de): lo que de
+# verdad cambia la lista de papeles es si es primera vez, renovación o un menor.
 CHECKLISTS = [
-    ('usa_primera_vez', 'Visa USA por primera vez', 'US', 'B1B2', [
+    # Sin modalidad a propósito: es la lista base de la B1/B2 y la que llevan
+    # los 895 trámites que vienen de los archivos, donde la modalidad casi nunca
+    # está registrada. Si pidiera modalidad «primera vez», todos esos caerían en
+    # la lista general y perderían los soportes económicos.
+    ('usa_primera_vez', 'Visa USA por primera vez', 'US', 'B1B2', None, [
         ('pasaporte', 'Pasaporte vigente (mínimo 6 meses)', True),
         ('foto', 'Foto reciente con las medidas del consulado', True),
         ('ds160', 'DS-160 diligenciado y enviado', True),
@@ -420,7 +453,13 @@ CHECKLISTS = [
         ('carta_laboral', 'Carta laboral o certificado de ingresos', True),
         ('vinculos', 'Soportes de vínculos con el país (propiedades, familia)', False),
     ]),
-    ('usa_renovacion', 'Renovación de visa USA', 'US', None, [
+    # La renovación es una MODALIDAD, no un tipo de visa: se renueva una B1/B2
+    # igual que una F1, y lo que cambia es que ya hay visa anterior y que el
+    # consulado no vuelve a pedir los soportes económicos. Estaba sembrada como
+    # «Estados Unidos, cualquier tipo de visa», y así se le aplicaba a los
+    # trámites de primera vez que no tenían tipo de visa registrado: pedían la
+    # visa anterior de alguien que nunca ha tenido visa (RF-025).
+    ('usa_renovacion', 'Renovación de visa USA', 'US', None, 'renovacion', [
         ('pasaporte', 'Pasaporte vigente', True),
         ('visa_anterior', 'Visa anterior o pasaporte con la visa', True),
         ('foto', 'Foto reciente', True),
@@ -428,7 +467,22 @@ CHECKLISTS = [
         ('tasa', 'Tasa consular pagada', True),
         ('entrega', 'Formato de entrega de documentos', True),
     ]),
-    ('general', 'Documentos básicos', None, None, [
+    # Los menores son el otro caso donde la lista cambia de verdad, y es la
+    # modalidad la que lo dice. Va completa y no solo con «lo que se agrega»:
+    # al trámite se le aplica un único checklist, el más específico, para que
+    # «Pasaporte vigente» no salga tres veces.
+    ('usa_menores', 'Visa USA para menores de edad', 'US', None, 'menores', [
+        ('pasaporte', 'Pasaporte vigente del menor', True),
+        ('registro_civil', 'Registro civil de nacimiento', True),
+        ('autorizacion_padres', 'Autorización de los padres, autenticada en notaría', True),
+        ('documento_padres', 'Documento de identidad de los dos padres', True),
+        ('foto', 'Foto reciente con las medidas del consulado', True),
+        ('ds160', 'DS-160 diligenciado y enviado', True),
+        ('tasa', 'Tasa consular pagada', True),
+        ('cita_consular', 'Cita consular agendada', True),
+        ('visa_padres', 'Pasaporte o visa de los padres, si la tienen', False),
+    ]),
+    ('general', 'Documentos básicos', None, None, None, [
         ('pasaporte', 'Pasaporte vigente', True),
         ('foto', 'Foto reciente', True),
         ('formulario', 'Formulario del consulado diligenciado', True),
@@ -454,13 +508,20 @@ def sembrar_sedes_y_visas(cur) -> tuple[int, int]:
 
 def sembrar_checklists(cur) -> int:
     items = 0
-    for codigo, nombre, pais, tipo_visa, lista in CHECKLISTS:
-        cur.execute("""insert into checklists (codigo, nombre, pais_id, tipo_visa_id, activo)
+    for codigo, nombre, pais, tipo_visa, modalidad, lista in CHECKLISTS:
+        # La modalidad se reescribe en cada corrida, y no solo al insertar: en
+        # producción estas filas ya están sembradas sin modalidad, y si no se
+        # corrigen aquí el checklist de renovación sigue aplicándose a los
+        # trámites de primera vez. Es el único campo de clasificación que se
+        # actualiza; el código, que es la llave, no se toca nunca.
+        cur.execute("""insert into checklists (codigo, nombre, pais_id, tipo_visa_id, modalidad_id, activo)
                        values (%s, %s, (select id from paises where iso2 = %s),
                                (select t.id from tipos_visa t join paises p on p.id = t.pais_id
-                                where t.codigo = %s and p.iso2 = %s), true)
-                       on conflict (codigo) do update set nombre = excluded.nombre""",
-                    (codigo, nombre, pais, tipo_visa, pais))
+                                where t.codigo = %s and p.iso2 = %s),
+                               (select id from modalidades where codigo = %s), true)
+                       on conflict (codigo) do update set
+                         nombre = excluded.nombre, modalidad_id = excluded.modalidad_id""",
+                    (codigo, nombre, pais, tipo_visa, pais, modalidad))
         for orden, (item, texto, obligatorio) in enumerate(lista, 1):
             cur.execute("""insert into checklist_items (checklist_id, codigo, nombre, obligatorio, orden)
                            select id, %s, %s, %s, %s from checklists where codigo = %s
