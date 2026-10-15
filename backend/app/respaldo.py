@@ -121,6 +121,27 @@ def _contar(url: str) -> dict[str, int]:
             for fila in r.stdout.strip().splitlines() if '|' in fila}
 
 
+def comparar(origen: dict[str, int], restaurado: dict[str, int]) -> list[tuple[str, int, int]]:
+    """Las tablas que no cuadran, origen contra restaurado.
+
+    Levanta si no hubo NADA que comparar. Eso parece una obviedad y no lo es:
+    la comparación de abajo recorre las tablas del origen, así que con el origen
+    vacío la lista de diferencias sale vacía y la verificación entera reporta
+    «todas cuadran». Un respaldo marcado como verificado sin haber comparado una
+    sola fila es peor que uno sin verificar, porque nadie lo va a volver a
+    mirar. El origen vacío no significa que el respaldo esté bien: significa que
+    no se pudo contar, y hay que tratarlo como una falla.
+    """
+    if not origen:
+        raise SystemExit(
+            'No se pudo contar ni una tabla en el origen, así que no hay nada '
+            'que comparar. Esto NO es un respaldo verificado. Revise la cadena '
+            'de conexión de RESPALDO_URL y que el esquema `public` sea el que '
+            'tiene las tablas.')
+    return [(t, origen[t], restaurado.get(t, 0))
+            for t in sorted(origen) if origen[t] != restaurado.get(t, 0)]
+
+
 def _extensiones_de(url: str) -> list[str]:
     """Las extensiones que el esquema `public` necesita para existir.
 
@@ -157,9 +178,22 @@ def crear(verificar_despues: bool = True) -> pathlib.Path:
     if tamano < 10_000:
         raise SystemExit('El respaldo pesa demasiado poco: algo salió mal.')
 
+    # Verificar ANTES de borrar nada, y hacerle caso al resultado.
+    #
+    # Las dos cosas estaban al revés. `limpiar()` corría primero, así que un
+    # respaldo nuevo que no sirviera se llevaba por delante a los viejos, que
+    # eran los únicos que servían. Y el resultado de `verificar` se descartaba:
+    # la orden imprimía «NO CUADRA» y encima «listo», y salía con código 0, de
+    # modo que una tarea programada lo habría reportado como exitoso todos los
+    # días. Un respaldo que falla en silencio es no tener respaldo, con la
+    # desventaja de creer que sí.
+    if verificar_despues and not verificar(archivo):
+        raise SystemExit(
+            f'\n{archivo.name} NO pasó la prueba de restauración, así que no '
+            'sirve. No se borró ningún respaldo viejo: por ahora son los únicos '
+            'que hay. No vacíe la carpeta hasta que uno nuevo pase la prueba.')
+
     limpiar()
-    if verificar_despues:
-        verificar(archivo)
     return archivo
 
 
@@ -222,8 +256,7 @@ def verificar(archivo: pathlib.Path | None = None) -> bool:
             print('   pg_restore terminó con avisos; se comparan las filas igual')
 
         origen, restaurado = _contar(_url()), _contar(scratch)
-        faltan = [(t, origen[t], restaurado.get(t, 0))
-                  for t in sorted(origen) if origen[t] != restaurado.get(t, 0)]
+        faltan = comparar(origen, restaurado)
         total = sum(origen.values())
         if faltan:
             print(f'   NO CUADRA. {len(faltan)} tabla(s) con diferencias:')
