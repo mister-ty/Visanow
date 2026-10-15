@@ -12,6 +12,7 @@ import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora, formatearPesos } from '../lib/formato'
+import { PiePaginacion, TAMANO_PAGINA, usePagina } from '../componentes/Paginacion'
 
 type Movimiento = Esquemas['MovimientoSalida']
 type Estado = Movimiento['estado']
@@ -58,7 +59,9 @@ export function Conciliacion() {
   })
   // La referencia no entra en `rango`: el resumen de arriba son los totales del
   // mes y no tienen que moverse porque alguien esté buscando una consignación.
-  const consulta = { estado, ...rango, ...(buscada ? { referencia: buscada } : {}), tamano: 100 }
+  const [pagina, setPagina] = usePagina([estado, rango, buscada])
+  const consulta = { estado, ...rango, ...(buscada ? { referencia: buscada } : {}),
+                     pagina, tamano: TAMANO_PAGINA }
   const movimientos = useQuery({
     queryKey: ['conciliacion', 'movimientos', consulta],
     queryFn: () => exigir(api.GET('/api/v1/conciliacion/movimientos', { params: { query: consulta } })),
@@ -167,9 +170,8 @@ export function Conciliacion() {
             </Table>
           </Table.ScrollContainer>
         </Card>)}
-      <Text size="sm" c="dimmed">
-        {movimientos.data?.total ?? 0} movimiento(s) · {formatearPesos(movimientos.data?.suma)}
-      </Text>
+      <PiePaginacion total={movimientos.data?.total} pagina={pagina} onPagina={setPagina}
+        unidad="movimiento(s)" extra={` · ${formatearPesos(movimientos.data?.suma)}`} />
 
       <ModalMovimiento key={abierto?.id ?? 'ninguno'} movimiento={abierto} cerrar={() => setAbierto(null)} />
     </Stack>

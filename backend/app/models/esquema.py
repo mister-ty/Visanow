@@ -1103,7 +1103,8 @@ class AjustesNegocio(Base):
         CheckConstraint("tipo::text = ANY (ARRAY['reembolso'::character varying, 'cargo'::character varying, 'descuento'::character varying, 'condonacion'::character varying]::text[])", name='ajustes_negocio_tipo_check'),
         ForeignKeyConstraint(['autorizado_por'], ['usuarios.id'], name='ajustes_negocio_autorizado_por_fkey'),
         ForeignKeyConstraint(['negocio_id'], ['negocios.id'], name='ajustes_negocio_negocio_id_fkey'),
-        PrimaryKeyConstraint('id', name='ajustes_negocio_pkey')
+        PrimaryKeyConstraint('id', name='ajustes_negocio_pkey'),
+        Index('ix_ajustes_negocio_negocio', 'negocio_id')
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -1260,6 +1261,7 @@ class Pagos(Base):
         ForeignKeyConstraint(['negocio_id'], ['negocios.id'], name='pagos_negocio_id_fkey'),
         ForeignKeyConstraint(['registrado_por'], ['usuarios.id'], name='pagos_registrado_por_fkey'),
         PrimaryKeyConstraint('id', name='pagos_pkey'),
+        Index('ix_pagos_negocio', 'negocio_id'),
         Index('ix_pagos_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)'),
         Index('ix_pagos_referencia', 'referencia', postgresql_using='gin', postgresql_where='(referencia IS NOT NULL)')
     )

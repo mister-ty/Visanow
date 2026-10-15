@@ -3,6 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import ip_cliente, requiere
 from app.db.session import get_db
 from app.models.esquema import MovimientosBanco, Usuarios
@@ -50,7 +51,7 @@ def bandeja(estado: esq.EstadoMovimiento | None = 'sin_conciliar',
             referencia: str | None = Query(default=None,
                                            description='La referencia del comprobante, o un '
                                                        'pedazo de ella'),
-            pagina: int = 1, tamano: int = 50,
+            pagina: Pagina = 1, tamano: Tamano = 50,
             _: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
     """El extracto, por estado. Por defecto, lo que falta por cuadrar."""
     total, suma, filas = serv.bandeja(db, estado=estado, desde=desde, hasta=hasta,

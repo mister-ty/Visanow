@@ -12,6 +12,7 @@ import { useSesion } from '../auth/sesion'
 import { useAsignables } from '../lib/catalogos'
 import { mostrarError } from '../lib/errores'
 import { aInstanteBogota, formatearFechaHora } from '../lib/formato'
+import { PiePaginacion, TAMANO_PAGINA, usePagina } from '../componentes/Paginacion'
 
 type Tarea = Esquemas['TareaSalida']
 type EstadoTarea = Tarea['estado']
@@ -36,8 +37,9 @@ export function Tareas() {
     queryKey: ['tareas', 'resumen'],
     queryFn: () => exigir(api.GET('/api/v1/tareas/resumen')),
   })
+  const [pagina, setPagina] = usePagina([soloAbiertas, soloVencidas, prioridad])
   const consulta = {
-    solo_abiertas: soloAbiertas, vencidas: soloVencidas, tamano: 100,
+    solo_abiertas: soloAbiertas, vencidas: soloVencidas, pagina, tamano: TAMANO_PAGINA,
     ...(prioridad ? { prioridad: prioridad as Prioridad } : {}),
   }
   const tareas = useQuery({
@@ -94,7 +96,8 @@ export function Tareas() {
             </Table>
           </Table.ScrollContainer>
         </Card>)}
-      <Text size="sm" c="dimmed">{tareas.data?.total ?? 0} tarea(s)</Text>
+      <PiePaginacion total={tareas.data?.total} pagina={pagina} onPagina={setPagina}
+        unidad="tarea(s)" />
 
       <ModalTarea abierto={creando} cerrar={() => setCreando(false)} />
     </Stack>

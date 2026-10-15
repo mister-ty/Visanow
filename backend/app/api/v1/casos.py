@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import ip_cliente, requiere
 from app.core.errores import Prohibido
 from app.db.session import get_db
@@ -28,7 +29,7 @@ def _salida(db: Session, c: Casos) -> esq.CasoSalida:
 @router.get('/casos', response_model=esq.PaginaCasos)
 def listar(estado: str | None = None, responsable_id: int | None = None, pais_id: int | None = None,
            fuente: esq.Fuente | None = None, sin_asignar: bool = False, sin_venta: bool = False,
-           incluir_finalizados: bool = False, texto: str | None = None, pagina: int = 1, tamano: int = 50,
+           incluir_finalizados: bool = False, texto: str | None = None, pagina: Pagina = 1, tamano: Tamano = 50,
            actor: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
     """Tablero operativo (RF-022): por estado, responsable, país, origen y riesgo.
 

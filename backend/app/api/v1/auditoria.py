@@ -12,11 +12,12 @@ cualquier anonimización posterior (RNF-09). Ver `app/services/auditoria.py`.
 """
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import requiere
 from app.db.session import get_db
 from app.models.esquema import Auditoria, Usuarios
@@ -88,8 +89,8 @@ def filtros(_: Usuarios = Depends(requiere('auditoria.ver')),
 def listar(entidad: str | None = None, operacion: str | None = None,
            usuario_id: int | None = None, entidad_id: int | None = None,
            desde: datetime | None = None, hasta: datetime | None = None,
-           pagina: int = Query(default=1, ge=1),
-           tamano: int = Query(default=50, ge=1, le=200),
+           pagina: Pagina = 1,
+           tamano: Tamano = 50,
            _: Usuarios = Depends(requiere('auditoria.ver')),
            db: Session = Depends(get_db)):
     """El registro, del más reciente al más viejo (RF-076, RNF-05).

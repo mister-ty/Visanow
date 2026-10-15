@@ -3,6 +3,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import ip_cliente, requiere
 from app.core.errores import NoEncontrado
 from app.db.session import get_db
@@ -54,7 +55,7 @@ def listar(negocio_id: int | None = None,
            referencia: str | None = Query(default=None,
                                           description='La referencia del comprobante, o un '
                                                       'pedazo de ella (RF-029)'),
-           pagina: int = 1, tamano: int = 50,
+           pagina: Pagina = 1, tamano: Tamano = 50,
            _: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
     """Los pagos, con los filtros de la pantalla.
 
@@ -166,7 +167,7 @@ class FiltrosCartera:
 
 
 @router.get('/cartera', response_model=esq.PaginaCartera)
-def listar_cartera(filtros: FiltrosCartera = Depends(), pagina: int = 1, tamano: int = 50,
+def listar_cartera(filtros: FiltrosCartera = Depends(), pagina: Pagina = 1, tamano: Tamano = 50,
                    _: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
     """Quién debe, cuánto, desde cuándo y qué se le vence (RF-046)."""
     total, suma, filas = serv_cartera.cartera(db, pagina=pagina, tamano=tamano,

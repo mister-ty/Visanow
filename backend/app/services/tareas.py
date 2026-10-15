@@ -25,7 +25,7 @@ from __future__ import annotations
 import datetime as dt
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Invalido, NoEncontrado
@@ -191,14 +191,25 @@ def listar(db: Session, *, actor: Usuarios | None = None, responsable_id: int | 
                                   Tareas.estado.in_(ABIERTAS))
 
     total = db.scalar(select(func.count()).select_from(consulta.subquery())) or 0
-    # Primero lo que ya venció, después por prioridad y por fecha de vencimiento.
-    # Las sin fecha van al final: no tienen urgencia declarada.
-    filas = list(db.scalars(consulta.order_by(
-        Tareas.vence_en.is_(None), Tareas.vence_en, Tareas.id)))
-    filas.sort(key=lambda t: (_ORDEN_PRIORIDAD.get(t.prioridad, 9),
-                              t.vence_en or dt.datetime.max.replace(tzinfo=dt.timezone.utc)))
+
+    # El orden que importa: primero la prioridad, después lo que vence antes, y
+    # las sin fecha al final, porque no tienen urgencia declarada.
+    #
+    # La prioridad se guarda como texto, así que ordenar por la columna daría
+    # «alta, baja, media» y lo urgente no quedaría arriba. Este CASE traduce
+    # `_ORDEN_PRIORIDAD` a SQL: es el mismo orden de antes, pero calculado en
+    # Postgres. Antes se traían TODAS las filas que coincidían, se ordenaban en
+    # memoria y se recortaba la lista con `filas[desde:desde + tamano]`: la
+    # respuesta parecía paginada y por debajo era un barrido completo de la
+    # tabla. Con cero tareas eso no se notaba; es justo la clase de consulta que
+    # revienta el día que la bandeja tiene trabajo de verdad (RNF-08).
+    orden_prioridad = case(_ORDEN_PRIORIDAD, value=Tareas.prioridad, else_=9)
     desde = max(0, pagina - 1) * tamano
-    return total, filas[desde:desde + tamano]
+    filas = list(db.scalars(
+        consulta.order_by(orden_prioridad, Tareas.vence_en.is_(None),
+                          Tareas.vence_en, Tareas.id)
+        .limit(tamano).offset(desde)))
+    return total, filas
 
 
 def resumen(db: Session, actor: Usuarios | None = None) -> dict:

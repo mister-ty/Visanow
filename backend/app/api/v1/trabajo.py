@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import ip_cliente, requiere
 from app.db.session import get_db
 from app.models.esquema import Alertas, AlertasTipos, Roles, Tareas, Usuarios
@@ -62,7 +63,7 @@ def listar_tareas(responsable_id: int | None = None, estado: esq.EstadoTarea | N
                   prioridad: esq.Prioridad | None = None, caso_id: int | None = None,
                   negocio_id: int | None = None, cliente_id: int | None = None,
                   solo_abiertas: bool = True, vencidas: bool = False,
-                  pagina: int = 1, tamano: int = 50,
+                  pagina: Pagina = 1, tamano: Tamano = 50,
                   actor: Usuarios = Depends(requiere('alertas.ver')),
                   db: Session = Depends(get_db)):
     """Lo urgente arriba: primero por prioridad y después por vencimiento."""
@@ -112,7 +113,7 @@ def generar(datos: esq.GenerarEntrada, request: Request,
 
 @router.get('/alertas', response_model=esq.PaginaAlertas)
 def bandeja(estado: esq.EstadoAlerta | None = None, severidad: esq.Severidad | None = None,
-            solo_abiertas: bool = True, pagina: int = 1, tamano: int = 50,
+            solo_abiertas: bool = True, pagina: Pagina = 1, tamano: Tamano = 50,
             actor: Usuarios = Depends(requiere('alertas.ver')),
             db: Session = Depends(get_db)):
     """La bandeja, lo grave primero. Una pospuesta vuelve al cumplirse su plazo."""

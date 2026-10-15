@@ -100,3 +100,51 @@ def test_el_guardia_de_las_tablas_de_verdad_atrapa_una(tmp_path):
                 '  </Table.ScrollContainer>\n</Stack>')
     assert _tablas_sin_contenedor(suelta) == [2]
     assert _tablas_sin_contenedor(envuelta) == []
+
+
+# --------------------------------- una pantalla que muestra 100 de 189 y calla
+
+#: Pantallas que todavia piden un listado paginado sin ofrecer paginador: las
+#: dos que estan en obra, el tablero de tramites (RF-022) y el embudo (RF-011).
+#: Esto es un permiso, no una meta. Sacar una de aqui no rompe nada; agregar una
+#: es declarar por escrito que una pantalla miente, y eso cuesta explicarlo.
+EN_OBRA = {'Casos.tsx', 'Embudo.tsx'}
+
+
+def _pide_listado_paginado(texto: str) -> bool:
+    return bool(re.search(r'tamano:\s*\w', texto))
+
+
+def _ofrece_paginador(texto: str) -> bool:
+    return 'PiePaginacion' in texto or '<Pagination' in texto
+
+
+@pytest.mark.parametrize('pagina', sorted(p.name for p in PAGINAS.glob('*.tsx')))
+def test_ninguna_pantalla_corta_un_listado_sin_ofrecer_paginador(pagina):
+    """Mostrar 100 de 189 e imprimir «189» debajo (RNF-08).
+
+    Medido el 10/10: siete de las nueve pantallas de listado pedian tamano=100
+    fijo, nunca mandaban pagina y no tenian control de paginas. No falla nada y
+    no se ve: la tabla se llena, el pie anuncia el total de verdad, y las 89
+    filas que faltan no son alcanzables por ningun camino. Quien busca un
+    tramite y no lo encuentra concluye que no esta, y lo vuelve a crear.
+    """
+    texto = fuente(PAGINAS / pagina)
+    if pagina in EN_OBRA or not _pide_listado_paginado(texto):
+        return
+    assert _ofrece_paginador(texto), (
+        f'{pagina}: pide un listado con «tamano» y no dibuja paginador, asi que '
+        f'corta la lista sin que se note. El pie compartido esta en '
+        f'ui/src/componentes/Paginacion.tsx (PiePaginacion).')
+
+
+def test_el_guardia_del_paginador_de_verdad_atrapa_una_pantalla_que_trunca():
+    """Lo mismo que con las tablas: que pase sin mirar nada seria lo peor."""
+    trunca = "const consulta = { tamano: 100 }\nreturn <Table />"
+    pagina = ("const consulta = { pagina, tamano: TAMANO_PAGINA }\n"
+              "return <><Table /><PiePaginacion total={d?.total} /></>")
+    ninguna = 'return <Text>Hola</Text>'
+
+    assert _pide_listado_paginado(trunca) and not _ofrece_paginador(trunca)
+    assert _pide_listado_paginado(pagina) and _ofrece_paginador(pagina)
+    assert not _pide_listado_paginado(ninguna)

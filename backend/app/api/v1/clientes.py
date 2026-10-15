@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import ip_cliente, requiere
 from app.db.session import get_db
 from app.models.esquema import Clientes, Solicitantes, Usuarios
@@ -23,7 +24,7 @@ def _solicitante(s: Solicitantes) -> esq.SolicitanteSalida:
 
 @router.get('/clientes', response_model=esq.PaginaClientes)
 def listar(texto: str | None = Query(default=None, description='Nombre, documento, teléfono o correo'),
-           archivados: bool = False, pagina: int = 1, tamano: int = 25,
+           archivados: bool = False, pagina: Pagina = 1, tamano: Tamano = 25,
            _: Usuarios = Depends(requiere('clientes.ver')), db: Session = Depends(get_db)):
     total, filas = personas.listar(db, texto_busqueda=texto, incluir_archivados=archivados,
                                    pagina=pagina, tamano=tamano)

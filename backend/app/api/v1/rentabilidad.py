@@ -16,6 +16,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import requiere
 from app.db.session import get_db
 from app.models.esquema import Usuarios
@@ -53,7 +54,7 @@ def informe(desde: date | None = Desde, hasta: date | None = Hasta,
 @router.get('/ventas', response_model=esq.PaginaVentas)
 def ventas(desde: date | None = Desde, hasta: date | None = Hasta,
            servicio_id: int | None = None, vendedor_id: int | None = None,
-           orden: esq.OrdenVentas = 'peores', pagina: int = 1, tamano: int = Query(50, le=200),
+           orden: esq.OrdenVentas = 'peores', pagina: Pagina = 1, tamano: Tamano = 50,
            actor: Usuarios = Depends(requiere('pagos.ver')),
            db: Session = Depends(get_db)):
     """Una fila por venta. Por omision las peores primero: son las que hay que mirar."""

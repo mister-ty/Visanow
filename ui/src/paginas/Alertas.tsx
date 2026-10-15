@@ -10,6 +10,7 @@ import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { mostrarError } from '../lib/errores'
 import { aInstanteBogota, formatearFechaHora } from '../lib/formato'
+import { PiePaginacion, TAMANO_PAGINA, usePagina } from '../componentes/Paginacion'
 
 type Alerta = Esquemas['AlertaSalida']
 type TipoAlerta = Esquemas['TipoAlertaSalida']
@@ -81,8 +82,9 @@ function Bandeja() {
     queryKey: ['alertas', 'resumen'],
     queryFn: () => exigir(api.GET('/api/v1/alertas/resumen')),
   })
+  const [pagina, setPagina] = usePagina([soloAbiertas, severidad])
   const consulta = {
-    solo_abiertas: soloAbiertas, tamano: 100,
+    solo_abiertas: soloAbiertas, pagina, tamano: TAMANO_PAGINA,
     ...(severidad ? { severidad: severidad as Severidad } : {}),
   }
   const alertas = useQuery({
@@ -128,7 +130,8 @@ function Bandeja() {
             </Table>
           </Table.ScrollContainer>
         </Card>)}
-      <Text size="sm" c="dimmed">{alertas.data?.total ?? 0} alerta(s)</Text>
+      <PiePaginacion total={alertas.data?.total} pagina={pagina} onPagina={setPagina}
+        unidad="alerta(s)" />
       <ModalPosponer key={posponiendo?.id ?? 'ninguna'} alerta={posponiendo} cerrar={() => setPosponiendo(null)} />
     </Stack>
   )

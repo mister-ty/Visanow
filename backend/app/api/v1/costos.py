@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import ip_cliente, requiere
 from app.db.session import get_db
 from app.models.esquema import Comisiones, Gastos, LiquidacionesComision, Usuarios
@@ -65,7 +66,7 @@ def registrar_gasto(datos: esq.GastoCrear, request: Request,
 def listar_gastos(categoria_id: int | None = None, negocio_id: int | None = None,
                   caso_id: int | None = None, solo_directos: bool = False,
                   desde: date | None = None, hasta: date | None = None,
-                  incluir_anulados: bool = False, pagina: int = 1, tamano: int = 50,
+                  incluir_anulados: bool = False, pagina: Pagina = 1, tamano: Tamano = 50,
                   _: Usuarios = Depends(requiere('gastos.ver')), db: Session = Depends(get_db)):
     total, suma, filas = serv_gastos.listar(
         db, categoria_id=categoria_id, negocio_id=negocio_id, caso_id=caso_id,

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.api.paginacion import Pagina, Tamano
 from app.core.deps import ip_cliente, requiere
 from app.db.session import get_db
 from app.models.esquema import Oportunidades, Usuarios
@@ -30,7 +31,7 @@ def listar(estado: str | None = None, asesor_id: int | None = None, canal_id: in
            incluir_cerradas: bool = False,
            frias_desde: int | None = Query(default=None,
                                            description='Sin contacto hace más de N días'),
-           texto: str | None = None, pagina: int = 1, tamano: int = 50,
+           texto: str | None = None, pagina: Pagina = 1, tamano: Tamano = 50,
            actor: Usuarios = Depends(requiere('oportunidades.ver')),
            db: Session = Depends(get_db)):
     """Lista filtrable del embudo (RF-011).

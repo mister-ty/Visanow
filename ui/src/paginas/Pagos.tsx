@@ -14,6 +14,7 @@ import { BotonExportar } from '../componentes/BotonExportar'
 import { aSelect, useAsignables, useCatalogos } from '../lib/catalogos'
 import { mostrarError } from '../lib/errores'
 import { formatearPesos } from '../lib/formato'
+import { PiePaginacion, TAMANO_PAGINA, usePagina } from '../componentes/Paginacion'
 
 type Pago = Esquemas['PagoSalida']
 type Tramo = Esquemas['TramoAntiguedad']['tramo']
@@ -155,7 +156,8 @@ function Cartera({ abrirVenta }: { abrirVenta: (id: number) => void }) {
     queryKey: ['cartera-por-estado'],
     queryFn: () => exigir(api.GET('/api/v1/cartera/por-estado')),
   })
-  const consulta = { ...filtros, tamano: 100 }
+  const [pagina, setPagina] = usePagina(filtros)
+  const consulta = { ...filtros, pagina, tamano: TAMANO_PAGINA }
   const cartera = useQuery({
     queryKey: ['cartera', consulta],
     queryFn: () => exigir(api.GET('/api/v1/cartera', { params: { query: consulta } })),
@@ -282,9 +284,8 @@ function Cartera({ abrirVenta }: { abrirVenta: (id: number) => void }) {
           </Table>
         </Table.ScrollContainer>
       </Card>
-      <Text size="sm" c="dimmed">
-        {cartera.data?.total ?? 0} venta(s) · saldo {formatearPesos(cartera.data?.suma_saldo)}
-      </Text>
+      <PiePaginacion total={cartera.data?.total} pagina={pagina} onPagina={setPagina}
+        unidad="venta(s)" extra={` · saldo ${formatearPesos(cartera.data?.suma_saldo)}`} />
     </Stack>
   )
 }
@@ -309,10 +310,11 @@ function TablaPagos({ soloSinAsignar, abrirVenta, referenciaInicial = '' }: {
   const [asignando, setAsignando] = useState<Pago | null>(null)
   const [referencia, setReferencia] = useState(referenciaInicial)
   const [buscada] = useDebouncedValue(referencia.trim(), 300)
+  const [pagina, setPagina] = usePagina([soloSinAsignar, buscada])
   const consulta = {
     sin_asignar: !!soloSinAsignar,
     ...(buscada ? { referencia: buscada } : {}),
-    tamano: 100,
+    pagina, tamano: TAMANO_PAGINA,
   }
   const pagos = useQuery({
     queryKey: ['pagos', consulta],
@@ -379,6 +381,8 @@ function TablaPagos({ soloSinAsignar, abrirVenta, referenciaInicial = '' }: {
           </Table>
         </Table.ScrollContainer>
       </Card>
+      <PiePaginacion total={pagos.data?.total} pagina={pagina} onPagina={setPagina}
+        unidad="pago(s)" />
       <ModalAsignar key={asignando?.id ?? 'ninguno'} pago={asignando} cerrar={() => setAsignando(null)} />
     </Stack>
   )
