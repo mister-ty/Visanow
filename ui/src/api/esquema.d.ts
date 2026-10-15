@@ -215,8 +215,13 @@ export interface paths {
          * @description Tablero operativo (RF-022) por las siete dimensiones del requisito: estado,
          *     responsable, país, servicio, fecha de entrada, antigüedad y riesgo.
          *
+         *     Con `solicitante_id` responde además el historial de trámites de una sola
+         *     persona, que es lo que pide RF-004: la familia compra junta, pero cada quien
+         *     tiene su trámite y su resultado.
+         *
          *     Lo que devuelve depende del alcance del usuario (RNF-03): quien tiene «solo
-         *     casos asignados» ve los suyos aunque no filtre por responsable.
+         *     casos asignados» ve los suyos aunque no filtre por responsable, y pedir una
+         *     persona por su id no se lo salta.
          */
         get: operations["listar_api_v1_casos_get"];
         put?: never;
@@ -696,6 +701,30 @@ export interface paths {
         head?: never;
         /** Editar Solicitante */
         patch: operations["editar_solicitante_api_v1_solicitantes__solicitante_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/solicitantes/{solicitante_id}/fusionar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fusionar Solicitante
+         * @description Une dos registros de la misma persona dentro de un cliente (RF-002).
+         *
+         *     Exige el permiso de eliminar solicitantes, que hoy solo tiene la
+         *     administradora: unir mueve los trámites y el historial de una persona a la
+         *     otra, y RF-002 pide que la fusión sea autorizada.
+         */
+        post: operations["fusionar_solicitante_api_v1_solicitantes__solicitante_id__fusionar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/solicitantes/{solicitante_id}/pasaporte": {
@@ -1397,6 +1426,9 @@ export interface paths {
         /**
          * Anotar Cliente
          * @description Deja constancia de una llamada, un WhatsApp o una nota (RF-012).
+         *
+         *     Con `documento_id` queda además colgado de ese suceso el documento del que
+         *     habla, para que la cronología lo muestre al lado (RF-064).
          */
         post: operations["anotar_cliente_api_v1_clientes__cliente_id__notas_post"];
         delete?: never;
@@ -1414,7 +1446,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Anotar Caso */
+        /**
+         * Anotar Caso
+         * @description Lo mismo, pero sobre el trámite: es donde se trabaja y donde llega el
+         *     soporte, y la cronología del cliente lo recoge igual (RF-064).
+         */
         post: operations["anotar_caso_api_v1_casos__caso_id__notas_post"];
         delete?: never;
         options?: never;
@@ -1435,6 +1471,10 @@ export interface paths {
          *
          *     Lo que devuelve depende del alcance del usuario (RNF-03): una comercial con
          *     alcance «propios» ve sus oportunidades aunque no filtre por asesor.
+         *
+         *     `pagina` y `tamano` tienen límites: una página cero daba un OFFSET negativo
+         *     y con él un error de PostgreSQL, que en pantalla se ve como «error del
+         *     servidor» sin decir qué pasó.
          */
         get: operations["listar_api_v1_oportunidades_get"];
         put?: never;
@@ -1456,6 +1496,14 @@ export interface paths {
         /**
          * Embudo
          * @description Cuántas oportunidades y cuánto dinero hay en cada paso: el Kanban en números.
+         *
+         *     Acepta los mismos filtros que la lista, y por eso: el encabezado de cada
+         *     columna del tablero muestra el total en pesos al lado del conteo de
+         *     tarjetas, y si el dinero no obedece el filtro la pantalla da dos respuestas
+         *     distintas a la misma pregunta.
+         *
+         *     El estado no se filtra acá porque en el tablero el estado es la columna, y
+         *     las cerradas tampoco: cada oportunidad cuenta en el paso en que está.
          */
         get: operations["embudo_api_v1_oportunidades_embudo_get"];
         put?: never;
@@ -2662,6 +2710,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdjuntoDeSuceso
+         * @description El documento del que habla un suceso de la cronología (RF-064).
+         *
+         *     Trae lo justo para nombrarlo y abrirlo: el contenido del archivo sigue
+         *     saliendo solo por la pantalla de documentos, que es donde queda constancia
+         *     de quién se lo llevó.
+         */
+        AdjuntoDeSuceso: {
+            /** Id */
+            id: number;
+            /** Nombre */
+            nombre: string;
+            /**
+             * Almacenamiento
+             * @description 'local' se descarga; 'enlace' se abre donde vive
+             */
+            almacenamiento: string;
+            /** Url */
+            url: string | null;
+            /** Mime */
+            mime: string | null;
+            /** Restringido */
+            restringido: boolean;
+        };
         /** AjusteCrear */
         AjusteCrear: {
             /**
@@ -4285,6 +4358,13 @@ export interface components {
             nombre: string;
             /** Cliente Contacto Id */
             cliente_contacto_id: number;
+            /**
+             * Tipo
+             * @description Familiar o de viaje. Si no se dice, familiar: es el caso de siempre en VisaNow
+             * @default familiar
+             * @enum {string}
+             */
+            tipo: "familiar" | "viaje";
             /** Observaciones */
             observaciones?: string | null;
         };
@@ -4297,6 +4377,8 @@ export interface components {
              * @description Quién contrata por el grupo
              */
             cliente_contacto_id?: number | null;
+            /** Tipo */
+            tipo?: ("familiar" | "viaje") | null;
             /** Observaciones */
             observaciones?: string | null;
         };
@@ -4306,8 +4388,16 @@ export interface components {
             id: number;
             /** Nombre */
             nombre: string;
+            /**
+             * Tipo
+             * @default familiar
+             * @enum {string}
+             */
+            tipo: "familiar" | "viaje";
             /** Cliente Contacto Id */
             cliente_contacto_id: number;
+            /** Contacto Nombre */
+            contacto_nombre?: string | null;
             /** Observaciones */
             observaciones: string | null;
             /**
@@ -4799,6 +4889,11 @@ export interface components {
             asunto?: string | null;
             /** Cuerpo */
             cuerpo?: string | null;
+            /**
+             * Documento Id
+             * @description Un documento que ya está en la ficha, para dejarlo colgado de este suceso: el comprobante que acaba de llegar, la carta que se mandó
+             */
+            documento_id?: number | null;
         };
         /** NotaSalida */
         NotaSalida: {
@@ -4810,6 +4905,8 @@ export interface components {
             asunto: string | null;
             /** Cuerpo */
             cuerpo: string | null;
+            /** Documento Id */
+            documento_id?: number | null;
             /**
              * Ocurrido En
              * Format: date-time
@@ -4832,6 +4929,11 @@ export interface components {
             /** Cliente Id */
             cliente_id: number;
             /**
+             * Fecha
+             * @description Cuándo llegó el lead. Vacía: hoy
+             */
+            fecha?: string | null;
+            /**
              * Servicio Id
              * @description Qué le interesa
              */
@@ -4843,7 +4945,10 @@ export interface components {
              * @description Por dónde llegó
              */
             canal_id?: number | null;
-            /** Campania Id */
+            /**
+             * Campania Id
+             * @description La campaña del catálogo
+             */
             campania_id?: number | null;
             /**
              * Campania
@@ -4869,6 +4974,11 @@ export interface components {
         };
         /** OportunidadEditar */
         OportunidadEditar: {
+            /**
+             * Fecha
+             * @description Cuándo llegó el lead. Vacía: hoy
+             */
+            fecha?: string | null;
             /** Servicio Id */
             servicio_id?: number | null;
             /** Pais Id */
@@ -4940,6 +5050,13 @@ export interface components {
             campania_id: number | null;
             /** Campania */
             campania: string | null;
+            /** Referido Por Cliente Id */
+            referido_por_cliente_id: number | null;
+            /**
+             * Referido Por
+             * @description El nombre de quien lo recomendó
+             */
+            referido_por?: string | null;
             /** Valor Estimado */
             valor_estimado: number | null;
             /** Proxima Accion */
@@ -4952,9 +5069,16 @@ export interface components {
             ultimo_contacto_en: string | null;
             /** Motivo Perdida Id */
             motivo_perdida_id: number | null;
+            /** Motivo Perdida */
+            motivo_perdida?: string | null;
+            /** Motivo Perdida Nombre */
+            motivo_perdida_nombre?: string | null;
+            /** Motivo Perdida Nota */
+            motivo_perdida_nota?: string | null;
             /**
              * Creado En
              * Format: date-time
+             * @description Cuándo llegó el lead
              */
             creado_en: string;
             /** Cerrado En */
@@ -5680,6 +5804,8 @@ export interface components {
             usuario: string | null;
             /** Caso Id */
             caso_id: number | null;
+            /** @description El documento adjunto, si lo hay y si quien pregunta puede verlo */
+            adjunto?: components["schemas"]["AdjuntoDeSuceso"] | null;
         };
         /** SugerenciasSalida */
         SugerenciasSalida: {
@@ -6204,7 +6330,9 @@ export interface operations {
                 entidad_id?: number | null;
                 desde?: string | null;
                 hasta?: string | null;
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -6472,6 +6600,7 @@ export interface operations {
             query?: {
                 estado?: string | null;
                 responsable_id?: number | null;
+                solicitante_id?: number | null;
                 pais_id?: number | null;
                 servicio_id?: number | null;
                 fuente?: ("saas" | "manual" | "hibrido") | null;
@@ -6487,7 +6616,9 @@ export interface operations {
                 incluir_finalizados?: boolean;
                 texto?: string | null;
                 orden?: "quieto" | "antiguedad";
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -7032,7 +7163,9 @@ export interface operations {
                 /** @description Nombre, documento, teléfono o correo */
                 texto?: string | null;
                 archivados?: boolean;
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -7491,6 +7624,41 @@ export interface operations {
             };
         };
     };
+    fusionar_solicitante_api_v1_solicitantes__solicitante_id__fusionar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solicitante_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FusionEntrada"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FusionSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ver_pasaporte_api_v1_solicitantes__solicitante_id__pasaporte_get: {
         parameters: {
             query?: never;
@@ -7564,7 +7732,9 @@ export interface operations {
                 banco?: string | null;
                 /** @description La referencia del comprobante, o un pedazo de ella */
                 referencia?: string | null;
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -7907,7 +8077,9 @@ export interface operations {
                 desde?: string | null;
                 hasta?: string | null;
                 incluir_anulados?: boolean;
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -8634,11 +8806,14 @@ export interface operations {
                 canal_id?: number | null;
                 servicio_id?: number | null;
                 campania_id?: number | null;
+                /** @description También las ganadas y las perdidas */
                 incluir_cerradas?: boolean;
                 /** @description Sin contacto hace más de N días */
                 frias_desde?: number | null;
                 texto?: string | null;
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -8702,7 +8877,15 @@ export interface operations {
     };
     embudo_api_v1_oportunidades_embudo_get: {
         parameters: {
-            query?: never;
+            query?: {
+                asesor_id?: number | null;
+                canal_id?: number | null;
+                servicio_id?: number | null;
+                campania_id?: number | null;
+                /** @description Sin contacto hace más de N días */
+                frias_desde?: number | null;
+                texto?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8716,6 +8899,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PasoEmbudo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8866,7 +9058,9 @@ export interface operations {
                 hasta?: string | null;
                 /** @description La referencia del comprobante, o un pedazo de ella (RF-029) */
                 referencia?: string | null;
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -9102,7 +9296,9 @@ export interface operations {
     listar_cartera_api_v1_cartera_get: {
         parameters: {
             query?: {
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
                 solo_vencida?: boolean;
                 /** @description Solo un corte de antigüedad: 1_30, 31_60, 61_90, mas_90 */
@@ -9454,7 +9650,9 @@ export interface operations {
                 servicio_id?: number | null;
                 vendedor_id?: number | null;
                 orden?: "peores" | "mejores" | "recientes";
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -10035,7 +10233,9 @@ export interface operations {
                 cliente_id?: number | null;
                 solo_abiertas?: boolean;
                 vencidas?: boolean;
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;
@@ -10191,7 +10391,9 @@ export interface operations {
                 estado?: ("nueva" | "vista" | "resuelta" | "pospuesta") | null;
                 severidad?: ("baja" | "media" | "alta") | null;
                 solo_abiertas?: boolean;
+                /** @description Número de página, desde 1. */
                 pagina?: number;
+                /** @description Filas por página, hasta 200. Para llevarse el listado completo está la exportación. */
                 tamano?: number;
             };
             header?: never;

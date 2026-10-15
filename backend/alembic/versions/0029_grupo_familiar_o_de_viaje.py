@@ -28,16 +28,28 @@ check basta y no hace falta una tabla nueva.
 No hay tablas nuevas, asi que no hay RLS que activar: `grupos` ya la tiene
 desde la migracion 0015.
 
-Revision ID: 0022_grupo_familiar_o_de_viaje
-Revises: 0021_referencia_de_pago
+Por que es la 0029 y no la 0022, con la que nacio: se escribio en paralelo con
+la 0027 y la 0028, y las tres declaraban la 0021 como anterior. Al mezclar,
+alembic se quedo con dos cabezas y `upgrade head` deja de funcionar: el
+despliegue se cae en el paso de migrar, antes de tocar un dato, y la suite
+entera no arranca porque el conftest tambien hace `upgrade head`.
+
+Encadenarla DESPUES de la 0028 y no antes no es cosmetico. Produccion ya aplico
+la 0027 y la 0028; si esta se colara en medio de la fila, alembic la daria por
+aplicada sin haberla corrido nunca -el registro guarda la cabeza, no la lista- y
+la columna `grupos.tipo` no existiria mientras el sistema cree que si. Un numero
+mas alto es lo unico que garantiza que corra.
+
+Revision ID: 0029_grupo_familiar_o_de_viaje
+Revises: 0028_cerrar_los_roles_publicos
 Create Date: 2026-10-14
 """
 from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = '0022_grupo_familiar_o_de_viaje'
-down_revision: Union[str, None] = '0021_referencia_de_pago'
+revision: str = '0029_grupo_familiar_o_de_viaje'
+down_revision: Union[str, None] = '0028_cerrar_los_roles_publicos'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
