@@ -3,7 +3,7 @@ import { notifications } from '@mantine/notifications'
 import { IconDownload, IconFileSpreadsheet, IconFileText } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, token } from '../api/cliente'
+import { api, token, urlApi } from '../api/cliente'
 
 type Recurso = 'clientes' | 'solicitantes' | 'casos' | 'cartera' | 'pagos' | 'comisiones'
 
@@ -34,7 +34,7 @@ export function BotonExportar({ recurso, etiqueta }: { recurso: Recurso; etiquet
   const bajar = async (formato: 'xlsx' | 'csv') => {
     setBajando(true)
     try {
-      const r = await fetch(`/api/v1/exportar/${recurso}?formato=${formato}`, {
+      const r = await fetch(`${urlApi}/api/v1/exportar/${recurso}?formato=${formato}`, {
         headers: { Authorization: `Bearer ${token.leer() ?? ''}` },
       })
       if (!r.ok) {

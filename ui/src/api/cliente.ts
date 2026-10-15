@@ -63,5 +63,23 @@ export async function exigir<T>(promesa: Promise<{ data?: T; error?: unknown; re
   return data as T
 }
 
+/**
+ * De dónde cuelga la API, para las peticiones que NO pasan por `api`.
+ *
+ * Tres cosas se piden con `fetch` a pelo y no por openapi-fetch, porque no son
+ * JSON: la exportación, la subida de un archivo (va en FormData) y la descarga
+ * de su contenido. Esas tres traían la dirección escrita relativa —
+ * `/api/v1/exportar/...`— y en producción eso no llega a la API: la pantalla
+ * vive en Vercel, la API en otro dominio, y `vercel.json` reescribe `/(.*)` a
+ * `/index.html`. La petición le caía al propio frontend y recibía la página
+ * entera en HTML donde esperaba un archivo.
+ *
+ * O sea que exportar a Excel, subir un pasaporte escaneado y descargarlo
+ * estaban rotos en producción y funcionaban en desarrollo, donde el proxy de
+ * Vite tapaba la diferencia. Por eso esto vive acá y no repetido en cada sitio:
+ * `api` ya lo hacía bien y las tres de afuera no se enteraban.
+ */
+export const urlApi = import.meta.env.VITE_API_URL ?? ''
+
 /** URL absoluta de la administración de catálogos (la sirve la API, no el frontend). */
-export const urlAdministracion = `${import.meta.env.VITE_API_URL ?? ''}/admin`
+export const urlAdministracion = `${urlApi}/admin`

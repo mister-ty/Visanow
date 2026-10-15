@@ -8,7 +8,7 @@ import {
 } from '@tabler/icons-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, exigir, token, type Esquemas } from '../api/cliente'
+import { api, exigir, token, urlApi, type Esquemas } from '../api/cliente'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora } from '../lib/formato'
 
@@ -65,7 +65,7 @@ export function Documentos({ entidad, entidadId, puedeEditar = true }: {
   // cookie, y un enlace no lo enviaría. Tampoco puede ir en la URL.
   const bajar = async (d: Documento) => {
     try {
-      const r = await fetch(`/api/v1/documentos/${d.id}/contenido`, {
+      const r = await fetch(`${urlApi}/api/v1/documentos/${d.id}/contenido`, {
         headers: { Authorization: `Bearer ${token.leer() ?? ''}` },
       })
       if (!r.ok) {
@@ -186,7 +186,7 @@ function SubirArchivo({ entidad, entidadId, cerrar, listo, maxMb, tipos }: {
       cuerpo.append('entidad_id', String(entidadId))
       cuerpo.append('restringido', String(reservado))
       // FormData va por fetch: openapi-fetch serializa a JSON.
-      const r = await fetch('/api/v1/documentos', {
+      const r = await fetch(`${urlApi}/api/v1/documentos`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.leer() ?? ''}` },
         body: cuerpo,

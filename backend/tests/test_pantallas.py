@@ -148,3 +148,32 @@ def test_el_guardia_del_paginador_de_verdad_atrapa_una_pantalla_que_trunca():
     assert _pide_listado_paginado(trunca) and not _ofrece_paginador(trunca)
     assert _pide_listado_paginado(pagina) and _ofrece_paginador(pagina)
     assert not _pide_listado_paginado(ninguna)
+
+
+# ------------------------- una peticion que en produccion no llega a la API
+
+def test_ninguna_peticion_a_la_api_va_con_direccion_relativa():
+    """Compila, funciona en desarrollo, y en produccion devuelve HTML (RNF-08).
+
+    Las peticiones normales pasan por `api` (openapi-fetch), que ya lleva
+    `baseUrl: VITE_API_URL`. Pero tres cosas se piden con `fetch` a pelo porque
+    no son JSON -la exportacion, la subida de un archivo y la descarga de su
+    contenido- y las tres traian la direccion escrita relativa.
+
+    En desarrollo eso funciona: el proxy de Vite manda `/api` al backend. En
+    produccion la pantalla vive en Vercel, la API en otro dominio, y vercel.json
+    reescribe `/(.*)` a `/index.html`: la peticion le cae al propio frontend y
+    recibe la pagina entera en HTML donde esperaba un archivo. Exportar a Excel,
+    subir un pasaporte escaneado y descargarlo estaban rotos los tres, y nada lo
+    decia: ni el typecheck, ni el build, ni una prueba.
+    """
+    relativas = []
+    for archivo in sorted(UI.rglob('*.ts')) + sorted(UI.rglob('*.tsx')):
+        for m in re.finditer(r"""fetch\(\s*['"`]/api""", fuente(archivo)):
+            linea = fuente(archivo)[:m.start()].count('\n') + 1
+            relativas.append(f'{archivo.relative_to(UI)}:{linea}')
+
+    assert not relativas, (
+        f'Estas peticiones usan una direccion relativa a la API: {relativas}. '
+        'En produccion no llegan a la API, llegan al propio frontend y reciben '
+        "index.html. Hay que prefijarlas con `urlApi` de src/api/cliente.ts.")
