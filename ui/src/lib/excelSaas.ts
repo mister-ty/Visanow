@@ -30,7 +30,7 @@ const dos = (n: number) => String(n).padStart(2, '0')
 // arman con getters UTC: pasar por la zona del navegador correría el día.
 // La hora, si la hay, es hora de pared de Bogotá y viaja con su desfase -05:00
 // (sin horario de verano) para que el servidor, en UTC, no la tome cinco horas antes.
-function aFecha(v: unknown): string | null {
+export function aFecha(v: unknown): string | null {
   if (v === null || v === undefined || v === '') return null
   let fecha: Date | null = null
   if (typeof v === 'number') fecha = new Date(Math.round((v - 25569) * 86400 * 1000))
