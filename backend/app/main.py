@@ -48,8 +48,30 @@ app = FastAPI(
     docs_url='/docs' if _local else None, redoc_url=None,
     openapi_url='/openapi.json' if _local else None,
 )
+#: Cabeceras de respuesta que el navegador le deja leer al JavaScript cuando la
+#: petición es de otro dominio.
+#:
+#: Hay que declararlas o no se ven. El navegador solo entrega siete cabeceras
+#: por omisión —content-type, content-length, cache-control y cuatro más— y
+#: cualquier otra, aunque el servidor la mande, queda oculta: `r.headers.get(...)`
+#: devuelve null sin ningún error. Y la exportación manda tres propias que la
+#: pantalla sí lee (ui/src/componentes/BotonExportar.tsx): el nombre del archivo,
+#: cuántas filas trae, y cuáles columnas se omitieron.
+#:
+#: En desarrollo no se nota, porque el proxy de Vite hace que todo sea el mismo
+#: origen. En producción la pantalla vive en Vercel y la API en Render, así que
+#: son dominios distintos y las tres volvían vacías: el archivo bajaba con el
+#: nombre por omisión y —lo que de verdad importa— el aviso de «estas columnas de
+#: plata se omitieron porque usted no las ve» no aparecía nunca. Quien exporta
+#: se llevaba un archivo incompleto creyendo que estaba completo.
+#:
+#: Es la misma familia del `fetch` con dirección relativa: funciona en el
+#: portátil de quien lo escribió y se muere al desplegarlo, sin que nada falle.
+CABECERAS_VISIBLES = ['Content-Disposition', 'X-Filas', 'X-Columnas-Omitidas']
+
 app.add_middleware(CORSMiddleware, allow_origins=ajustes().origenes_cors, allow_credentials=True,
-                   allow_methods=['*'], allow_headers=['*'])
+                   allow_methods=['*'], allow_headers=['*'],
+                   expose_headers=CABECERAS_VISIBLES)
 
 
 @app.exception_handler(ErrorDominio)

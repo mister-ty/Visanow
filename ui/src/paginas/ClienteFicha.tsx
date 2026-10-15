@@ -18,11 +18,16 @@ import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { AvisoDuplicados, type Coincidencia } from '../componentes/AvisoDuplicados'
 import { CamposCliente, CLIENTE_VACIO } from '../componentes/CamposCliente'
+import { avisoDeCorte } from '../componentes/Paginacion'
 import { Documentos } from '../componentes/Documentos'
 import { descargarDocumento } from '../lib/descargas'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora, formatearPesos } from '../lib/formato'
 import { aSelect, type Opcion, porPais, useAsignables, useCatalogos } from '../lib/catalogos'
+
+/** Cuantos clientes trae el buscador de «quien contrata». Son casi novecientas
+ *  personas: la lista se corta a proposito y `avisoDeCorte` lo dice en pantalla. */
+const CANDIDATOS_CONTACTO = 20
 
 type Detalle = Esquemas['ClienteDetalle']
 type Solicitante = Esquemas['SolicitanteSalida']
@@ -1119,7 +1124,7 @@ function FormularioEditarGrupo({ grupo, cerrar, guardado }: {
   const candidatos = useQuery({
     queryKey: ['clientes', 'contacto-de-grupo', busqueda],
     queryFn: () => exigir(api.GET('/api/v1/clientes', {
-      params: { query: { texto: busqueda || undefined, tamano: 20 } },
+      params: { query: { texto: busqueda || undefined, tamano: CANDIDATOS_CONTACTO } },
     })),
     enabled: grupo !== null,
   })
@@ -1155,7 +1160,8 @@ function FormularioEditarGrupo({ grupo, cerrar, guardado }: {
           <Select label="¿Qué clase de grupo es?" data={TIPOS_GRUPO} allowDeselect={false}
             {...formulario.getInputProps('tipo')} />
           <Select label="Quién contrata" data={opciones} searchable allowDeselect={false}
-            description="El grupo pasa a la ficha de quien contrate, con sus personas"
+            description={avisoDeCorte(candidatos.data?.total, CANDIDATOS_CONTACTO, 'clientes')
+              ?? 'El grupo pasa a la ficha de quien contrate, con sus personas'}
             searchValue={texto} onSearchChange={setTexto}
             nothingFoundMessage={busqueda ? 'Ningún cliente con ese nombre' : undefined}
             {...formulario.getInputProps('cliente_contacto_id')} />

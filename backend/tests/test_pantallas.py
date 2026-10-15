@@ -104,11 +104,13 @@ def test_el_guardia_de_las_tablas_de_verdad_atrapa_una(tmp_path):
 
 # --------------------------------- una pantalla que muestra 100 de 189 y calla
 
-#: Pantallas que todavia piden un listado paginado sin ofrecer paginador: las
-#: dos que estan en obra, el tablero de tramites (RF-022) y el embudo (RF-011).
-#: Esto es un permiso, no una meta. Sacar una de aqui no rompe nada; agregar una
-#: es declarar por escrito que una pantalla miente, y eso cuesta explicarlo.
-EN_OBRA = {'Casos.tsx', 'Embudo.tsx'}
+#: Pantallas que todavia piden un listado paginado sin ofrecer paginador.
+#:
+#: Esta VACIA, y es la gracia. Tenia el tablero de tramites y el embudo mientras
+#: se trabajaban (RF-022 y RF-011); al cerrarlos salieron. Es un permiso, no una
+#: meta: sacar una de aqui no rompe nada, agregar una es declarar por escrito que
+#: una pantalla miente, y eso cuesta explicarlo.
+EN_OBRA: set[str] = set()
 
 
 def _pide_listado_paginado(texto: str) -> bool:
@@ -116,7 +118,19 @@ def _pide_listado_paginado(texto: str) -> bool:
 
 
 def _ofrece_paginador(texto: str) -> bool:
-    return 'PiePaginacion' in texto or '<Pagination' in texto
+    """Las dos formas honestas de no cortar una lista en silencio.
+
+    La primera es paginar. La segunda es avisar que se corto, y es la que
+    corresponde a un BUSCADOR: un paginador dentro de un desplegable es la
+    solucion equivocada -nadie pasa paginas en un combo, se escribe mas- pero el
+    problema de fondo es el mismo y hay que resolverlo igual. `avisoDeCorte`
+    (ui/src/componentes/Paginacion.tsx) es ese aviso.
+
+    Lo que esta prueba NO acepta es la tercera forma, que es la que habia: pedir
+    las primeras N y callarse.
+    """
+    return ('PiePaginacion' in texto or '<Pagination' in texto
+            or 'avisoDeCorte' in texto)
 
 
 @pytest.mark.parametrize('pagina', sorted(p.name for p in PAGINAS.glob('*.tsx')))
@@ -177,3 +191,42 @@ def test_ninguna_peticion_a_la_api_va_con_direccion_relativa():
         f'Estas peticiones usan una direccion relativa a la API: {relativas}. '
         'En produccion no llegan a la API, llegan al propio frontend y reciben '
         "index.html. Hay que prefijarlas con `urlApi` de src/api/cliente.ts.")
+
+
+# ------------- una cabecera que el navegador esconde cuando cambia de dominio
+
+def test_las_cabeceras_que_la_pantalla_lee_estan_declaradas_como_visibles():
+    """El navegador esconde las cabeceras propias cuando el dominio no es el mismo.
+
+    Solo entrega siete por omision; cualquier otra, aunque el servidor la mande,
+    queda oculta y `r.headers.get(...)` devuelve null sin ningun error. En
+    desarrollo no se nota, porque el proxy de Vite hace que todo sea el mismo
+    origen; en produccion la pantalla esta en Vercel y la API en Render.
+
+    La exportacion manda tres propias y las tres se leen en el frontend: el
+    nombre del archivo, cuantas filas trae y cuales columnas se omitieron. La
+    tercera es la que de verdad importa: sin ella, quien no puede ver los montos
+    se lleva un archivo sin esas columnas y nada se lo dice.
+
+    Esta prueba lee lo que el frontend pide y exige que el backend lo declare,
+    asi que una cabecera nueva queda cubierta el dia que alguien la lea.
+    """
+    from app.main import CABECERAS_VISIBLES
+
+    leidas = set()
+    for archivo in sorted(UI.rglob('*.ts')) + sorted(UI.rglob('*.tsx')):
+        texto = fuente(archivo)
+        for m in re.finditer(r"""headers\.get\(\s*['"]([^'"]+)['"]""", texto):
+            leidas.add(m.group(1).lower())
+
+    # Las que el navegador entrega sin que nadie las declare.
+    DE_REGALO = {'cache-control', 'content-language', 'content-length',
+                 'content-type', 'expires', 'last-modified', 'pragma'}
+    declaradas = {h.lower() for h in CABECERAS_VISIBLES}
+    escondidas = sorted(leidas - DE_REGALO - declaradas)
+
+    assert not escondidas, (
+        f'El frontend lee estas cabeceras y el backend no las declara visibles: '
+        f'{escondidas}. En produccion vuelven vacias, sin error. Agreguelas a '
+        f'CABECERAS_VISIBLES en app/main.py.')
+    assert leidas, 'no se encontro ninguna lectura de cabeceras; la prueba no esta mirando nada'

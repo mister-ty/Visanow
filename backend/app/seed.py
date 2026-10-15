@@ -514,13 +514,25 @@ def sembrar_checklists(cur) -> int:
         # corrigen aquí el checklist de renovación sigue aplicándose a los
         # trámites de primera vez. Es el único campo de clasificación que se
         # actualiza; el código, que es la llave, no se toca nunca.
+        #
+        # Y se actualiza con `coalesce`, o sea SOLO si está vacío. Con
+        # `excluded.modalidad_id` a secas lo reescribía en cada arranque, y
+        # `arranque.sh` corre el sembrado cada vez que el contenedor levanta:
+        # /admin deja clasificar un checklist por modalidad —la perilla que
+        # acaba de volverse útil— y el siguiente despliegue la devolvía al valor
+        # del código, sin error y sin aviso. Esto rellena lo que falte en
+        # producción, que es lo que el sembrado tiene que hacer, y no le
+        # deshace a nadie lo que configuró a mano. Es el único campo así:
+        # pais_id y tipo_visa_id nunca se tocan en el update.
         cur.execute("""insert into checklists (codigo, nombre, pais_id, tipo_visa_id, modalidad_id, activo)
                        values (%s, %s, (select id from paises where iso2 = %s),
                                (select t.id from tipos_visa t join paises p on p.id = t.pais_id
                                 where t.codigo = %s and p.iso2 = %s),
                                (select id from modalidades where codigo = %s), true)
                        on conflict (codigo) do update set
-                         nombre = excluded.nombre, modalidad_id = excluded.modalidad_id""",
+                         nombre = excluded.nombre,
+                         modalidad_id = coalesce(checklists.modalidad_id,
+                                                 excluded.modalidad_id)""",
                     (codigo, nombre, pais, tipo_visa, pais, modalidad))
         for orden, (item, texto, obligatorio) in enumerate(lista, 1):
             cur.execute("""insert into checklist_items (checklist_id, codigo, nombre, obligatorio, orden)

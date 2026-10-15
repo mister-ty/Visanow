@@ -190,3 +190,39 @@ def test_los_documentos_de_la_ficha_juntan_los_del_cliente_y_los_de_sus_tramites
     sobre = {d['nombre']: d['sobre'] for d in docs}
     assert sobre['Soporte del trámite'] == 'un trámite'
     assert sobre['Carpeta compartida'] == 'el cliente'
+
+
+def test_los_documentos_de_la_ficha_respetan_el_permiso_de_cada_entidad(
+        cliente, admin, usuario, cliente_completo, db):
+    """La misma respuesta aplicaba dos reglas distintas a los mismos documentos.
+
+    `cronologia[].adjunto` exigía el permiso de la entidad de la que cuelga el
+    documento —`solicitantes.ver` para el de una persona, `casos.ver` para el de
+    un trámite— y el bloque `documentos[]` no exigía ninguno: solo miraba el
+    `restringido`. Con la matriz de hoy eso ya se escapa, y no hace falta
+    inventar un rol: **finanzas no tiene `solicitantes.ver`**, así que el
+    documento de una persona nunca debió aparecer en su lista y aparecía.
+
+    No es teórico ni futuro: es el reparto de permisos que está sembrado.
+    """
+    cliente_id, _ = cliente_completo
+    persona_id = db.execute(text(
+        'select id from solicitantes where cliente_id = :c limit 1'),
+        {'c': cliente_id}).scalar()
+    assert persona_id, 'la fixture tiene que haber creado la persona'
+
+    cliente.post('/api/v1/documentos/enlace', headers=admin, json={
+        'entidad': 'solicitante', 'entidad_id': persona_id,
+        'nombre': 'Hoja de vida de la persona', 'url': 'https://drive.google.com/persona'})
+
+    de_admin = {d['nombre'] for d in ficha(cliente, admin, cliente_id)['documentos']}
+    assert 'Hoja de vida de la persona' in de_admin, 'la administradora sí lo ve'
+
+    cab = entrar(cliente, usuario('finanzas'))
+    de_finanzas = ficha(cliente, cab, cliente_id)['documentos']
+    nombres = {d['nombre'] for d in de_finanzas}
+    assert 'Hoja de vida de la persona' not in nombres, (
+        'finanzas no tiene solicitantes.ver, así que un documento de una persona '
+        f'no le corresponde; recibió {sorted(nombres)}')
+    assert 'Carpeta compartida' in nombres, (
+        'y los del cliente sí los ve: finanzas tiene clientes.ver')

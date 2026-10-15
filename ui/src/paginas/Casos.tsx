@@ -12,6 +12,7 @@ import { api, exigir } from '../api/cliente'
 import { aSelect, useAsignables, useCatalogos } from '../lib/catalogos'
 import { formatearFecha } from '../lib/formato'
 import { ORIGEN } from '../lib/origen'
+import { PiePaginacion, TAMANO_PAGINA, usePagina } from '../componentes/Paginacion'
 
 const COLOR_RIESGO = { alto: 'red', medio: 'yellow', bajo: 'gray', ninguno: 'gray' } as const
 
@@ -52,6 +53,8 @@ export function Casos() {
   const [sinAsignar, setSinAsignar] = useState(false)
   const [finalizados, setFinalizados] = useState(false)
 
+  const [pagina, setPagina] = usePagina([estado, busqueda, responsable, pais, servicio,
+                                         riesgo, desde, hasta, sinAsignar, finalizados, orden])
   const filtros = {
     ...(estado ? { estado } : {}),
     ...(busqueda ? { texto: busqueda } : {}),
@@ -64,7 +67,7 @@ export function Casos() {
     sin_asignar: sinAsignar,
     incluir_finalizados: finalizados,
     orden: orden as 'quieto',
-    tamano: 100,
+    pagina, tamano: TAMANO_PAGINA,
   }
   const hayFiltros = Boolean(estado || texto || responsable || pais || servicio || riesgo
     || desde || hasta || sinAsignar || finalizados)
@@ -208,7 +211,8 @@ export function Casos() {
           </Table>
         </Table.ScrollContainer>
       </Card>
-      <Text size="sm" c="dimmed">{casos.data?.total ?? 0} trámite(s)</Text>
+      <PiePaginacion total={casos.data?.total} pagina={pagina} onPagina={setPagina}
+        unidad="trámite(s)" />
     </Stack>
   )
 }

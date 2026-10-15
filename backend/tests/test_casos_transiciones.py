@@ -350,3 +350,140 @@ def test_el_cambio_de_responsable_puede_llevar_su_motivo(
     assert linea['valor_anterior'] == str(p.u.id) and linea['valor_nuevo'] == str(otra.u.id)
     assert linea['usuario'] == p.u.nombre
     assert linea['observacion'] == motivo, 'el por qué del cambio de campo no quedó guardado'
+
+
+# ------------------- la fecha del consulado, que no es la de hoy (RF-027/028)
+
+def test_mover_de_estado_no_le_pisa_la_fecha_del_consulado_con_la_de_hoy(
+        cliente, db, operaciones, administradora, solicitante, pais_usa):
+    """Una visa aprobada el 15 de marzo quedaba aprobada hoy.
+
+    La pantalla manda siempre `resultado_fecha: datos.resultado_fecha || null`,
+    así que mover de estado un trámite que ya tenía fecha —sin intención de
+    tocarla— llegaba como «ponla en null»; el autollenado que va justo después
+    veía el hueco y le ponía la de hoy. Sobre 501 ventas eso corre los conteos
+    por mes, y el historial encima escribía «2026-03-15 → None», que no era ni
+    lo que había antes ni lo que quedó guardado.
+    """
+    cab, p = operaciones
+    cab_admin, _ = administradora
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, p.u.id)
+
+    r = cliente.post(f"{CASOS}/{caso['id']}/resultado", headers=cab,
+                     json={'resultado': 'aprobada', 'fecha': '2026-03-15',
+                           'nota': 'Aprobada en la entrevista de marzo'})
+    assert r.status_code == 200, r.text
+    assert ficha(cliente, cab, caso['id'])['resultado_fecha'] == '2026-03-15'
+
+    # El movimiento que la pantalla hace: manda el resultado y la fecha vacía
+    # (`resultado_fecha: datos.resultado_fecha || null`).
+    r = mover(cliente, cab_admin, caso['id'], 'excepcion',
+              motivo='El cliente desiste y hay que cerrarlo',
+              resultado='cancelado', resultado_fecha=None)
+    assert r.status_code == 200, r.text
+
+    despues = ficha(cliente, cab, caso['id'])
+    assert despues['resultado_fecha'] == '2026-03-15', (
+        'le pisó la fecha de la decisión consular con la de hoy')
+    assert despues['resultado_nota'] == 'Aprobada en la entrevista de marzo', (
+        'le borró la nota')
+
+    borrados = db.scalars(select(CasosHistorial).where(
+        CasosHistorial.caso_id == caso['id'],
+        CasosHistorial.campo == 'resultado_fecha')).all()
+    assert not borrados, (
+        'escribió en el historial un cambio de fecha que no ocurrió: '
+        f'{[(h.valor_anterior, h.valor_nuevo) for h in borrados]}')
+
+
+def test_la_transicion_que_exige_la_fecha_del_resultado_la_sigue_exigiendo(
+        cliente, db, operaciones, administradora, solicitante, pais_usa):
+    """RF-023: `esperando_resultado → con_resultado` pide resultado Y fecha.
+
+    El autollenado de la fecha corría ANTES de validar los campos obligatorios,
+    así que el campo quedaba siempre puesto y la exigencia no podía fallar
+    nunca. El efecto no es de formulario: de ahí en adelante el camino normal
+    para registrar un resultado habría sellado el día en que alguien lo digitó,
+    no el de la decisión del consulado.
+    """
+    exigidos = db.scalar(select(TransicionesOperativas.campos_obligatorios).where(
+        TransicionesOperativas.estado_origen_id == select(EstadosOperativos.id).where(
+            EstadosOperativos.codigo == 'esperando_resultado').scalar_subquery(),
+        TransicionesOperativas.estado_destino_id == select(EstadosOperativos.id).where(
+            EstadosOperativos.codigo == 'con_resultado').scalar_subquery()))
+    assert 'resultado_fecha' in (exigidos or []), (
+        'esta prueba se apoya en que el sembrado exija la fecha; si cambió, hay '
+        'que revisarla en vez de borrarla')
+
+    cab, p = operaciones
+    cab_admin, _ = administradora
+    sede = db.scalar(select(Sedes.id).limit(1))
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, p.u.id)
+    hasta(cliente, cab, caso['id'], 'esperando_info', 'info_en_revision',
+          'formulario_elaborando', 'formulario_enviado', 'pago_consular_pend',
+          'busqueda_cita')
+    cliente.post(f"{CASOS}/{caso['id']}/citas", headers=cab,
+                 json={'tipo': 'entrevista', 'inicia_en': '2026-11-20T08:30:00-05:00'})
+    assert mover(cliente, cab, caso['id'], 'cita_confirmada',
+                 cambios={'sede_id': sede}).status_code == 200
+    hasta(cliente, cab, caso['id'], 'preparacion', 'checklist')
+
+    # El checklist no es lo que esta prueba mira, así que se pasa con la
+    # excepción autorizada, igual que la prueba del checklist de más arriba.
+    r = mover(cliente, cab_admin, caso['id'], 'esperando_resultado', forzar=True,
+              motivo='Lo que se prueba acá es la fecha, no el checklist')
+    assert r.status_code == 200, r.text
+
+    # Con el resultado pero sin la fecha: tiene que rebotar, no autollenarse.
+    r = mover(cliente, cab, caso['id'], 'con_resultado',
+              resultado='aprobada', resultado_fecha=None)
+    assert r.status_code == 422, r.text
+    assert r.json()['codigo'] == 'faltan_campos', r.text
+
+    # Y con la fecha, pasa y queda la que se mandó.
+    r = mover(cliente, cab, caso['id'], 'con_resultado',
+              resultado='aprobada', resultado_fecha='2026-04-02')
+    assert r.status_code == 200, r.text
+    assert ficha(cliente, cab, caso['id'])['resultado_fecha'] == '2026-04-02'
+
+
+def test_un_tramite_retomado_suelta_el_resultado_que_tenia(
+        cliente, db, operaciones, administradora, solicitante, pais_usa):
+    """Cerrar sin decir en qué quedó y reabrir sin soltarlo son el mismo error.
+
+    Un trámite que volvió a abrirse —el cliente desistió y volvió— se quedaba
+    con el «cancelado» pegado: salía cancelado en la exportación estando en
+    curso, y si el resultado era «aprobada» disparaba la alerta de visa aprobada
+    sin cerrar. Es el espejo exacto de la regla que sí estaba.
+    """
+    cab, p = operaciones
+    cab_admin, _ = administradora
+    caso = crear_caso(cliente, cab, solicitante, pais_usa, p.u.id)
+
+    r = mover(cliente, cab_admin, caso['id'], 'excepcion',
+              motivo='El cliente desiste por ahora',
+              resultado='cancelado', resultado_fecha='2026-05-10')
+    assert r.status_code == 200, r.text
+    cerrado = ficha(cliente, cab, caso['id'])
+    assert cerrado['es_final'] is True and cerrado['resultado'] == 'cancelado'
+
+    # Vuelve: la excepción tiene salida (RF-023) y el trámite se retoma.
+    r = mover(cliente, cab, caso['id'], 'esperando_info',
+              motivo='El cliente volvió y quiere seguir')
+    assert r.status_code == 200, r.text
+
+    retomado = ficha(cliente, cab, caso['id'])
+    assert retomado['es_final'] is False
+    assert retomado['resultado'] is None, (
+        'quedó abierto y cancelado a la vez: así sale cancelado en la '
+        'exportación estando en curso')
+    assert retomado['resultado_fecha'] is None
+
+    # Y no se perdió: quedó en el historial, que es donde se pregunta por qué.
+    suelto = db.scalars(select(CasosHistorial).where(
+        CasosHistorial.caso_id == caso['id'],
+        CasosHistorial.campo == 'resultado')).all()
+    assert any(h.valor_anterior == 'cancelado' and h.valor_nuevo is None
+               for h in suelto), (
+        'el resultado se dejó de afirmar pero tiene que quedar en el historial: '
+        f'{[(h.valor_anterior, h.valor_nuevo) for h in suelto]}')

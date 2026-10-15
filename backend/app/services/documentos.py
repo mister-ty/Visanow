@@ -191,6 +191,29 @@ def subir(db: Session, actor: Usuarios, *, entidad: str, entidad_id: int,
     return doc
 
 
+def entidad_visible(entidad: str, restringido: bool, permisos: set[str]) -> bool:
+    """La regla, sobre lo mínimo que hace falta para decidirla.
+
+    Separada de `visible_para` porque el bloque de documentos de la ficha 360 no
+    tiene objetos `Documentos` en la mano, sino filas de una consulta que junta
+    los del cliente, los de sus personas, los de sus trámites y los de sus
+    ventas. Hasta ahora ese bloque filtraba SOLO el `restringido` y se saltaba el
+    permiso de la entidad, así que la misma respuesta de `/clientes/{id}/ficha`
+    aplicaba dos reglas distintas a los mismos documentos: la cronología exigía
+    `casos.ver` para nombrar el soporte de un trámite y la lista de documentos no
+    exigía nada. Con la matriz de permisos de hoy no se escapaba nada —los tres
+    roles que abren una ficha tienen los cuatro permisos—, pero los permisos se
+    editan desde la pantalla de administración, así que era cuestión de que
+    alguien le quitara «ver trámites» a alguien.
+    """
+    permiso_ver, _, _ = ENTIDADES.get(entidad, (None, None, None))
+    if permiso_ver is None or permiso_ver not in permisos:
+        return False
+    # Se omiten, no se muestran en gris: saber que existe un documento
+    # restringido sobre alguien ya dice algo de esa persona.
+    return not restringido or PERMISO_RESTRINGIDO in permisos
+
+
 def visible_para(actor: Usuarios | None, doc: Documentos, *, permisos: set[str]) -> bool:
     """Si esta persona puede enterarse de que este documento existe.
 
@@ -209,12 +232,7 @@ def visible_para(actor: Usuarios | None, doc: Documentos, *, permisos: set[str])
     """
     if actor is None:
         return False
-    permiso_ver, _, _ = ENTIDADES.get(doc.entidad, (None, None, None))
-    if permiso_ver is None or permiso_ver not in permisos:
-        return False
-    # Se omiten, no se muestran en gris: saber que existe un documento
-    # restringido sobre alguien ya dice algo de esa persona.
-    return not doc.restringido or PERMISO_RESTRINGIDO in permisos
+    return entidad_visible(doc.entidad, doc.restringido, permisos)
 
 
 def listar(db: Session, actor: Usuarios, entidad: str, entidad_id: int) -> list[Documentos]:

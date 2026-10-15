@@ -55,7 +55,6 @@ def ficha_360(cliente_id: int, actor: Usuarios = Depends(requiere('clientes.ver'
     ve_al_dia = ve_montos or 'pagos.estado' in puede
     ve_ventas = 'negocios.ver' in puede
     ve_trabajo = 'alertas.ver' in puede
-    ve_reservados = 'solicitantes.reservado' in puede
 
     tramites = fichas.tramites_de(db, cliente_id) if ve_tramites else []
     citas = fichas.proximas_citas(db, cliente_id) if ve_tramites else []
@@ -102,7 +101,7 @@ def ficha_360(cliente_id: int, actor: Usuarios = Depends(requiere('clientes.ver'
         tareas=[esq.TareaEnFicha(**t) for t in fichas.tareas_de(db, cliente_id)] if ve_trabajo else [],
         alertas=[esq.AlertaEnFicha(**a) for a in fichas.alertas_de(db, cliente_id)] if ve_trabajo else [],
         documentos=[esq.DocumentoEnFicha(**d) for d in
-                    fichas.documentos_de(db, cliente_id, ve_reservados=ve_reservados)],
+                    fichas.documentos_de(db, cliente_id, permisos=puede)],
         ve_tramites=ve_tramites,
         ve_oportunidades=ve_oportunidades,
         ve_trabajo=ve_trabajo)

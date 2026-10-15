@@ -327,7 +327,8 @@ export function CasoFicha() {
       {marcando && <ModalOrigen caso={c} cerrar={() => setMarcando(false)} hecho={refrescar} />}
       <ModalMover caso={c} abierto={moviendo} cerrar={() => setMoviendo(false)} hecho={refrescar} />
       <ModalCita casoId={casoId} abierto={agendando} cerrar={() => setAgendando(false)} hecho={refrescar} />
-      <ModalResultado casoId={casoId} abierto={registrando} cerrar={() => setRegistrando(false)} hecho={refrescar} />
+      {registrando && (
+        <ModalResultado caso={c} cerrar={() => setRegistrando(false)} hecho={refrescar} />)}
       <ModalReprogramar cita={reprogramando} cerrar={() => setReprogramando(null)} hecho={refrescar} />
       <ModalNota key={anotando?.item_id} documento={anotando} guardando={marcar.isPending}
         cerrar={() => setAnotando(null)}
@@ -589,20 +590,41 @@ function ModalCita({ casoId, abierto, cerrar, hecho }: {
     </Modal>)
 }
 
-function ModalResultado({ casoId, abierto, cerrar, hecho }: {
-  casoId: number; abierto: boolean; cerrar: () => void; hecho: () => void
+/**
+ * Registrar o corregir en qué quedó el trámite (RF-027).
+ *
+ * Arranca con lo que el trámite tiene hoy, y eso no es una comodidad. El botón
+ * que abre este modal se dejó visible también en los trámites cerrados —hace
+ * falta: el que cayó en excepción se cierra sin resultado y hay que poder
+ * decirlo—, pero el formulario abría en blanco y el servicio escribe los tres
+ * campos sin condición. Entonces abrirlo en un trámite que YA tenía resultado
+ * —para mirarlo, o para corregir una letra de la nota— y guardar le borraba la
+ * nota y le ponía la fecha de hoy encima de la del consulado. Y es justo la
+ * población con más probabilidad de tener resultado: la de los cerrados.
+ *
+ * Se monta cada vez que se abre, como el de origen, para que traiga el estado
+ * de ahora y no el de un intento anterior.
+ */
+function ModalResultado({ caso, cerrar, hecho }: {
+  caso: Detalle; cerrar: () => void; hecho: () => void
 }) {
-  const formulario = useForm({ initialValues: { resultado: '', fecha: '', nota: '' } })
+  const formulario = useForm({
+    initialValues: {
+      resultado: caso.resultado ?? '',
+      fecha: caso.resultado_fecha ?? '',
+      nota: caso.resultado_nota ?? '',
+    },
+  })
   const registrar = useMutation({
     mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/casos/{caso_id}/resultado', {
-      params: { path: { caso_id: casoId } },
+      params: { path: { caso_id: caso.id } },
       body: { resultado: v.resultado as 'aprobada', fecha: v.fecha || null, nota: v.nota || null },
     })),
-    onSuccess: () => { formulario.reset(); hecho(); cerrar() },
+    onSuccess: () => { hecho(); cerrar() },
     onError: (e) => mostrarError(e),
   })
   return (
-    <Modal opened={abierto} onClose={cerrar} title="Registrar resultado">
+    <Modal opened onClose={cerrar} title="Registrar resultado">
       <form onSubmit={formulario.onSubmit((v) => registrar.mutate(v))}>
         <Stack>
           <Select label="Resultado" data={RESULTADOS} data-autofocus allowDeselect={false}

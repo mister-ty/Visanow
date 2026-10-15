@@ -530,22 +530,24 @@ def cambiar_estado(db: Session, actor: Usuarios, caso_id: int, *, codigo_destino
 
     # Los datos que llegan con el cambio se aplican antes de validar: así se puede
     # registrar el resultado y pasar a «con resultado» en un solo paso.
+    #
+    # Una `resultado_fecha` vacía NO borra la que ya está guardada. La pantalla
+    # manda siempre `resultado_fecha: datos.resultado_fecha || null`, así que
+    # mover de estado un trámite que ya tenía fecha —sin intención de tocarla—
+    # llegaba acá como «ponla en null»: una visa aprobada el 15 de marzo perdía
+    # su fecha y el autollenado de más abajo le ponía la de hoy. Encima el
+    # historial quedaba diciendo «2026-03-15 → None», que no era ni lo que había
+    # antes ni lo que quedó guardado, y eso es justo lo que RF-028 promete que no
+    # pasa. Por esta vía no existe «borrar la fecha» a propósito: el campo vacío
+    # siempre significa «no la estoy tocando».
     for campo, valor in (cambios or {}).items():
+        if campo == 'resultado_fecha' and valor is None:
+            continue
         if campo in CAMPOS_CASO or campo in ('resultado', 'resultado_fecha', 'resultado_nota'):
             anterior = getattr(caso, campo)
             if anterior != valor:
                 setattr(caso, campo, valor)
                 _historial(db, caso.id, campo, anterior, valor, actor.id)
-    # Un resultado sin fecha no se puede contar por día ni por mes, y el camino
-    # normal —cerrar el trámite y decir en qué quedó en el mismo movimiento— no
-    # le pide la fecha a nadie. Se pone la de hoy en Bogotá, igual que cuando el
-    # resultado se registra por su propia pantalla (RF-027).
-    #
-    # Solo cuando el resultado llega en ESTE movimiento: a los trámites que
-    # vienen de los archivos con resultado y sin fecha no se les puede poner la
-    # de hoy, porque entonces una visa aprobada en marzo aparecería aprobada hoy.
-    if (cambios or {}).get('resultado') and not caso.resultado_fecha:
-        caso.resultado_fecha = _hoy()
 
     # La excepción (RF-023) es la llave que abre TODO el control de esta
     # función: el orden de los estados, los campos que exige la transición y el
@@ -573,6 +575,28 @@ def cambiar_estado(db: Session, actor: Usuarios, caso_id: int, *, codigo_destino
         if transicion.requiere_checklist:
             _validar_checklist(db, caso)
 
+    # DESPUÉS de validar, nunca antes. Un resultado sin fecha no se puede contar
+    # por día ni por mes, y el camino normal —cerrar el trámite y decir en qué
+    # quedó en el mismo movimiento— no le pide la fecha a nadie, así que se pone
+    # la de hoy en Bogotá, igual que cuando el resultado se registra por su
+    # propia pantalla (RF-027).
+    #
+    # Pero esto corría ANTES de `_validar_campos`, y con eso rompía RF-023: la
+    # transición «esperando resultado → con resultado» declara `resultado_fecha`
+    # como campo obligatorio, y el autollenado la dejaba siempre puesta, así que
+    # la exigencia no podía fallar nunca. Medido: mandar el resultado sin fecha
+    # devolvía 422 antes y pasaba con la fecha de hoy después. El efecto sobre
+    # los datos es el que importa: de ahí en adelante el camino normal para
+    # registrar un resultado habría sellado el día en que alguien lo digitó, no
+    # el de la decisión del consulado, y los conteos por mes se corren.
+    #
+    # Y solo cuando el resultado llega en ESTE movimiento: a los trámites que
+    # vienen de los archivos con resultado y sin fecha no se les puede poner la
+    # de hoy, porque entonces una visa aprobada en marzo aparecería aprobada hoy
+    # por el solo hecho de que alguien la movió de estado.
+    if (cambios or {}).get('resultado') and not caso.resultado_fecha:
+        caso.resultado_fecha = _hoy()
+
     if destino.requiere_motivo and not motivo:
         raise Invalido(f'Pasar a «{destino.nombre}» exige un motivo.', codigo='falta_motivo')
 
@@ -592,6 +616,25 @@ def cambiar_estado(db: Session, actor: Usuarios, caso_id: int, *, codigo_destino
             raise Invalido('Asigne un responsable antes de mover el trámite.', codigo='falta_responsable')
         if not caso.proxima_accion:
             raise Invalido('Escriba cuál es la próxima acción.', codigo='falta_proxima_accion')
+
+    # Retomar un trámite le quita el resultado, y es el espejo exacto de la
+    # regla de arriba. Un trámite que volvió a abrirse —el cliente que desistió
+    # y volvió, la cita que se reprogramó— se quedaba con el «cancelado» pegado:
+    # salía cancelado en la exportación estando en curso, y si el resultado era
+    # «aprobada» disparaba la alerta de visa aprobada sin cerrar
+    # (services/alertas.py). Cerrar sin decir en qué quedó y reabrir sin
+    # soltarlo son la misma inconsistencia por los dos lados.
+    #
+    # Lo anterior queda en el historial: el resultado no se pierde, se deja de
+    # afirmar. Si el trámite vuelve a cerrarse hay que registrarlo otra vez, que
+    # es justo lo que se quiere —el resultado de un trámite reabierto no es el
+    # de antes de reabrirlo—.
+    if origen.es_final and not destino.es_final and caso.resultado:
+        for campo in ('resultado', 'resultado_fecha', 'resultado_nota'):
+            anterior = getattr(caso, campo)
+            if anterior is not None:
+                setattr(caso, campo, None)
+                _historial(db, caso.id, campo, anterior, None, actor.id, motivo)
 
     # Se asigna el objeto, no solo el id: si no, la relación ya cargada sigue
     # apuntando al estado anterior y la respuesta devolvería el estado viejo.

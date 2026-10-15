@@ -814,3 +814,72 @@ def test_en_una_venta_grupal_cada_persona_conserva_su_tramite_y_su_historial(cli
     # El pago quedó en la venta del grupo, no repartido entre los tres trámites
     detalle_venta = cliente.get(f"/api/v1/ventas/{venta['id']}", headers=admin).json()
     assert {x['solicitante_id'] for x in detalle_venta['casos']} == {s['id'] for s in viajan}
+
+
+def test_unir_personas_tampoco_mueve_un_tramite_sin_responsable(cliente, db, usuario, admin):
+    """El mismo control, en el trámite SIN ASIGNAR: ahí es donde se escapaba.
+
+    El alcance es `responsable_id = yo OR id in (donde colaboro)`, y la
+    comprobación contaba los trámites con `~limite`. En un trámite sin
+    responsable el `responsable_id` es NULL, así que la comparación vale NULL,
+    `NOT (NULL OR FALSE)` vale NULL, y en SQL una fila que no da TRUE no entra en
+    el WHERE: el trámite ajeno no se contaba y la unión pasaba.
+
+    O sea que quien tiene «solo lo asignado» movía un trámite que no puede ni
+    mirar, justamente el que no es de nadie. La prueba de arriba no lo tocaba
+    porque construye un trámite ya asignado a otra persona.
+    """
+    from app.models.esquema import Paises
+    from app.services import usuarios as servicio_usuarios
+
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    jefa = usuario('administradora')
+    servicio_usuarios.editar(db, usuario('administradora').u, jefa.u.id, alcance='asignados')
+    db.commit()
+
+    c = crear_cliente(cliente, admin, nombre='Hilda Zapata Noreña')
+    queda = _persona(cliente, admin, cliente_id=c['id'], nombre='Hilda Zapata Noreña')
+    sale = _persona(cliente, admin, cliente_id=c['id'], nombre='Hilda Zapata N.')
+
+    # Un trámite de nadie: el alta sin responsable es la que hace el cierre de
+    # venta, y el tablero tiene un filtro «sin asignar» justamente porque pasa.
+    abierto = cliente.post('/api/v1/casos', headers=admin, json={
+        'solicitante_id': sale['id'], 'pais_id': pais,
+        'proxima_accion': 'Asignar a alguien'})
+    assert abierto.status_code == 201, abierto.text
+    assert abierto.json()['responsable_id'] is None, (
+        'si el alta le pone responsable, esta prueba dejó de medir lo que dice')
+
+    r = cliente.post(f"/api/v1/solicitantes/{queda['id']}/fusionar",
+                     headers=entrar(cliente, jefa), json={'absorbido_id': sale['id']})
+    assert r.status_code == 403, r.text
+    assert r.json()['codigo'] == 'sin_alcance'
+
+
+def test_el_pasaporte_repetido_avisa_aunque_sea_en_la_misma_ficha(cliente, admin):
+    """La historia que motivó la detección por pasaporte, y era la que no avisaba.
+
+    `excluir_id` existe porque el solicitante casi siempre se llama igual que el
+    cliente del que cuelga, y sin él la coincidencia por nombre se dispara sola.
+    Pero se estaba aplicando también a la comparación por pasaporte, que no es
+    un parecido sino igualdad exacta sobre un índice ciego. Resultado: la misma
+    persona metida dos veces bajo el MISMO cliente —el caso que el trabajo decía
+    venir a resolver— era justo el único que no recibía aviso; al operador solo
+    le llegaba el 409 del índice único al guardar.
+    """
+    c = crear_cliente(cliente, admin, nombre='Rubiela Ospina Trejos')
+    _persona(cliente, admin, cliente_id=c['id'], nombre='Rubiela Ospina Trejos',
+             pasaporte='AW7781234')
+
+    # Lo que manda la pantalla al escribir la segunda persona en esa misma ficha.
+    r = cliente.post('/api/v1/clientes/verificar-duplicados', headers=admin, json={
+        'nombre': 'Rubiela Ospina T.', 'pasaporte': 'AW7781234', 'excluir_id': c['id']})
+    assert r.status_code == 200, r.text
+    hallados = r.json()
+
+    mismo = [h for h in hallados if h['cliente_id'] == c['id']]
+    assert mismo, (
+        'el pasaporte repetido en la misma ficha no avisó nada: '
+        f'{hallados}')
+    assert 'pasaporte' in mismo[0]['criterios']
+    assert mismo[0]['confianza'] == 'alta'

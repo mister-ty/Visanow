@@ -529,7 +529,7 @@ def alertas_de(db: Session, cliente_id: int, limite: int = 20) -> list[dict]:
              'creada_en': f['generada_en']} for f in filas]
 
 
-def documentos_de(db: Session, cliente_id: int, *, ve_reservados: bool) -> list[dict]:
+def documentos_de(db: Session, cliente_id: int, *, permisos: set[str]) -> list[dict]:
     """Los adjuntos del cliente, de sus personas y de sus tramites, juntos.
 
     Para quien atiende, «los documentos de Ana» son todos, no los de la ficha
@@ -540,6 +540,12 @@ def documentos_de(db: Session, cliente_id: int, *, ve_reservados: bool) -> list[
     que en VisaNow son casi todas —quien contrata rara vez viaja solo—, asi que
     la ficha de una familia mostraba solo los documentos del contacto y ni los
     de los hijos ni los de sus tramites.
+
+    Quien puede ver cada uno lo decide `documentos.entidad_visible`, la misma
+    funcion que usan la pantalla de documentos y los adjuntos de la cronologia.
+    Antes aqui se filtraba solo el `restringido`, asi que la misma respuesta de
+    la ficha aplicaba dos reglas distintas a los mismos documentos: la cronologia
+    exigia el permiso de la entidad y esta lista no exigia ninguno.
     """
     filas = db.execute(text("""
         with personas as (
@@ -562,4 +568,5 @@ def documentos_de(db: Session, cliente_id: int, *, ve_reservados: bool) -> list[
     return [{'id': f['id'], 'nombre': f['nombre'], 'almacenamiento': f['almacenamiento'],
              'url': f['url'], 'mime': f['mime'], 'restringido': f['restringido'],
              'sobre': COMO.get(f['entidad'], f['entidad']), 'creado_en': f['creado_en']}
-            for f in filas if ve_reservados or not f['restringido']]
+            for f in filas
+            if serv_docs.entidad_visible(f['entidad'], f['restringido'], permisos)]

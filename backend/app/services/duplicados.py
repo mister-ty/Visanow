@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import false, func, select, text, update
 from sqlalchemy.orm import Session
 
 from app.core import seguridad as seg
@@ -144,10 +144,30 @@ def buscar(db: Session, *, nombre: str, tipo_documento: str | None = None,
 
     # El pasaporte vive en los solicitantes y está cifrado: se busca por su
     # índice ciego, que permite la comparación exacta sin descifrar la columna.
-    indices = list(indices_pasaporte or [])
+    #
+    # Y se busca en DOS TANDAS, porque `excluir_id` no vale lo mismo para las
+    # dos clases de pasaporte que llegan acá:
+    #
+    #   · `indices_pasaporte` son los de las personas DE ESTA MISMA ficha. Los
+    #     manda la ruta que pregunta «¿con quién se parece este cliente?», y ahí
+    #     hay que excluirla: si no, toda ficha con pasaporte sale como su propio
+    #     duplicado.
+    #   · `pasaporte` es el que alguien está ESCRIBIENDO para una persona nueva.
+    #     Ahí una coincidencia dentro de la misma ficha es justo lo que hay que
+    #     avisar: es la historia que motivó todo esto, la misma persona metida
+    #     dos veces en un grupo familiar. El pasaporte no es un parecido, es
+    #     igualdad exacta sobre un índice ciego: si coincide, es la misma
+    #     persona.
+    #
+    # Aplicando la exclusión a los dos, ese segundo caso era justo el único que
+    # no avisaba: medido, devolvía [] y al operador solo le llegaba el 409 del
+    # índice único al guardar, que es lo que se quería mejorar.
+    tandas = []
+    if indices_pasaporte:
+        tandas.append((list(indices_pasaporte), excluir_id))
     if pasaporte:
-        indices.append(seg.indice_ciego(pasaporte))
-    if indices:
+        tandas.append(([seg.indice_ciego(pasaporte)], None))
+    for indices, excluir in tandas:
         for cliente_id, nombre_cliente, archivado in db.execute(text("""
             select distinct c.id, c.nombre, c.archivado
             from solicitantes s
@@ -156,7 +176,7 @@ def buscar(db: Session, *, nombre: str, tipo_documento: str | None = None,
             where s.pasaporte_indice = any(cast(:indices as text[])) and s.fusionado_en_id is null
               and c.fusionado_en_id is null
               and (cast(:excluir as bigint) is null or c.id <> cast(:excluir as bigint))
-        """), {'indices': indices, 'excluir': excluir_id}):
+        """), {'indices': indices, 'excluir': excluir}):
             c = encontradas.get(cliente_id) or Coincidencia(cliente_id=cliente_id, nombre=nombre_cliente,
                                                             confianza='alta', archivado=archivado)
             if 'pasaporte' not in c.criterios:
@@ -306,12 +326,25 @@ def fusionar_solicitantes(db: Session, actor: Usuarios, conservado_id: int, abso
     # Unir mueve trámites de una persona a la otra, así que esto ESCRIBE sobre
     # trámites y el alcance tiene que valer acá (RNF-03). Puesto solo en la
     # ruta, quien tiene «solo lo asignado» lo saltaría llamando la API directo.
+    # El `coalesce` no es un adorno: `~limite` solo sirve cuando `limite` da
+    # TRUE o FALSE, y acá puede dar NULL. El alcance es
+    # `responsable_id == actor.id OR id in (colaboradores)`, y en un trámite SIN
+    # ASIGNAR el responsable es NULL, así que la comparación vale NULL,
+    # `NOT (NULL OR FALSE)` vale NULL, y en SQL una fila que no da TRUE no entra
+    # en el WHERE: el trámite ajeno no se contaba y la comprobación dejaba pasar.
+    #
+    # Comprobado con una sonda: un usuario con alcance «solo lo asignado», para
+    # quien `GET /casos?solicitante_id=X` devolvía `total: 0`, igual recibía 200
+    # y movía ese trámite. Movía uno que no puede ni mirar. Hoy no es explotable
+    # porque `solicitantes.eliminar` lo tiene solo la administradora y su alcance
+    # es «todos», pero el alcance se edita por usuario desde la pantalla: estaba
+    # a un ajuste de distancia.
     from app.services.casos import alcance_de
     limite = alcance_de(actor)
     if limite is not None:
         ajenos = db.scalar(select(func.count()).select_from(Casos)
                            .where(Casos.solicitante_id.in_((conservado_id, absorbido_id)),
-                                  ~limite))
+                                  ~func.coalesce(limite, false())))
         if ajenos:
             raise Prohibido('Estas dos personas tienen trámites que no están a su cargo: '
                             'unirlas los movería sin que usted pueda verlos.',

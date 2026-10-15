@@ -46,6 +46,25 @@ export function usePagina(filtros: unknown) {
   return [pagina, setPagina] as const
 }
 
+/**
+ * El aviso para las listas que NO se paginan: los buscadores.
+ *
+ * Un paginador dentro de un desplegable de búsqueda es la solución equivocada
+ * —nadie pasa páginas en un combo, se escribe más— pero el problema de fondo es
+ * el mismo: la lista se corta y hay que decirlo. El buscador de «quién
+ * contrata» pedía las primeras 20 de casi novecientas personas y no avisaba,
+ * así que buscar un apellido común mostraba 20 y el que faltaba parecía no
+ * existir.
+ *
+ * Devuelve `undefined` cuando no hay nada que avisar, para poder pasarlo
+ * directo a `description` de un Select sin dejar un renglón vacío.
+ */
+export function avisoDeCorte(total: number | undefined, mostrados: number,
+                             unidad: string): string | undefined {
+  if (total === undefined || total <= mostrados) return undefined
+  return `Coinciden ${total} ${unidad}; se muestran ${mostrados}. Escriba más para afinar.`
+}
+
 export function PiePaginacion({ total, pagina, onPagina, unidad, tamano = TAMANO_PAGINA, extra }: {
   total: number | undefined
   pagina: number
