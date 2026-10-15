@@ -34,6 +34,18 @@ class CasoEditar(BaseModel):
     proxima_accion_fecha: date | None = None
 
 
+class CasoEdicion(CasoEditar):
+    """Lo mismo, con el por qué del cambio (RF-028).
+
+    Va aquí y no en CasoEditar porque `CambioEstado.cambios` reusa ese modelo y
+    ahí el motivo ya existe: dos motivos en la misma petición solo se prestan a
+    que se llene el que no se guarda.
+    """
+    motivo: str | None = Field(default=None, max_length=200,
+                               description='Por qué se cambia. Queda en el historial, en la misma '
+                                           'línea del campo que cambió.')
+
+
 class CasoSalida(BaseModel):
     id: int
     solicitante_id: int
@@ -76,6 +88,13 @@ class ItemChecklist(BaseModel):
     nombre: str
     obligatorio: bool
     cumplido: bool
+    # Quién marcó el documento, cuándo y con qué nota. El servicio ya lo
+    # guardaba, pero no salía por ninguna parte: en la ficha hay que poder
+    # contestar «¿y este soporte quién dijo que estaba?» sin leerse el
+    # historial entero (RF-025).
+    observacion: str | None = None
+    cumplido_en: datetime | None = None
+    cumplido_por: str | None = Field(default=None, description='Quién lo marcó')
 
 
 class CasoDetalle(CasoSalida):

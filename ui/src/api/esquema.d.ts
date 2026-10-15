@@ -258,7 +258,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Editar */
+        /**
+         * Editar
+         * @description Cambia los datos del trámite. El motivo, si viene, queda en el historial
+         *     junto al campo que cambió (RF-028).
+         */
         patch: operations["editar_api_v1_casos__caso_id__patch"];
         trace?: never;
     };
@@ -2960,6 +2964,37 @@ export interface components {
              */
             estados_posibles: components["schemas"]["EstadoPosible"][];
         };
+        /**
+         * CasoEdicion
+         * @description Lo mismo, con el por qué del cambio (RF-028).
+         *
+         *     Va aquí y no en CasoEditar porque `CambioEstado.cambios` reusa ese modelo y
+         *     ahí el motivo ya existe: dos motivos en la misma petición solo se prestan a
+         *     que se llene el que no se guarda.
+         */
+        CasoEdicion: {
+            /** Pais Id */
+            pais_id?: number | null;
+            /** Tipo Visa Id */
+            tipo_visa_id?: number | null;
+            /** Modalidad Id */
+            modalidad_id?: number | null;
+            /** Sede Id */
+            sede_id?: number | null;
+            /** Responsable Id */
+            responsable_id?: number | null;
+            /** Negocio Id */
+            negocio_id?: number | null;
+            /** Proxima Accion */
+            proxima_accion?: string | null;
+            /** Proxima Accion Fecha */
+            proxima_accion_fecha?: string | null;
+            /**
+             * Motivo
+             * @description Por qué se cambia. Queda en el historial, en la misma línea del campo que cambió.
+             */
+            motivo?: string | null;
+        };
         /** CasoEditar */
         CasoEditar: {
             /** Pais Id */
@@ -4269,6 +4304,15 @@ export interface components {
             obligatorio: boolean;
             /** Cumplido */
             cumplido: boolean;
+            /** Observacion */
+            observacion?: string | null;
+            /** Cumplido En */
+            cumplido_en?: string | null;
+            /**
+             * Cumplido Por
+             * @description Quién lo marcó
+             */
+            cumplido_por?: string | null;
         };
         /** LiquidacionSalida */
         LiquidacionSalida: {
@@ -6418,7 +6462,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CasoEditar"];
+                "application/json": components["schemas"]["CasoEdicion"];
             };
         };
         responses: {

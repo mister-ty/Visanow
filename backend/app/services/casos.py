@@ -8,9 +8,10 @@ Las reglas que este servicio hace cumplir, y que hoy ningún Excel puede:
 
 - Los estados no se saltan: solo se avanza por las transiciones definidas en la
   base. Saltárselas exige permiso de administradora y un motivo, y queda como
-  excepción en el historial (RF-023).
+  excepción en el historial y en la auditoría (RF-023).
 - Antes de mandar a alguien a la entrevista, el checklist obligatorio tiene que
-  estar completo (RF-025, RN-05).
+  estar completo (RF-025, RN-05). Dejar pasar a alguien sin un soporte es la
+  otra mitad de esa misma excepción autorizada.
 - Un caso activo no puede quedar sin responsable ni sin próxima acción (RN-04).
 - El resultado consular y el cierre del servicio son cosas distintas: una visa
   negada puede quedar perfectamente finalizada (RN-06).
@@ -141,9 +142,18 @@ def crear(db: Session, actor: Usuarios, datos: dict, ip: str | None = None) -> C
     return caso
 
 
-def editar(db: Session, actor: Usuarios, caso_id: int, cambios: dict, ip: str | None = None) -> Casos:
+def editar(db: Session, actor: Usuarios, caso_id: int, cambios: dict, *,
+           motivo: str | None = None, ip: str | None = None) -> Casos:
     """Cambios de datos del caso (responsable, sede, tipo de visa, próxima acción).
-    El estado no se cambia por aquí: tiene sus propias reglas."""
+    El estado no se cambia por aquí: tiene sus propias reglas.
+
+    El motivo es opcional y queda en la misma línea del historial que el dato
+    que cambió (RF-028). Hasta ahora el historial de un cambio de campo decía
+    qué cambió, de qué a qué, cuándo y quién, pero no había dónde escribir el
+    por qué: la pregunta que de verdad se hace tres meses después es «por qué
+    le cambiaron el responsable a este trámite», y eso no se podía responder.
+    En el cambio de estado el motivo ya existía; en el de campos, no.
+    """
     caso = obtener(db, caso_id, actor=actor)
     for campo, valor in cambios.items():
         if campo not in CAMPOS_CASO:
@@ -151,10 +161,10 @@ def editar(db: Session, actor: Usuarios, caso_id: int, cambios: dict, ip: str | 
         anterior = getattr(caso, campo)
         if anterior != valor:
             setattr(caso, campo, valor)
-            _historial(db, caso.id, campo, anterior, valor, actor.id)
+            _historial(db, caso.id, campo, anterior, valor, actor.id, motivo)
     caso.ultima_actividad_en = _ahora()
     auditar(db, operacion='update', entidad='casos', usuario_id=actor.id, entidad_id=caso.id,
-            despues=cambios, ip=ip)
+            despues=cambios | ({'motivo': motivo} if motivo else {}), ip=ip)
     db.commit()
     return caso
 
@@ -258,7 +268,8 @@ def _validar_campos(db: Session, caso: Casos, exigidos: list[str]) -> None:
 
 
 def _validar_checklist(db: Session, caso: Casos) -> None:
-    pendientes = [i.nombre for i, cumplido in checklist_de(db, caso) if i.obligatorio and not cumplido]
+    pendientes = [i.nombre for i, fila in checklist_de(db, caso)
+                  if i.obligatorio and not (fila and fila.cumplido)]
     if pendientes:
         raise Invalido('El checklist obligatorio está incompleto: ' + ', '.join(pendientes),
                        codigo='checklist_incompleto')
@@ -280,15 +291,38 @@ def cambiar_estado(db: Session, actor: Usuarios, caso_id: int, *, codigo_destino
             if anterior != valor:
                 setattr(caso, campo, valor)
                 _historial(db, caso.id, campo, anterior, valor, actor.id)
+    # Un resultado sin fecha no se puede contar por día ni por mes, y el camino
+    # normal —cerrar el trámite y decir en qué quedó en el mismo movimiento— no
+    # le pide la fecha a nadie. Se pone la de hoy en Bogotá, igual que cuando el
+    # resultado se registra por su propia pantalla (RF-027).
+    #
+    # Solo cuando el resultado llega en ESTE movimiento: a los trámites que
+    # vienen de los archivos con resultado y sin fecha no se les puede poner la
+    # de hoy, porque entonces una visa aprobada en marzo aparecería aprobada hoy.
+    if (cambios or {}).get('resultado') and not caso.resultado_fecha:
+        caso.resultado_fecha = _hoy()
 
+    # La excepción (RF-023) es la llave que abre TODO el control de esta
+    # función: el orden de los estados, los campos que exige la transición y el
+    # checklist obligatorio. Antes solo abría el orden, así que la
+    # administradora podía mandar un trámite a un estado que no seguía, pero no
+    # podía dejar pasar a «esperando resultado» a quien le faltaba un soporte
+    # —que es el caso real: el cliente llega con la carta laboral el mismo día
+    # de la entrevista y alguien tiene que decidir—. El permiso casos.excepcion
+    # existe justamente para eso (ver app/seed.py, PERMISOS_EXTRA).
+    #
+    # Lo que la excepción NO abre son las reglas del negocio que no dependen de
+    # la transición: RN-04 (responsable y próxima acción) y RN-06 (decir en qué
+    # quedó antes de cerrar) se siguen exigiendo más abajo. Saltarse el proceso
+    # no es quedarse sin dueño ni cerrar un trámite sin saber qué pasó.
     transicion = db.get(TransicionesOperativas, (origen.id, destino.id))
-    if transicion is None:
-        if not forzar:
-            permitidos = ', '.join(e.nombre for e in destinos_posibles(db, caso)) or 'ninguno'
-            raise Conflicto(f'No se puede pasar de «{origen.nombre}» a «{destino.nombre}». '
-                            f'Desde aquí se puede ir a: {permitidos}.', codigo='transicion_no_permitida')
+    if forzar:
         if not motivo:
             raise Invalido('Saltarse el orden de los estados exige un motivo.', codigo='falta_motivo')
+    elif transicion is None:
+        permitidos = ', '.join(e.nombre for e in destinos_posibles(db, caso)) or 'ninguno'
+        raise Conflicto(f'No se puede pasar de «{origen.nombre}» a «{destino.nombre}». '
+                        f'Desde aquí se puede ir a: {permitidos}.', codigo='transicion_no_permitida')
     else:
         _validar_campos(db, caso, list(transicion.campos_obligatorios or []))
         if transicion.requiere_checklist:
@@ -297,11 +331,16 @@ def cambiar_estado(db: Session, actor: Usuarios, caso_id: int, *, codigo_destino
     if destino.requiere_motivo and not motivo:
         raise Invalido(f'Pasar a «{destino.nombre}» exige un motivo.', codigo='falta_motivo')
 
-    # RN-06: el resultado consular no es lo mismo que terminar el servicio, pero
-    # no se puede cerrar un trámite sin saber en qué quedó.
-    if destino.es_final and destino.codigo == 'finalizado' and not caso.resultado:
-        raise Invalido('Para finalizar hay que registrar el resultado (aprobada, negada, proceso '
-                       'administrativo, cancelado o no continuó).', codigo='falta_resultado')
+    # RN-06 y RF-027: el resultado consular no es lo mismo que terminar el
+    # servicio, pero ningún trámite se cierra sin saber en qué quedó. Vale para
+    # los dos cierres y no solo para «finalizado»: «cancelado» y «no continuó»
+    # son dos de los cinco resultados de RF-027 y son exactamente los del
+    # trámite que se manda a excepción. Mientras no se pidieran aquí, un
+    # trámite cancelado quedaba cerrado con el resultado en blanco y el informe
+    # por resultado no sumaba lo mismo que el tablero.
+    if destino.es_final and not caso.resultado:
+        raise Invalido('Para cerrar el trámite hay que registrar el resultado (aprobada, negada, '
+                       'proceso administrativo, cancelado o no continuó).', codigo='falta_resultado')
     # RN-04: un caso que sigue abierto necesita quién lo mueve y qué sigue
     if not destino.es_final:
         if not caso.responsable_id:
@@ -313,11 +352,17 @@ def cambiar_estado(db: Session, actor: Usuarios, caso_id: int, *, codigo_destino
     # apuntando al estado anterior y la respuesta devolvería el estado viejo.
     caso.estado = destino
     caso.ultima_actividad_en = _ahora()
-    _historial(db, caso.id, 'excepcion' if transicion is None else 'estado',
+    # Queda como excepción cada vez que se usó el permiso, aunque la transición
+    # existiera: lo que la hace excepción es que alguien autorizó saltarse un
+    # control, y la casilla de la pantalla dice eso mismo. Si solo se marcara
+    # cuando el estado no seguía, haber dejado pasar un checklist incompleto no
+    # se distinguiría de un avance normal, y eso es precisamente lo que RF-023
+    # manda auditar.
+    _historial(db, caso.id, 'excepcion' if forzar else 'estado',
                origen.codigo, destino.codigo, actor.id, motivo)
     auditar(db, operacion='update', entidad='casos', usuario_id=actor.id, entidad_id=caso.id,
             antes={'estado': origen.codigo},
-            despues={'estado': destino.codigo, 'motivo': motivo, 'excepcion': transicion is None}, ip=ip)
+            despues={'estado': destino.codigo, 'motivo': motivo, 'excepcion': forzar}, ip=ip)
     db.commit()
     return caso
 
@@ -402,27 +447,43 @@ def citas_de(db: Session, caso_id: int) -> list[Citas]:
 
 # ----------------------------------------------------------------- checklist
 
-def checklist_de(db: Session, caso: Casos) -> list[tuple[ChecklistItems, bool]]:
+def checklist_de(db: Session, caso: Casos) -> list[tuple[ChecklistItems, CasosChecklist | None]]:
     """Los documentos que aplican a este trámite, con lo que ya está cumplido.
 
     Se toma **el checklist más específico**, no todos los que encajan: el de
-    «visa USA primera vez» manda sobre el de «renovación USA» y sobre el
-    general. Si se acumularan, la persona vería «Pasaporte vigente» tres veces.
+    «renovación USA» manda sobre el de la B1/B2 y sobre el general. Si se
+    acumularan, la persona vería «Pasaporte vigente» tres veces.
+
+    Las tres cosas que lo hacen específico son las de RF-025 —país, tipo de
+    visa y modalidad— y pesan en ese orden al revés: lo que más cambia la lista
+    de papeles es la MODALIDAD. Una renovación no lleva soportes económicos y un
+    menor lleva la autorización de los padres, y eso vale igual para una B1/B2
+    que para una F1. Hasta ahora la modalidad no se consultaba: el trámite de un
+    menor recibía la lista de primera vez, al de una renovación se le colaba la
+    «visa anterior» o no, según el tipo de visa, y la ficha del cliente decía
+    que la modalidad «decide qué checklist de documentos se aplica».
+
+    Devuelve la fila de cumplimiento completa y no solo el sí/no para que la
+    ficha pueda mostrar quién marcó cada documento, cuándo y con qué nota: el
+    servicio ya lo guardaba y solo se veía en el historial.
     """
     candidatos = db.scalars(select(Checklists).where(
         Checklists.activo.is_(True),
         or_(Checklists.pais_id.is_(None), Checklists.pais_id == caso.pais_id),
-        or_(Checklists.tipo_visa_id.is_(None), Checklists.tipo_visa_id == caso.tipo_visa_id))).all()
+        or_(Checklists.tipo_visa_id.is_(None), Checklists.tipo_visa_id == caso.tipo_visa_id),
+        or_(Checklists.modalidad_id.is_(None), Checklists.modalidad_id == caso.modalidad_id))).all()
     if not candidatos:
         return []
-    precision = lambda c: (c.tipo_visa_id is not None) * 2 + (c.pais_id is not None)
+    precision = lambda c: ((c.modalidad_id is not None) * 4 + (c.tipo_visa_id is not None) * 2
+                           + (c.pais_id is not None))
     mejor = max(precision(c) for c in candidatos)
     aplicables = [c.id for c in candidatos if precision(c) == mejor]
     items = db.scalars(select(ChecklistItems).where(ChecklistItems.checklist_id.in_(aplicables))
                        .order_by(ChecklistItems.checklist_id, ChecklistItems.orden)).all()
-    cumplidos = {c.item_id: c.cumplido for c in db.scalars(
-        select(CasosChecklist).where(CasosChecklist.caso_id == caso.id))}
-    return [(i, cumplidos.get(i.id, False)) for i in items]
+    cumplidos = {c.item_id: c for c in db.scalars(
+        select(CasosChecklist).where(CasosChecklist.caso_id == caso.id)
+        .options(selectinload(CasosChecklist.usuarios)))}
+    return [(i, cumplidos.get(i.id)) for i in items]
 
 
 def marcar_item(db: Session, actor: Usuarios, caso_id: int, item_id: int, *, cumplido: bool,
@@ -439,7 +500,11 @@ def marcar_item(db: Session, actor: Usuarios, caso_id: int, item_id: int, *, cum
     fila.cumplido = cumplido
     fila.cumplido_en = _ahora() if cumplido else None
     fila.cumplido_por = actor.id if cumplido else None
-    fila.observacion = observacion
+    # La nota solo se toca cuando viene en la petición. Marcar la casilla no
+    # puede llevarse por delante el «falta la apostilla» que alguien escribió
+    # ayer; para quitarla se manda vacía.
+    if observacion is not None:
+        fila.observacion = observacion.strip() or None
     caso.ultima_actividad_en = _ahora()
     _historial(db, caso.id, f'checklist:{item.codigo}', None, 'cumplido' if cumplido else 'pendiente',
                actor.id, observacion)

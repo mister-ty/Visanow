@@ -64,17 +64,23 @@ def detalle(caso_id: int, actor: Usuarios = Depends(requiere('casos.ver')),
         sede_id=c.sede_id, negocio_id=c.negocio_id, etapa_saas=c.etapa_saas,
         resultado_fecha=c.resultado_fecha, resultado_nota=c.resultado_nota, creado_en=c.creado_en,
         citas=[esq.CitaSalida.model_validate(x, from_attributes=True) for x in servicio.citas_de(db, c.id)],
-        checklist=[esq.ItemChecklist(item_id=i.id, codigo=i.codigo, nombre=i.nombre,
-                                     obligatorio=i.obligatorio, cumplido=cumplido)
-                   for i, cumplido in servicio.checklist_de(db, c)],
+        checklist=[esq.ItemChecklist(
+            item_id=i.id, codigo=i.codigo, nombre=i.nombre, obligatorio=i.obligatorio,
+            cumplido=bool(f and f.cumplido), observacion=f.observacion if f else None,
+            cumplido_en=f.cumplido_en if f else None,
+            cumplido_por=f.usuarios.nombre if f and f.usuarios else None)
+            for i, f in servicio.checklist_de(db, c)],
         estados_posibles=[esq.EstadoPosible(codigo=e.codigo, nombre=e.nombre)
                           for e in servicio.destinos_posibles(db, c)])
 
 
 @router.patch('/casos/{caso_id}', response_model=esq.CasoDetalle)
-def editar(caso_id: int, datos: esq.CasoEditar, request: Request,
+def editar(caso_id: int, datos: esq.CasoEdicion, request: Request,
            actor: Usuarios = Depends(requiere('casos.editar')), db: Session = Depends(get_db)):
-    servicio.editar(db, actor, caso_id, datos.model_dump(exclude_unset=True), ip=ip_cliente(request))
+    """Cambia los datos del trámite. El motivo, si viene, queda en el historial
+    junto al campo que cambió (RF-028)."""
+    servicio.editar(db, actor, caso_id, datos.model_dump(exclude_unset=True, exclude={'motivo'}),
+                    motivo=datos.motivo, ip=ip_cliente(request))
     return detalle(caso_id, actor, db)
 
 
