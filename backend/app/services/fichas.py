@@ -25,6 +25,7 @@ from app.models.esquema import (
     CasosHistorial,
     Citas,
     Clientes,
+    Documentos,
     Grupos,
     Negocios,
     Pagos,
@@ -32,6 +33,7 @@ from app.models.esquema import (
     Usuarios,
 )
 from app.services import casos as serv_casos
+from app.services import documentos as serv_docs
 from app.services import historial
 from app.services.auditoria import auditar
 from app.services.pagos import referencia_contiene
@@ -85,11 +87,27 @@ class Suceso:
     detalle: str | None
     usuario: str | None
     caso_id: int | None = None
+    #: El documento del que habla el suceso, cuando lo hay (RF-064). Viene
+    #: vacío tanto si no se adjuntó nada como si el documento no es para los
+    #: ojos de quien está leyendo; la pantalla no tiene por qué distinguirlos,
+    #: porque decir «hay un adjunto reservado» ya revela lo que se esconde.
+    adjunto: dict | None = None
 
 
-def cronologia(db: Session, cliente_id: int, limite: int = 60) -> list[Suceso]:
+def cronologia(db: Session, cliente_id: int, *, actor: Usuarios | None = None,
+               limite: int = 60) -> list[Suceso]:
+    """La historia del cliente: lo que registró el sistema y lo que anotó la
+    gente, con su autor y con sus adjuntos (RF-064).
+
+    Recibe quién lee, y no por cortesía: la cronología se le muestra a
+    cualquiera que pueda abrir la ficha, y entre los adjuntos puede haber un
+    pasaporte escaneado, que no lo ve cualquiera. Sin actor no muestra ningún
+    adjunto: de los dos lados, lo seguro es no mostrar.
+    """
     casos = [c.id for c in tramites_de(db, cliente_id)]
     sucesos: list[Suceso] = []
+    # Una sola vez para toda la lista, no una por adjunto.
+    permisos = permisos_de_rol(db, actor.rol_id) if actor is not None else set()
 
     if casos:
         filas = list(db.scalars(select(CasosHistorial).where(CasosHistorial.caso_id.in_(casos))
@@ -106,25 +124,50 @@ def cronologia(db: Session, cliente_id: int, limite: int = 60) -> list[Suceso]:
     if casos:
         condiciones.append((Actividades.entidad == 'caso') & (Actividades.entidad_id.in_(casos)))
     for a in db.scalars(select(Actividades).where(or_(*condiciones))
-                        .options(selectinload(Actividades.usuario))
+                        .options(selectinload(Actividades.usuario),
+                                 selectinload(Actividades.documento))
                         .order_by(Actividades.ocurrido_en.desc()).limit(limite)):
         sucesos.append(Suceso(cuando=a.ocurrido_en, tipo=a.tipo, titulo=a.asunto or a.tipo.capitalize(),
                               detalle=a.cuerpo, usuario=a.usuario.nombre if a.usuario else None,
-                              caso_id=a.entidad_id if a.entidad == 'caso' else None))
+                              caso_id=a.entidad_id if a.entidad == 'caso' else None,
+                              adjunto=_adjunto_visible(actor, a.documento, permisos)))
 
     return sorted(sucesos, key=lambda s: s.cuando, reverse=True)[:limite]
 
 
+def _adjunto_visible(actor: Usuarios | None, doc: Documentos | None,
+                     permisos: set[str]) -> dict | None:
+    """El adjunto del suceso, o nada si no le corresponde a quien lee.
+
+    La regla de quién puede ver un documento la pone el módulo de documentos y
+    se consulta allá: si acá se escribiera otra vez, el día que se cambie una
+    quedaría abierta la otra. Lo que se abre por la cronología es exactamente lo
+    mismo que se abre por la pantalla de documentos, ni más ni menos.
+    """
+    if doc is None or not serv_docs.visible_para(actor, doc, permisos=permisos):
+        return None
+    return {'id': doc.id, 'nombre': doc.nombre, 'almacenamiento': doc.almacenamiento,
+            'url': doc.url, 'mime': doc.mime, 'restringido': doc.restringido}
+
+
 def registrar_nota(db: Session, actor: Usuarios, *, entidad: str, entidad_id: int, tipo: str,
-                   asunto: str | None, cuerpo: str | None, ip: str | None = None) -> Actividades:
-    """Una llamada, un WhatsApp, una nota. Es lo que hoy vive en la columna
-    «NOTAS» de los Excel y se pierde (RF-012, RF-064)."""
+                   asunto: str | None, cuerpo: str | None, documento_id: int | None = None,
+                   ip: str | None = None) -> Actividades:
+    """Una llamada, un WhatsApp, una nota, con el documento del que habla.
+
+    Es lo que hoy vive en la columna «NOTAS» de los Excel y se pierde (RF-012,
+    RF-064). El adjunto es un documento que ya está en la ficha: acá no se sube
+    nada, se cuelga del suceso lo que el módulo de documentos ya guardó.
+    """
     if tipo not in TIPOS_NOTA:
         raise Invalido(f'Tipo inválido. Opciones: {", ".join(TIPOS_NOTA)}.')
     if not (asunto or cuerpo):
         raise Invalido('Escriba al menos el asunto o el contenido de la nota.')
+    if documento_id is not None:
+        _exigir_adjunto(db, actor, entidad=entidad, entidad_id=entidad_id,
+                        documento_id=documento_id)
     actividad = Actividades(entidad=entidad, entidad_id=entidad_id, tipo=tipo, asunto=asunto,
-                            cuerpo=cuerpo, usuario_id=actor.id)
+                            cuerpo=cuerpo, usuario_id=actor.id, documento_id=documento_id)
     db.add(actividad)
     if tipo in TIPOS_CONTACTO:
         # Una llamada sobre el trámite también es contacto con el cliente: se
@@ -135,10 +178,61 @@ def registrar_nota(db: Session, actor: Usuarios, *, entidad: str, entidad_id: in
             cliente.ultimo_contacto_en = datetime.now(timezone.utc)
     db.flush()
     auditar(db, operacion='insert', entidad='actividades', usuario_id=actor.id,
-            entidad_id=actividad.id, despues={'entidad': entidad, 'entidad_id': entidad_id, 'tipo': tipo},
-            ip=ip)
+            entidad_id=actividad.id, ip=ip,
+            despues={'entidad': entidad, 'entidad_id': entidad_id, 'tipo': tipo,
+                     'documento_id': documento_id})
     db.commit()
     return actividad
+
+
+def _exigir_adjunto(db: Session, actor: Usuarios, *, entidad: str, entidad_id: int,
+                    documento_id: int) -> None:
+    """Que el documento que se va a colgar del suceso se pueda colgar de verdad.
+
+    El id llega en el cuerpo de la petición, así que no se puede dar por bueno.
+    Son dos comprobaciones, las dos de control de acceso, y por eso viven acá en
+    el servicio y no en la ruta: una comprobación que solo está en la ruta se la
+    salta cualquiera que llame la API directo (RNF-03).
+
+    - Que quien anota pueda ver ese documento. Lo decide `documentos.obtener`,
+      que es el mismo portero de la pantalla de documentos: el permiso sobre la
+      ficha de la que cuelga, el alcance del trámite y el permiso de reservados.
+      Si no le corresponde responde «no existe», igual que allá, porque decir
+      «existe pero no es para usted» ya cuenta que hay algo reservado.
+    - Que el documento sea de ESTE cliente. La cronología se le muestra a
+      cualquiera que pueda abrir la ficha, así que colgar ahí el documento de
+      otro cliente le pondría el nombre de ese archivo delante de gente que no
+      tiene nada que ver con él.
+    """
+    doc = serv_docs.obtener(db, actor, documento_id)
+    cliente_id = entidad_id if entidad == 'cliente' else cliente_de_caso(db, entidad_id)
+    if cliente_id is None or _cliente_del_documento(db, doc) != cliente_id:
+        raise Invalido('Ese documento no es de este cliente: adjunte uno de los que están '
+                       'en su ficha.', codigo='adjunto_ajeno')
+
+
+def _cliente_del_documento(db: Session, doc: Documentos) -> int | None:
+    """De qué cliente es un documento, cuelgue de donde cuelgue.
+
+    Un documento va pegado a una ficha, a una persona, a un trámite o a una
+    venta, y todas esas cosas terminan en un cliente. Los de un pago o un gasto
+    no: esos son de la contabilidad, no son de nadie en particular, y por eso no
+    tienen cronología de cliente donde colgarse.
+    """
+    if doc.entidad == 'cliente':
+        return doc.entidad_id
+    if doc.entidad == 'solicitante':
+        s = db.get(Solicitantes, doc.entidad_id,
+                   options=[selectinload(Solicitantes.grupo)])
+        if s is None:
+            return None
+        return s.cliente_id or (s.grupo.cliente_contacto_id if s.grupo else None)
+    if doc.entidad == 'caso':
+        return cliente_de_caso(db, doc.entidad_id)
+    if doc.entidad == 'negocio':
+        negocio = db.get(Negocios, doc.entidad_id)
+        return negocio.cliente_id if negocio else None
+    return None
 
 
 def cliente_de_caso(db: Session, caso_id: int) -> int | None:
@@ -170,6 +264,10 @@ def buscar_global(db: Session, texto: str, *, actor: Usuarios | None = None,
     DS-160, número de solicitud del SaaS o referencia de pago. El pasaporte y el
     DS-160 están cifrados: se buscan por su índice ciego, sin descifrar la
     columna.
+
+    El teléfono se mira en los dos lados —el del cliente de contacto y el de
+    quien viaja—, porque son columnas distintas y la persona que contesta no
+    siempre es la que contrata.
 
     Recibe quién está buscando, y no por cortesía: el buscador devuelve trámites
     y pagos, que son cosas que no todo el mundo puede ver. Un buscador que
@@ -208,6 +306,13 @@ def buscar_global(db: Session, texto: str, *, actor: Usuarios | None = None,
                   Solicitantes.pasaporte_indice == indice]
     if digitos:
         de_persona.append(Solicitantes.numero_documento == digitos)
+        # El teléfono de quien viaja, que es columna propia de la persona y no
+        # la del cliente de contacto. Faltaba, y es el caso de todos los días:
+        # la mamá contrata y deja su número en la ficha, pero el celular que
+        # contesta cuando se llama por la cita es el del muchacho. Escribirlo no
+        # encontraba absolutamente nada (RF-029).
+        if len(digitos) >= 7:
+            de_persona.append(Solicitantes.telefono_normalizado == digitos[-10:])
     for s in db.scalars(
             select(Solicitantes)
             .where(Solicitantes.fusionado_en_id.is_(None), or_(*de_persona))
@@ -225,7 +330,7 @@ def buscar_global(db: Session, texto: str, *, actor: Usuarios | None = None,
             tipo='solicitante', id=s.id, titulo=s.nombre,
             detalle='viaja con ' + (s.grupo.nombre if s.grupo else 'ficha propia'),
             ruta=f'/clientes/{cliente_id}',
-            coincidio_por='pasaporte' if s.pasaporte_indice == indice else 'nombre'))
+            coincidio_por=_por_que_persona(indice, digitos, s)))
 
     # Trámites: por número de solicitud del SaaS o por número de DS-160 (cifrado).
     # Ver trámites es un permiso, y a un rol se le puede quitar desde la
@@ -305,6 +410,19 @@ def _por_que(texto: str, digitos: str, c: Clientes) -> str:
         return 'teléfono'
     if c.email and c.email.lower() == texto.lower():
         return 'correo'
+    return 'nombre'
+
+
+def _por_que_persona(indice: str, digitos: str, s: Solicitantes) -> str:
+    """Por qué salió esta persona. Se le muestra al que busca, y le sirve: ver
+    «teléfono» al lado de un nombre que no se parece a lo que escribió es lo que
+    le explica por qué está ahí."""
+    if s.pasaporte_indice == indice:
+        return 'pasaporte'
+    if digitos and s.numero_documento == digitos:
+        return 'documento'
+    if digitos and s.telefono_normalizado == digitos[-10:]:
+        return 'teléfono'
     return 'nombre'
 
 
@@ -416,17 +534,26 @@ def documentos_de(db: Session, cliente_id: int, *, ve_reservados: bool) -> list[
 
     Para quien atiende, «los documentos de Ana» son todos, no los de la ficha
     del cliente por un lado y los del tramite por otro.
+
+    «Sus personas» son las mismas que cuenta el resumen de la ficha: las que
+    cuelgan del cliente y las que cuelgan de su grupo. Faltaban las del grupo,
+    que en VisaNow son casi todas —quien contrata rara vez viaja solo—, asi que
+    la ficha de una familia mostraba solo los documentos del contacto y ni los
+    de los hijos ni los de sus tramites.
     """
     filas = db.execute(text("""
+        with personas as (
+            select id from solicitantes
+             where cliente_id = :c
+                or grupo_id in (select id from grupos where cliente_contacto_id = :c)
+        )
         select d.id, d.nombre, d.almacenamiento, d.url, d.mime, d.restringido,
                d.entidad, d.creado_en
           from documentos d
          where (d.entidad = 'cliente' and d.entidad_id = :c)
-            or (d.entidad = 'solicitante' and d.entidad_id in
-                  (select id from solicitantes where cliente_id = :c))
+            or (d.entidad = 'solicitante' and d.entidad_id in (select id from personas))
             or (d.entidad = 'caso' and d.entidad_id in
-                  (select ca.id from casos ca join solicitantes so on so.id = ca.solicitante_id
-                    where so.cliente_id = :c))
+                  (select id from casos where solicitante_id in (select id from personas)))
             or (d.entidad = 'negocio' and d.entidad_id in
                   (select id from negocios where cliente_id = :c))
          order by d.creado_en desc"""), {'c': cliente_id}).mappings().all()

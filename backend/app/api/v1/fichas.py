@@ -91,7 +91,11 @@ def ficha_360(cliente_id: int, actor: Usuarios = Depends(requiere('clientes.ver'
         citas=[esq.CitaProxima(id=x.id, caso_id=x.caso_id, solicitante=x.caso.solicitante.nombre,
                                tipo=x.tipo, inicia_en=x.inicia_en, estado=x.estado,
                                sede=x.sede.nombre if x.sede else None) for x in citas],
-        cronologia=[esq.SucesoSalida(**s.__dict__) for s in fichas.cronologia(db, cliente_id)],
+        # Quién lee va al servicio: entre los adjuntos de la cronología puede
+        # haber un pasaporte escaneado, y ese no lo ve cualquiera que pueda
+        # abrir la ficha (RF-064).
+        cronologia=[esq.SucesoSalida(**s.__dict__)
+                    for s in fichas.cronologia(db, cliente_id, actor=actor)],
         oportunidades=[esq.OportunidadEnFicha(**o)
                        for o in fichas.oportunidades_de(db, cliente_id)] if ve_oportunidades else [],
         dinero=dinero,
@@ -109,7 +113,11 @@ def ficha_360(cliente_id: int, actor: Usuarios = Depends(requiere('clientes.ver'
 def anotar_cliente(cliente_id: int, datos: esq.NotaCrear, request: Request,
                    actor: Usuarios = Depends(requiere('clientes.editar')),
                    db: Session = Depends(get_db)):
-    """Deja constancia de una llamada, un WhatsApp o una nota (RF-012)."""
+    """Deja constancia de una llamada, un WhatsApp o una nota (RF-012).
+
+    Con `documento_id` queda además colgado de ese suceso el documento del que
+    habla, para que la cronología lo muestre al lado (RF-064).
+    """
     personas.obtener(db, cliente_id)       # 404 si no existe
     a = fichas.registrar_nota(db, actor, entidad='cliente', entidad_id=cliente_id,
                               ip=ip_cliente(request), **datos.model_dump())
@@ -120,6 +128,8 @@ def anotar_cliente(cliente_id: int, datos: esq.NotaCrear, request: Request,
              status_code=status.HTTP_201_CREATED)
 def anotar_caso(caso_id: int, datos: esq.NotaCrear, request: Request,
                 actor: Usuarios = Depends(requiere('casos.editar')), db: Session = Depends(get_db)):
+    """Lo mismo, pero sobre el trámite: es donde se trabaja y donde llega el
+    soporte, y la cronología del cliente lo recoge igual (RF-064)."""
     serv_casos.obtener(db, caso_id)        # 404 si no existe
     a = fichas.registrar_nota(db, actor, entidad='caso', entidad_id=caso_id,
                               ip=ip_cliente(request), **datos.model_dump())
