@@ -187,7 +187,22 @@ def convertir(db: Session, actor: Usuarios, oportunidad_id: int, *, servicio_id:
     cot = cotizar(db, servicio_id=servicio_id, personas=cantidad,
                   descuento=descuento, fecha=fecha, valor_pactado=valor_pactado)
 
+    # A qué grupo se le vendió. La columna existía y nadie la escribía, así que
+    # una venta familiar no sabía de qué familia era: es la mitad que faltaba de
+    # «aun con pago grupal» (RF-004). En la carga del histórico pasó lo mismo y
+    # el resultado se puede contar: 51 ventas cobradas a más de una persona, las
+    # 51 sin grupo. Eso no se arregla hacia atrás —son datos, y los decide el
+    # dueño— pero sí se deja de producir hacia adelante.
+    #
+    # Se atribuye cuando hay UN solo grupo entre quienes viajan. Que alguno no
+    # tenga grupo no lo impide: el típico es que quien contrata también viaje y
+    # su ficha cuelgue del cliente y no del grupo. Si aparecen dos grupos
+    # distintos no hay a cuál atribuirla, y queda en nulo, que es la verdad.
+    grupos_que_viajan = {s.grupo_id for s in viajan if s.grupo_id}
+    grupo_id = grupos_que_viajan.pop() if len(grupos_que_viajan) == 1 else None
+
     negocio = Negocios(cliente_id=o.cliente_id, oportunidad_id=o.id, servicio_id=servicio_id,
+                       grupo_id=grupo_id,
                        fecha_venta=fecha, cantidad_solicitantes=cantidad,
                        valor_lista=Decimal(str(cot.valor_lista)),
                        descuento=Decimal(str(cot.descuento)),

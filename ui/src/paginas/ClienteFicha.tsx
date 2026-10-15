@@ -1,6 +1,7 @@
 import {
-  ActionIcon, Alert, Anchor, Badge, Button, Card, Center, Checkbox, Group, Loader, Modal, Select,
-  SimpleGrid, Stack, Table, Text, Textarea, TextInput, Timeline, Title, Tooltip,
+  ActionIcon, Alert, Anchor, Badge, Button, Card, Center, Checkbox, Group, Loader, Modal,
+  MultiSelect, Select, SimpleGrid, Stack, Table, Text, Textarea, TextInput, Timeline, Title,
+  Tooltip,
 } from '@mantine/core'
 import { useForm } from '@mantine/form'
 import { useDebouncedValue } from '@mantine/hooks'
@@ -300,7 +301,10 @@ export function ClienteFicha() {
       <FormularioGrupo clienteId={clienteId} abierto={nuevoGrupo} cerrar={() => setNuevoGrupo(false)} creado={refrescar} />
       <FormularioSolicitante destino={agregarA} clienteId={clienteId}
         cerrar={() => setAgregarA(null)} creado={refrescar} />
-      <FormularioTramite solicitante={tramitando} cerrar={() => setTramitando(null)} />
+      {/* La `key` lo remonta al cambiar de persona: el formulario arranca con
+          esa persona ya elegida en «¿quiénes viajan?». */}
+      <FormularioTramite key={tramitando?.id ?? 'ninguno'} solicitante={tramitando}
+        personas={c.solicitantes} cerrar={() => setTramitando(null)} />
       <FormularioEditarPersona solicitante={editandoPersona}
         cerrar={() => setEditandoPersona(null)} guardado={refrescar} />
       {/* La `key` remonta el formulario al cambiar de persona: sin eso se vería
@@ -609,39 +613,79 @@ export { ClienteFicha as default }
 
 /** Un trámite se abre sobre una persona, no sobre el cliente: la familia compra
  *  junta pero cada quien tiene su pasaporte y su propio resultado. */
-function FormularioTramite({ solicitante, cerrar }: { solicitante: Solicitante | null; cerrar: () => void }) {
+/**
+ * Abrir el trámite de una persona, o el de toda la familia en una pasada (RF-020).
+ *
+ * El texto del requisito dice «responsables» y «solicitantes», en plural, y las
+ * dos cosas eran singulares acá: para una familia de cuatro había que pasar
+ * cuatro veces por este mismo modal eligiendo cuatro veces el mismo país, la
+ * misma modalidad y la misma sede. La cuarta salía distinta de la primera, y esa
+ * es la clase de diferencia que nadie encuentra después.
+ *
+ * El backend ya resolvía las dos —`POST /casos/lote` y el campo `colaboradores`—
+ * y estaban probados; lo que faltaba era que la pantalla los alcanzara. Se abre
+ * con la persona en la que se hizo clic ya elegida, porque ese es el camino
+ * normal; agregar a los demás es un clic más, no un formulario distinto.
+ */
+function FormularioTramite({ solicitante, personas, cerrar }: {
+  solicitante: Solicitante | null
+  /** Las demás personas del cliente, para poder abrirle el trámite a la familia. */
+  personas: Solicitante[]
+  cerrar: () => void
+}) {
   const navegar = useNavigate()
   const catalogos = useCatalogos()
   const asignables = useAsignables()
   const formulario = useForm({
+    // Arranca con la persona desde la que se abrió el formulario ya elegida:
+    // ese es el camino normal, y agregar a los demás es un clic más. Funciona
+    // porque quien lo monta le pone `key` con el id, así que se remonta al
+    // cambiar de persona.
     initialValues: { pais_id: '', tipo_visa_id: '', modalidad_id: '', sede_id: '',
-                     responsable_id: '', proxima_accion: 'Pedir documentos al cliente' },
-    validate: { pais_id: (v) => (v ? null : 'Elija el país del trámite') },
+                     responsable_id: '', colaboradores: [] as string[],
+                     viajan: solicitante ? [String(solicitante.id)] : [],
+                     proxima_accion: 'Pedir documentos al cliente' },
+    validate: {
+      pais_id: (v) => (v ? null : 'Elija el país del trámite'),
+      viajan: (v) => (v.length ? null : 'Elija al menos una persona'),
+    },
   })
   const crear = useMutation({
-    mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/casos', {
-      body: { solicitante_id: solicitante!.id, pais_id: Number(v.pais_id),
+    mutationFn: (v: typeof formulario.values) => exigir(api.POST('/api/v1/casos/lote', {
+      body: { solicitantes: v.viajan.map(Number), pais_id: Number(v.pais_id),
               tipo_visa_id: v.tipo_visa_id ? Number(v.tipo_visa_id) : null,
               modalidad_id: v.modalidad_id ? Number(v.modalidad_id) : null,
               sede_id: v.sede_id ? Number(v.sede_id) : null,
               responsable_id: v.responsable_id ? Number(v.responsable_id) : null,
+              colaboradores: v.colaboradores.map(Number),
               proxima_accion: v.proxima_accion || null },
     })),
-    onSuccess: (caso) => {
-      notifications.show({ color: 'teal', message: 'Trámite creado' })
+    onSuccess: (casos) => {
+      notifications.show({
+        color: 'teal',
+        message: casos.length === 1 ? 'Trámite creado'
+                                    : `${casos.length} trámites creados, uno por persona`,
+      })
       formulario.reset()
       cerrar()
-      navegar('/casos/' + caso.id)
+      // A la ficha del primero: con varios, es el de la persona desde la que se
+      // abrió el formulario, que es la que se estaba mirando.
+      navegar('/casos/' + casos[0].id)
     },
     onError: (e) => mostrarError(e, 'No se pudo crear el trámite'),
   })
   const pais = formulario.values.pais_id ? Number(formulario.values.pais_id) : undefined
+  const cuantos = formulario.values.viajan.length
   return (
-    <Modal opened={solicitante !== null} onClose={cerrar}
+    <Modal opened={solicitante !== null} onClose={cerrar} size="lg"
       title={'Nuevo trámite de ' + (solicitante?.nombre ?? '')}>
       <form onSubmit={formulario.onSubmit((v) => crear.mutate(v))}>
         <Stack>
-          <Select label="País" data={aSelect(catalogos.data?.paises)} searchable data-autofocus
+          <MultiSelect label="¿Quiénes viajan?" searchable data-autofocus
+            description="Se abre un trámite por persona, con estos mismos datos"
+            data={personas.map((s) => ({ value: String(s.id), label: s.nombre }))}
+            {...formulario.getInputProps('viajan')} />
+          <Select label="País" data={aSelect(catalogos.data?.paises)} searchable
             {...formulario.getInputProps('pais_id')} />
           <Select label="Tipo de visa" data={aSelect(porPais(catalogos.data?.tipos_visa, pais))} clearable
             {...formulario.getInputProps('tipo_visa_id')} />
@@ -653,10 +697,16 @@ function FormularioTramite({ solicitante, cerrar }: { solicitante: Solicitante |
           <Select label="Responsable"
             data={(asignables.data ?? []).map((u) => ({ value: String(u.id), label: u.nombre }))}
             clearable {...formulario.getInputProps('responsable_id')} />
+          <MultiSelect label="Quién más lo trabaja" searchable
+            description="Los colaboradores ven el trámite y lo mueven, aunque no sean el responsable"
+            data={(asignables.data ?? []).map((u) => ({ value: String(u.id), label: u.nombre }))}
+            {...formulario.getInputProps('colaboradores')} />
           <TextInput label="Próxima acción" {...formulario.getInputProps('proxima_accion')} />
           <Group justify="flex-end">
             <Button variant="default" onClick={cerrar}>Cancelar</Button>
-            <Button type="submit" loading={crear.isPending}>Crear trámite</Button>
+            <Button type="submit" loading={crear.isPending}>
+              {cuantos > 1 ? `Crear ${cuantos} trámites` : 'Crear trámite'}
+            </Button>
           </Group>
         </Stack>
       </form>

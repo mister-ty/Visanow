@@ -249,3 +249,51 @@ def test_el_descuento_pactado_al_ganar_queda_guardado(cliente, comercial, famili
     assert venta['valor_pactado'] == 1500000
     assert venta['descuento'] == 200000
     assert venta['observaciones'] == 'Descuento por ser referida'
+
+
+def test_una_venta_a_una_familia_sabe_de_que_familia_es(cliente, comercial, familia, db):
+    """RF-004, «aun con pago grupal»: la columna existia y nadie la escribia.
+
+    Sin eso, una venta familiar no sabe de que familia es, y «que le vendimos a
+    los Velez» no se puede contestar por el grupo, solo persona por persona. En
+    la carga del historico paso lo mismo y se puede contar: 51 ventas cobradas a
+    mas de una persona, las 51 sin grupo.
+    """
+    from app.models.esquema import Grupos, Negocios
+
+    cab, _ = comercial
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    lead = crear_lead(cliente, cab, familia,
+                      servicio_id=servicio_id(db, 'adelantos'), pais_id=pais)
+
+    r = cliente.post(f'/api/v1/oportunidades/{lead["id"]}/ganar', headers=cab, json={})
+    assert r.status_code == 201, r.text
+
+    grupo = db.scalar(select(Grupos.id).where(Grupos.cliente_contacto_id == familia))
+    venta = db.get(Negocios, r.json()['id'])
+    assert venta.grupo_id == grupo, (
+        'la venta no sabe de que familia es: es el mismo hueco que dejo la '
+        'migracion en las 51 ventas grupales del historico')
+
+
+def test_una_venta_a_una_persona_suelta_no_se_le_atribuye_a_ningun_grupo(
+        cliente, comercial, db):
+    """La otra mitad de la regla: sin grupo, la columna queda en nulo.
+
+    Inventarle un grupo a una venta individual seria peor que no tenerlo: la
+    pregunta «que le vendimos a esa familia» empezaria a sumar lo que no es.
+    """
+    from app.models.esquema import Negocios
+
+    cab, _ = comercial
+    pais = db.scalar(select(Paises.id).where(Paises.iso2 == 'US'))
+    c = cliente.post('/api/v1/clientes', headers=cab,
+                     json={'nombre': 'Hernan Dario Ocampo'}).json()
+    cliente.post('/api/v1/solicitantes', headers=cab,
+                 json={'cliente_id': c['id'], 'nombre': 'Hernan Dario Ocampo'})
+    lead = crear_lead(cliente, cab, c['id'],
+                      servicio_id=servicio_id(db, 'adelantos'), pais_id=pais)
+
+    r = cliente.post(f'/api/v1/oportunidades/{lead["id"]}/ganar', headers=cab, json={})
+    assert r.status_code == 201, r.text
+    assert db.get(Negocios, r.json()['id']).grupo_id is None

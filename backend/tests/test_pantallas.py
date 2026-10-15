@@ -230,3 +230,30 @@ def test_las_cabeceras_que_la_pantalla_lee_estan_declaradas_como_visibles():
         f'{escondidas}. En produccion vuelven vacias, sin error. Agreguelas a '
         f'CABECERAS_VISIBLES en app/main.py.')
     assert leidas, 'no se encontro ninguna lectura de cabeceras; la prueba no esta mirando nada'
+
+
+# ----------- una funcion que existe en la API y no se alcanza desde la pantalla
+
+#: Lo que RF-020 pide en PLURAL y el backend ya resolvia, pero no se alcanzaba
+#: desde ninguna pantalla: abrir el tramite de varias personas en una pasada, y
+#: ponerle los demas que lo trabajan. Las dos estaban hechas, probadas y en el
+#: openapi, y grep sobre ui/src daba cero.
+#:
+#: Una funcion que solo existe en la API es, para quien usa el sistema, una
+#: funcion que no existe: la familia de cuatro se seguia dando de alta de a uno.
+EN_LA_PANTALLA = {
+    'casos/lote': 'abrir el tramite de varias personas de una vez (RF-020)',
+    'colaboradores': 'decir quien mas trabaja el tramite (RF-020, RF-026)',
+}
+
+
+def test_lo_que_la_api_resuelve_en_plural_se_alcanza_desde_la_pantalla():
+    fuentes = '\n'.join(fuente(a) for a in
+                        sorted(UI.rglob('*.ts')) + sorted(UI.rglob('*.tsx')))
+    assert fuentes, 'no se leyo ningun archivo del frontend'
+
+    faltan = [f'{clave} ({para})' for clave, para in EN_LA_PANTALLA.items()
+              if clave not in fuentes]
+    assert not faltan, (
+        'La API resuelve esto y ninguna pantalla lo usa, asi que para quien '
+        f'trabaja no existe: {faltan}')
