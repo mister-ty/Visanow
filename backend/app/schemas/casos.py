@@ -163,6 +163,21 @@ class PaginaCasos(BaseModel):
     items: list[CasoSalida]
 
 
+class CitaAgenda(CitaSalida):
+    """Una cita con lo que hace falta para leerla sin abrir el trámite.
+
+    En la ficha del trámite basta la hora: ya se sabe de quién es. En la agenda
+    no, porque la pregunta es otra —«¿qué hay mañana?»— y la respuesta tiene que
+    decir de quién, a qué país y quién responde, o toca abrir cinco trámites
+    para armar el día.
+    """
+    caso_id: int
+    solicitante: str
+    pais: str | None = None
+    estado_tramite: str | None = None
+    responsable: str | None = None
+
+
 class ResumenEstado(BaseModel):
     codigo: str
     nombre: str

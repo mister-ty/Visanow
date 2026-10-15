@@ -483,6 +483,28 @@ def _avisar_congeladas(db: Session, actor: Usuarios, vendedor_id: int,
     db.commit()
 
 
+def liquidaciones_de(db: Session, *, vendedor_id: int | None = None,
+                     periodo: dt.date | None = None,
+                     estado: str | None = None) -> list[LiquidacionesComision]:
+    """Los cortes ya hechos, del más reciente al más viejo.
+
+    Faltaba: se podía crear un corte y marcarlo pagado, pero no había forma de
+    ver los que ya existían, así que la pantalla de comisiones no podía
+    responder «¿esto ya se liquidó?» —que es la pregunta con la que se evita
+    pagar dos veces el mismo mes—.
+    """
+    consulta = select(LiquidacionesComision).options(
+        selectinload(LiquidacionesComision.vendedor))
+    if vendedor_id:
+        consulta = consulta.where(LiquidacionesComision.vendedor_id == vendedor_id)
+    if periodo:
+        consulta = consulta.where(LiquidacionesComision.periodo == _periodo_de(periodo))
+    if estado:
+        consulta = consulta.where(LiquidacionesComision.estado == estado)
+    return list(db.scalars(consulta.order_by(LiquidacionesComision.periodo.desc(),
+                                             LiquidacionesComision.id.desc())))
+
+
 def liquidar(db: Session, actor: Usuarios, vendedor_id: int, periodo: dt.date, *,
              observaciones: str | None = None,
              ip: str | None = None) -> LiquidacionesComision:

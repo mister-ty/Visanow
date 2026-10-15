@@ -26,11 +26,7 @@ export const SECCIONES: Seccion[] = [
   },
   {
     ruta: '/calendario', titulo: 'Calendario', icono: IconCalendarEvent, permiso: 'casos.ver',
-    pendiente: {
-      actividad: '2.5', fecha: '28/09', desde: '28/09',
-      contenido: ['Citas CAS, biometría, entrevistas, preparaciones y entregas, con sede y zona horaria'],
-    },
-  },
+      },
   {
     ruta: '/tareas', titulo: 'Tareas', icono: IconChecklist, permiso: 'alertas.ver',
   },
@@ -49,11 +45,7 @@ export const SECCIONES: Seccion[] = [
   },
   {
     ruta: '/comisiones', titulo: 'Comisiones', icono: IconPercentage, permiso: 'comisiones.ver',
-    pendiente: {
-      actividad: '4.5', fecha: '09/10', desde: '09/10',
-      contenido: ['Reglas por vendedor y servicio, congeladas al momento de la venta', 'Detalle de qué ventas componen cada total'],
-    },
-  },
+      },
   {
     ruta: '/tableros', titulo: 'Tableros', icono: IconChartBar, permiso: 'tableros.ver',
   },

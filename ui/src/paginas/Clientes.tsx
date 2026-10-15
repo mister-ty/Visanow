@@ -64,7 +64,14 @@ export function Clientes() {
           <Table verticalSpacing="sm" highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Nombre</Table.Th><Table.Th>Documento</Table.Th><Table.Th>Teléfono</Table.Th>
+                {/* Sin columna de documento: ninguna hoja de los Excel tenía
+                    una, así que de los 895 clientes cargados exactamente 1 lo
+                    trae. Una columna con 894 guiones no informa, ocupa el
+                    ancho que necesitan el correo y la ciudad, y hace pensar que
+                    el sistema no está trayendo el dato. El campo sigue
+                    existiendo: se captura al crear, se ve y se corrige en la
+                    ficha, y la búsqueda sigue encontrando por él. */}
+                <Table.Th>Nombre</Table.Th><Table.Th>Teléfono</Table.Th>
                 <Table.Th>Correo</Table.Th><Table.Th>Ciudad</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -76,7 +83,6 @@ export function Clientes() {
                       {c.nombre}{c.archivado && ' (archivado)'}
                     </Text>
                   </Table.Td>
-                  <Table.Td><Text size="sm">{c.numero_documento ?? '—'}</Text></Table.Td>
                   <Table.Td><Text size="sm">{c.telefono ?? '—'}</Text></Table.Td>
                   <Table.Td><Text size="sm">{c.email ?? '—'}</Text></Table.Td>
                   <Table.Td><Text size="sm">{c.ciudad ?? '—'}</Text></Table.Td>

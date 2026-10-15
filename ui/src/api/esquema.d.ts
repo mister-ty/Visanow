@@ -486,6 +486,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agenda": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agenda
+         * @description Las citas de todos los trámites entre dos fechas (RF-024).
+         *
+         *     Una cita solo se veía abriendo el trámite al que pertenece. Eso contesta
+         *     «¿cuándo es la cita de Ana?» y no contesta la pregunta con la que se arma el
+         *     día: «¿qué hay mañana?». Saber si el jueves hay tres entrevistas en Bogotá
+         *     significaba abrir los trámites de uno en uno, así que la agenda seguía
+         *     viviendo en la cabeza de alguien.
+         *
+         *     Las fechas son días de Bogotá, no instantes UTC: quien pregunta por el 20 de
+         *     noviembre quiere las citas de ese día acá (RN-10). El alcance se aplica en
+         *     el servicio: quien tiene «solo lo asignado» no ve las citas de trámites que
+         *     no puede abrir.
+         */
+        get: operations["agenda_api_v1_agenda_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/catalogos": {
         parameters: {
             query?: never;
@@ -1137,7 +1168,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Listar Liquidaciones
+         * @description Los cortes ya hechos, del más reciente al más viejo (RF-052).
+         *
+         *     Se podía crear un corte y marcarlo pagado, y no había forma de ver los que
+         *     ya existían. Sin esto, «¿este mes ya se liquidó?» solo se contesta mirando
+         *     la base, y esa es exactamente la pregunta con la que se evita pagarle dos
+         *     veces el mismo mes a una vendedora.
+         */
+        get: operations["listar_liquidaciones_api_v1_liquidaciones_get"];
         put?: never;
         /**
          * Liquidar
@@ -3299,6 +3339,50 @@ export interface components {
             motivos_perdida: components["schemas"]["Opcion"][];
             /** Campanias */
             campanias: components["schemas"]["Opcion"][];
+        };
+        /**
+         * CitaAgenda
+         * @description Una cita con lo que hace falta para leerla sin abrir el trámite.
+         *
+         *     En la ficha del trámite basta la hora: ya se sabe de quién es. En la agenda
+         *     no, porque la pregunta es otra —«¿qué hay mañana?»— y la respuesta tiene que
+         *     decir de quién, a qué país y quién responde, o toca abrir cinco trámites
+         *     para armar el día.
+         */
+        CitaAgenda: {
+            /** Id */
+            id: number;
+            /**
+             * Tipo
+             * @enum {string}
+             */
+            tipo: "cas" | "biometria" | "entrevista" | "radicacion" | "preparacion" | "entrega" | "otra";
+            /** Sede Id */
+            sede_id: number | null;
+            /**
+             * Inicia En
+             * Format: date-time
+             */
+            inicia_en: string;
+            /** Zona Horaria */
+            zona_horaria: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "pendiente" | "programada" | "confirmada" | "reprogramada" | "realizada" | "cancelada";
+            /** Observaciones */
+            observaciones: string | null;
+            /** Caso Id */
+            caso_id: number;
+            /** Solicitante */
+            solicitante: string;
+            /** Pais */
+            pais?: string | null;
+            /** Estado Tramite */
+            estado_tramite?: string | null;
+            /** Responsable */
+            responsable?: string | null;
         };
         /** CitaCrear */
         CitaCrear: {
@@ -7154,6 +7238,44 @@ export interface operations {
             };
         };
     };
+    agenda_api_v1_agenda_get: {
+        parameters: {
+            query: {
+                /** @description Primer día de Bogotá que se quiere ver */
+                desde: string;
+                /** @description Último día, incluido */
+                hasta: string;
+                responsable_id?: number | null;
+                sede_id?: number | null;
+                tipo?: ("cas" | "biometria" | "entrevista" | "radicacion" | "preparacion" | "entrega" | "otra") | null;
+                incluir_canceladas?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitaAgenda"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     catalogos_api_v1_catalogos_get: {
         parameters: {
             query?: never;
@@ -8308,6 +8430,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ComisionSalida"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_liquidaciones_api_v1_liquidaciones_get: {
+        parameters: {
+            query?: {
+                vendedor_id?: number | null;
+                periodo?: string | null;
+                estado?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiquidacionSalida"][];
                 };
             };
             /** @description Validation Error */

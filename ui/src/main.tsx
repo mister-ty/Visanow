@@ -31,6 +31,8 @@ import { Ingreso } from './paginas/Ingreso'
 import { Pagos } from './paginas/Pagos'
 import { NoEncontrada } from './paginas/NoEncontrada'
 import { Plantillas } from './paginas/Plantillas'
+import { Calendario } from './paginas/Calendario'
+import { Comisiones } from './paginas/Comisiones'
 import { Rentabilidad } from './paginas/Rentabilidad'
 import { Tableros } from './paginas/Tableros'
 import { Tareas } from './paginas/Tareas'
@@ -87,7 +89,9 @@ const enruta = createBrowserRouter([
               { path: '/importacion', element: <ImportacionSaas /> },
               { path: '/auditoria', element: <Auditoria /> },
               { path: '/tableros', element: <Tableros /> },
-              { path: '/rentabilidad', element: <Rentabilidad /> },
+              { path: '/calendario', element: <Calendario /> },
+      { path: '/comisiones', element: <Comisiones /> },
+      { path: '/rentabilidad', element: <Rentabilidad /> },
               { path: '/mensajes', element: <Plantillas /> },
               { path: '/usuarios', element: <Usuarios /> },
               { path: '/configuracion', element: <Configuracion /> },

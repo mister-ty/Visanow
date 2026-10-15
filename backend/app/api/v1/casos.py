@@ -234,3 +234,36 @@ def quitar_colaborador(caso_id: int, usuario_id: int, request: Request,
     """Lo saca del trámite; con eso deja de verlo si su alcance es limitado."""
     return [esq.ColaboradorSalida(**c) for c in servicio.quitar_colaborador(
         db, actor, caso_id, usuario_id, ip=ip_cliente(request))]
+
+
+@router.get('/agenda', response_model=list[esq.CitaAgenda])
+def agenda(desde: date = Query(description='Primer día de Bogotá que se quiere ver'),
+           hasta: date = Query(description='Último día, incluido'),
+           responsable_id: int | None = None, sede_id: int | None = None,
+           tipo: esq.TipoCita | None = None, incluir_canceladas: bool = False,
+           actor: Usuarios = Depends(requiere('casos.ver')), db: Session = Depends(get_db)):
+    """Las citas de todos los trámites entre dos fechas (RF-024).
+
+    Una cita solo se veía abriendo el trámite al que pertenece. Eso contesta
+    «¿cuándo es la cita de Ana?» y no contesta la pregunta con la que se arma el
+    día: «¿qué hay mañana?». Saber si el jueves hay tres entrevistas en Bogotá
+    significaba abrir los trámites de uno en uno, así que la agenda seguía
+    viviendo en la cabeza de alguien.
+
+    Las fechas son días de Bogotá, no instantes UTC: quien pregunta por el 20 de
+    noviembre quiere las citas de ese día acá (RN-10). El alcance se aplica en
+    el servicio: quien tiene «solo lo asignado» no ve las citas de trámites que
+    no puede abrir.
+    """
+    return [
+        esq.CitaAgenda(
+            id=c.id, tipo=c.tipo, sede_id=c.sede_id, inicia_en=c.inicia_en,
+            zona_horaria=c.zona_horaria, estado=c.estado, observaciones=c.observaciones,
+            caso_id=c.caso_id,
+            solicitante=c.caso.solicitante.nombre,
+            pais=c.caso.pais.nombre if c.caso.pais else None,
+            estado_tramite=c.caso.estado.nombre if c.caso.estado else None,
+            responsable=c.caso.responsable.nombre if c.caso.responsable else None)
+        for c in servicio.agenda(db, actor=actor, desde=desde, hasta=hasta,
+                                 responsable_id=responsable_id, sede_id=sede_id,
+                                 tipo=tipo, incluir_canceladas=incluir_canceladas)]

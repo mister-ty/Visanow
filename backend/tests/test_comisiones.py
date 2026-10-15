@@ -800,3 +800,46 @@ def test_operaciones_no_ve_gastos_ni_comisiones(cliente, usuario):
     cab = entrar(cliente, usuario('operaciones'))
     assert cliente.get('/api/v1/gastos', headers=cab).status_code == 403
     assert cliente.get('/api/v1/comisiones', headers=cab).status_code == 403
+
+
+def test_los_cortes_ya_hechos_se_pueden_consultar(cliente, vendedora, finanzas, db):
+    """Se podía crear un corte y marcarlo pagado, y no había forma de ver los
+    que ya existían.
+
+    Sin eso, «¿este mes ya se liquidó?» solo se contesta mirando la base, y esa
+    es justo la pregunta con la que se evita pagarle dos veces el mismo mes a
+    una vendedora. La pantalla de comisiones no podía existir sin esto.
+    """
+    cab, p = vendedora
+    v = vender(cliente, cab, db, servicio='asesoria_usa',
+               nombre='Consultar Cortes Apellido', fecha='2027-05-10')
+    cliente.post('/api/v1/pagos', headers=finanzas,
+                 json={'negocio_id': v['id'], 'monto_bruto': v['valor_pactado'],
+                       'fecha': '2027-05-15'})
+
+    sin_cortes = cliente.get('/api/v1/liquidaciones', headers=finanzas,
+                             params={'vendedor_id': p.u.id, 'periodo': '2027-05-01'})
+    assert sin_cortes.status_code == 200, sin_cortes.text
+    assert sin_cortes.json() == [], 'todavía no se ha liquidado ese mes'
+
+    creado = cliente.post('/api/v1/liquidaciones', headers=finanzas, json={
+        'vendedor_id': p.u.id, 'periodo': '2027-05-20', 'observaciones': 'Corte de mayo'})
+    assert creado.status_code == 201, creado.text
+
+    cortes = cliente.get('/api/v1/liquidaciones', headers=finanzas,
+                         params={'vendedor_id': p.u.id, 'periodo': '2027-05-01'}).json()
+    assert len(cortes) == 1, f'el corte recién hecho tiene que aparecer: {cortes}'
+    corte = cortes[0]
+    assert corte['id'] == creado.json()['id']
+    assert corte['vendedor'] == p.u.nombre
+    assert corte['observaciones'] == 'Corte de mayo'
+    assert corte['cantidad'] >= 1 and corte['total'] > 0
+    assert corte['comisiones'], 'trae las comisiones que entraron, no solo el total'
+
+
+def test_el_listado_de_cortes_no_se_lo_dan_a_cualquiera(cliente, usuario, finanzas):
+    """Un corte dice cuánto gana cada vendedora: es de la contabilidad."""
+    assert cliente.get('/api/v1/liquidaciones', headers=finanzas).status_code == 200
+    from tests.conftest import entrar as _entrar
+    ajeno = _entrar(cliente, usuario('operaciones'))
+    assert cliente.get('/api/v1/liquidaciones', headers=ajeno).status_code == 403

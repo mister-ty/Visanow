@@ -19,7 +19,7 @@ Las reglas que este servicio hace cumplir, y que hoy ningún Excel puede:
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Date, Select, and_, cast, func, or_, select
@@ -731,6 +731,54 @@ def actualizar_cita(db: Session, actor: Usuarios, cita_id: int, cambios: dict,
 
 def citas_de(db: Session, caso_id: int) -> list[Citas]:
     return list(db.scalars(select(Citas).where(Citas.caso_id == caso_id).order_by(Citas.inicia_en)))
+
+
+def agenda(db: Session, *, actor: Usuarios | None = None,
+           desde: date, hasta: date,
+           responsable_id: int | None = None, sede_id: int | None = None,
+           tipo: str | None = None, incluir_canceladas: bool = False) -> list[Citas]:
+    """Las citas de TODOS los trámites entre dos fechas, para la agenda.
+
+    Hasta ahora una cita solo se veía abriendo el trámite al que pertenece. Eso
+    sirve para responder «¿cuándo es la cita de Ana?» y no sirve para la
+    pregunta con la que se arma el día: «¿qué hay mañana?». Sin eso, saber si el
+    jueves hay tres entrevistas en Bogotá significaba abrir los trámites de uno
+    en uno, y por eso la agenda seguía viviendo en la cabeza de alguien.
+
+    Las fechas son DÍAS DE BOGOTÁ, no instantes UTC: quien pregunta por el 20 de
+    noviembre quiere las citas de ese día acá. Una cita de las 8 de la mañana en
+    Bogotá son las 13:00 UTC, así que filtrar por el día UTC dejaría fuera las de
+    la tarde y metería las de la madrugada del día siguiente.
+
+    El alcance (RNF-03) se aplica acá y no en la ruta: quien tiene «solo lo
+    asignado» no ve en la agenda las citas de trámites que no puede abrir.
+    """
+    inicio = datetime.combine(desde, time.min, tzinfo=BOGOTA)
+    fin = datetime.combine(hasta, time.max, tzinfo=BOGOTA)
+
+    consulta = (select(Citas)
+                .join(Casos, Casos.id == Citas.caso_id)
+                .options(selectinload(Citas.caso).selectinload(Casos.solicitante),
+                         selectinload(Citas.caso).selectinload(Casos.responsable),
+                         selectinload(Citas.caso).selectinload(Casos.pais),
+                         selectinload(Citas.caso).selectinload(Casos.estado))
+                .where(Citas.inicia_en >= inicio, Citas.inicia_en <= fin))
+
+    limite = alcance_de(actor)
+    if limite is not None:
+        consulta = consulta.where(limite)
+    if responsable_id:
+        consulta = consulta.where(Casos.responsable_id == responsable_id)
+    if sede_id:
+        consulta = consulta.where(Citas.sede_id == sede_id)
+    if tipo:
+        consulta = consulta.where(Citas.tipo == tipo)
+    # Una cita cancelada no desaparece: queda para saber que se perdió el cupo.
+    # Pero no estorba en la agenda del día, así que hay que pedirla.
+    if not incluir_canceladas:
+        consulta = consulta.where(Citas.estado != 'cancelada')
+
+    return list(db.scalars(consulta.order_by(Citas.inicia_en, Citas.id)))
 
 
 # ----------------------------------------------------------------- checklist

@@ -131,6 +131,22 @@ def recalcular(negocio_id: int, request: Request,
     return _comision(c) if c else None
 
 
+@router.get('/liquidaciones', response_model=list[esq.LiquidacionSalida])
+def listar_liquidaciones(vendedor_id: int | None = None, periodo: date | None = None,
+                         estado: str | None = None,
+                         _: Usuarios = Depends(requiere('comisiones.ver')),
+                         db: Session = Depends(get_db)):
+    """Los cortes ya hechos, del más reciente al más viejo (RF-052).
+
+    Se podía crear un corte y marcarlo pagado, y no había forma de ver los que
+    ya existían. Sin esto, «¿este mes ya se liquidó?» solo se contesta mirando
+    la base, y esa es exactamente la pregunta con la que se evita pagarle dos
+    veces el mismo mes a una vendedora.
+    """
+    return [_liquidacion(db, liq) for liq in serv_comisiones.liquidaciones_de(
+        db, vendedor_id=vendedor_id, periodo=periodo, estado=estado)]
+
+
 @router.post('/liquidaciones', response_model=esq.LiquidacionSalida,
              status_code=status.HTTP_201_CREATED)
 def liquidar(datos: esq.LiquidarEntrada, request: Request,
