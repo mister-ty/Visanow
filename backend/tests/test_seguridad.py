@@ -11,6 +11,7 @@ de quien la creo, no de quien pregunta, asi que `v_estado_financiero` y
 `v_cartera` seguian devolviendo las 477 ventas y los 65 millones de cartera.
 Las tablas cerradas y la puerta de al lado abierta.
 """
+import pytest
 from sqlalchemy import text
 
 
@@ -58,6 +59,86 @@ def test_ninguna_tabla_tiene_politicas_que_abran_la_api(db):
          where schemaname = 'public' order by tablename"""))]
     assert not politicas, ('Hay politicas de RLS en public y no deberia haber ninguna: '
                            + '; '.join(politicas))
+
+
+#: Los dos roles con los que PostgREST atiende a quien llega de internet.
+PUBLICOS = ('anon', 'authenticated')
+
+
+def test_los_roles_publicos_de_supabase_no_pueden_leer_nada(db):
+    """Que el candado no dependa solo de que no haya politicas (migracion 0028).
+
+    RLS activa sin politicas ya deja a estos roles sin ver una fila, y eso es
+    comportamiento definido de PostgreSQL. Pero Supabase les concede `grant all`
+    sobre el esquema entero y lo deja como privilegio por omision, asi que cada
+    tabla nueva nace con el permiso puesto. Con eso, olvidar un `enable row
+    level security` en una migracion no es un descuido: es publicar 895
+    pasaportes. La 0028 les quita el permiso para que hagan falta DOS errores.
+    """
+    existen = [r for (r,) in db.execute(text(
+        'select rolname from pg_roles where rolname = any(:roles)'),
+        {'roles': list(PUBLICOS)})]
+    if not existen:
+        pytest.skip(
+            'anon y authenticated los crea Supabase y no existen en la base local, '
+            'asi que aqui no hay nada que comprobar. Esto se verifica contra '
+            'produccion; la migracion 0028 explica por que y se salta sola si el '
+            'rol no esta. Se avisa en vez de pasar en verde: una prueba que se '
+            'cumple sin comprobar es peor que una que falta.')
+
+    con_permiso = [f'{rol} -> {tabla}' for rol, tabla in db.execute(text("""
+        select r.rolname, c.relname
+          from pg_roles r
+          cross join pg_class c
+          join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'public' and c.relkind = 'r'
+           and r.rolname = any(:roles)
+           and has_table_privilege(r.rolname, c.oid, 'select')
+         order by r.rolname, c.relname"""), {'roles': existen})]
+    assert not con_permiso, (
+        'Estos roles publicos de Supabase pueden leer estas tablas. Hoy no ven '
+        'filas porque no hay politicas de RLS, pero el dia que falte un `enable '
+        'row level security` quedan legibles por internet: ' + '; '.join(con_permiso[:20]))
+
+
+def test_una_tabla_nueva_no_nace_con_el_permiso_puesto(db):
+    """La mitad de la 0028 que de verdad hace el trabajo, probada en local.
+
+    Lo que importa no es quitar el permiso de hoy -eso se vuelve a poner solo-
+    sino quitar el privilegio POR OMISION, que es lo que hace que cada tabla
+    nueva nazca abierta. Como anon y authenticated no existen en la base local,
+    esto se prueba con un rol desechable montado igual que lo monta Supabase.
+
+    La primera afirmacion es la que impide que la prueba sea de adorno: antes de
+    comprobar que el arreglo funciona, comprueba que el montaje reproduce de
+    verdad el problema.
+    """
+    db.execute(text('drop role if exists rol_publico_desechable'))
+    db.execute(text('create role rol_publico_desechable nologin'))
+    db.execute(text('grant usage on schema public to rol_publico_desechable'))
+    db.execute(text('alter default privileges in schema public '
+                    'grant all on tables to rol_publico_desechable'))
+
+    db.execute(text('create table tabla_antes_del_arreglo (id int)'))
+    assert db.scalar(text("select has_table_privilege('rol_publico_desechable', "
+                          "'tabla_antes_del_arreglo', 'select')")) is True, (
+        'el montaje no reproduce lo que hace Supabase, asi que lo de abajo no '
+        'probaria nada')
+
+    # Y esto es lo que hace la migracion 0028.
+    db.execute(text('revoke all on all tables in schema public '
+                    'from rol_publico_desechable'))
+    db.execute(text('alter default privileges in schema public '
+                    'revoke all on tables from rol_publico_desechable'))
+    db.execute(text('create table tabla_despues_del_arreglo (id int)'))
+
+    assert db.scalar(text("select has_table_privilege('rol_publico_desechable', "
+                          "'tabla_antes_del_arreglo', 'select')")) is False, (
+        'no se le quito el permiso a las tablas que ya existian')
+    assert db.scalar(text("select has_table_privilege('rol_publico_desechable', "
+                          "'tabla_despues_del_arreglo', 'select')")) is False, (
+        'una tabla creada DESPUES sigue naciendo con el permiso: falta el '
+        '`alter default privileges ... revoke`, que es la mitad que importa')
 
 
 def test_las_funciones_tienen_search_path_fijo(db):
