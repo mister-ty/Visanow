@@ -72,6 +72,13 @@ export function Pagos() {
     queryKey: ['pagos', 'sin-asignar-conteo'],
     queryFn: () => exigir(api.GET('/api/v1/pagos', { params: { query: { sin_asignar: true, tamano: 1 } } })),
   })
+  // Se pide acá y no dentro de la pestaña para poder poner el número en la
+  // solapa: una cartera inflada por ventas repetidas no se va a mirar si hay
+  // que entrar a buscarla.
+  const repetidas = useQuery({
+    queryKey: ['ventas-repetidas'],
+    queryFn: () => exigir(api.GET('/api/v1/ventas/repetidas')),
+  })
 
   return (
     <Stack>
@@ -98,6 +105,10 @@ export function Pagos() {
             Pagos sin identificar
           </Tabs.Tab>
           <Tabs.Tab value="pagos">Todos los pagos</Tabs.Tab>
+          <Tabs.Tab value="repetidas"
+            rightSection={repetidas.data?.length ? <Badge size="sm" color="red">{repetidas.data.length}</Badge> : null}>
+            Ventas repetidas
+          </Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="cartera" pt="md"><Cartera abrirVenta={setVentaAbierta} /></Tabs.Panel>
         <Tabs.Panel value="bandeja" pt="md">
@@ -105,6 +116,10 @@ export function Pagos() {
         </Tabs.Panel>
         <Tabs.Panel value="pagos" pt="md">
           <TablaPagos abrirVenta={setVentaAbierta} referenciaInicial={referenciaBuscada} />
+        </Tabs.Panel>
+        <Tabs.Panel value="repetidas" pt="md">
+          <VentasRepetidas grupos={repetidas.data} cargando={repetidas.isPending}
+            abrirVenta={setVentaAbierta} />
         </Tabs.Panel>
       </Tabs>
 
@@ -389,7 +404,8 @@ function TablaPagos({ soloSinAsignar, abrirVenta, referenciaInicial = '' }: {
 }
 
 function invalidarTodo(cq: ReturnType<typeof useQueryClient>) {
-  for (const k of ['pagos', 'cartera', 'cartera-resumen', 'cartera-por-estado', 'estado-financiero']) {
+  for (const k of ['pagos', 'cartera', 'cartera-resumen', 'cartera-por-estado', 'estado-financiero',
+                   'ventas-repetidas']) {
     cq.invalidateQueries({ queryKey: [k] })
   }
 }
@@ -597,7 +613,7 @@ function ModalEstadoFinanciero({ negocioId, cerrar }: { negocioId: number | null
                 Sin plan de cuotas esta venta nunca vence, y la cartera vencida no la va a mostrar.
               </Alert>
             : <Table.ScrollContainer minWidth={600}>
-            :   <Table>
+              <Table>
                 <Table.Tbody>
                   {e.cuotas.map((c) => (
                     <Table.Tr key={c.numero}>
@@ -607,7 +623,7 @@ function ModalEstadoFinanciero({ negocioId, cerrar }: { negocioId: number | null
                     </Table.Tr>))}
                 </Table.Tbody>
               </Table>
-            : </Table.ScrollContainer>}
+              </Table.ScrollContainer>}
 
           <Text fw={600}>Pagos</Text>
           <Table.ScrollContainer minWidth={600}>
@@ -620,6 +636,15 @@ function ModalEstadoFinanciero({ negocioId, cerrar }: { negocioId: number | null
                     <Table.Td><Badge size="sm" variant="light" color={COLOR_ESTADO_PAGO[p.estado]}>
                       {NOMBRE_ESTADO_PAGO[p.estado]}</Badge></Table.Td>
                     <Table.Td ta="right">{formatearPesos(p.monto_bruto)}</Table.Td>
+                    {/* El pago se resuelve desde acá y no solo desde «Todos los
+                        pagos». Hace falta para la venta repetida: antes de poder
+                        anular la copia hay que marcar duplicado el abono que
+                        quedó anotado dos veces, y buscarlo en la lista general
+                        obliga a salirse de la venta que se está arreglando. */}
+                    <Table.Td ta="right">
+                      {p.estado === 'confirmado' && puede('pagos.editar') && (
+                        <CambiarEstado pago={p} />)}
+                    </Table.Td>
                   </Table.Tr>))}
                 {e.pagos.length === 0 && (
                   <Table.Tr><Table.Td><Text size="sm" c="dimmed">Sin pagos todavía.</Text></Table.Td></Table.Tr>)}
@@ -685,6 +710,165 @@ function ModalAjuste({ abierto, negocioId, cerrar }: {
           <Button variant="default" onClick={cerrar}>Cancelar</Button>
           <Button loading={m.isPending} disabled={!(Number(monto) > 0) || motivo.trim().length < 3}
             onClick={() => m.mutate()}>Registrar</Button>
+        </Group>
+      </Stack>
+    </Modal>)
+}
+
+// --------------------------------------------------------- ventas repetidas
+
+/** La misma venta anotada dos veces (RF-040).
+ *
+ *  La carga de los Excel trajo el mismo negocio dos veces cuando aparecía en
+ *  dos hojas del mismo libro: la idempotencia es por `(archivo, hoja, fila)`,
+ *  así que el mismo hecho en dos sitios son dos filas. Medido sobre lo cargado:
+ *  16 casos y $18.006.000 de más en la cartera.
+ *
+ *  Esta pantalla NO decide por nadie, y es a propósito. En esas 16 los pagos
+ *  están repartidos entre las dos copias, así que cuál se queda y qué se hace
+ *  con cada abono es una decisión de quien lleva las cuentas. Lo que hace la
+ *  pantalla es poner junto lo que hace falta para decidir: de qué hoja salió
+ *  cada copia, qué pagos tiene y cuántos trámites cuelgan de ella.
+ */
+function VentasRepetidas({ grupos, cargando, abrirVenta }: {
+  grupos: Esquemas['VentaRepetida'][] | undefined
+  cargando: boolean
+  abrirVenta: (id: number) => void
+}) {
+  const [anulando, setAnulando] = useState<Esquemas['CopiaDeVenta'] | null>(null)
+
+  if (cargando) return <Center h={160}><Loader color="teal" /></Center>
+  if (!grupos?.length) {
+    return (
+      <Alert color="teal" variant="light" title="No hay ventas repetidas">
+        Ninguna venta coincide con otra en cliente, servicio, fecha y valor.
+      </Alert>)
+  }
+
+  const deMas = grupos.reduce((s, g) => s + g.valor_pactado * (g.copias.length - 1), 0)
+
+  return (
+    <Stack>
+      <Alert color="orange" variant="light" title="Qué es esto y por qué hay que mirarlo">
+        <Text size="sm">
+          Estas {grupos.length} ventas coinciden con otra en cliente, servicio, fecha y valor:
+          es casi seguro la misma venta anotada dos veces al cargar los Excel, porque el mismo
+          negocio aparecía en dos hojas del mismo libro. Están inflando la cartera
+          en {formatearPesos(deMas)}, que es el número con el que se decide a quién se le cobra.
+        </Text>
+        <Text size="sm" mt="xs">
+          <b>Los pagos se resuelven primero.</b> En varias de estas los abonos quedaron
+          repartidos entre las dos copias, así que anular una sin más haría desaparecer plata
+          que sí entró. Abra la venta, marque <b>duplicado</b> el abono que esté anotado dos
+          veces —o muévalo a la copia que se queda— y entonces anule la otra.
+        </Text>
+      </Alert>
+
+      {grupos.map((g) => (
+        <Card key={`${g.cliente_id}-${g.copias[0].negocio_id}`} withBorder>
+          <Group justify="space-between" align="flex-start" mb="sm">
+            <div>
+              <Text fw={600}>
+                <Link to={`/clientes/${g.cliente_id}`}>{g.cliente ?? 'Sin cliente'}</Link>
+              </Text>
+              <Text size="sm" c="dimmed">
+                {g.servicio ?? 'Sin servicio'} · {formatearDia(g.fecha_venta)} · {formatearPesos(g.valor_pactado)}
+              </Text>
+            </div>
+            <Badge color="red" variant="light">{g.copias.length} copias</Badge>
+          </Group>
+
+          <Table.ScrollContainer minWidth={620}>
+            <Table verticalSpacing="xs">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Venta</Table.Th><Table.Th>De dónde salió</Table.Th>
+                  <Table.Th ta="right">Pagos</Table.Th><Table.Th ta="right">Trámites</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {g.copias.map((c) => (
+                  <Table.Tr key={c.negocio_id}>
+                    <Table.Td>#{c.negocio_id}</Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{c.origen}</Text>
+                      {c.origen_fila !== null && c.origen_fila !== undefined && (
+                        <Text size="xs" c="dimmed">fila {c.origen_fila}</Text>)}
+                    </Table.Td>
+                    <Table.Td ta="right">
+                      {c.pagos === 0
+                        ? <Text size="sm" c="dimmed">ninguno</Text>
+                        : <Text size="sm">{c.pagos} · {formatearPesos(c.pagado)}</Text>}
+                    </Table.Td>
+                    {/* Los trámites importan para decidir: la copia que ya tiene
+                        el trámite abierto con su historial es la que conviene
+                        conservar. */}
+                    <Table.Td ta="right"><Text size="sm">{c.tramites}</Text></Table.Td>
+                    <Table.Td ta="right">
+                      <Group gap="xs" justify="flex-end" wrap="nowrap">
+                        <Button size="compact-sm" variant="subtle"
+                          onClick={() => abrirVenta(c.negocio_id)}>Ver y resolver pagos</Button>
+                        <Button size="compact-sm" variant="light" color="red"
+                          onClick={() => setAnulando(c)}>Anular esta</Button>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Card>))}
+
+      <ModalAnular key={anulando?.negocio_id ?? 'ninguno'} copia={anulando}
+        cerrar={() => setAnulando(null)} />
+    </Stack>)
+}
+
+/** Anular es irreversible desde la pantalla, así que pide el motivo escrito.
+ *
+ *  El motivo no es trámite: es lo que explica por qué la cartera bajó. Sin él,
+ *  el mes entrante nadie puede responder por qué los totales cambiaron, y una
+ *  cifra que nadie puede explicar es una cifra en la que nadie confía.
+ */
+function ModalAnular({ copia, cerrar }: {
+  copia: Esquemas['CopiaDeVenta'] | null; cerrar: () => void
+}) {
+  const cq = useQueryClient()
+  const [motivo, setMotivo] = useState('')
+  const m = useMutation({
+    mutationFn: () => exigir(api.POST('/api/v1/ventas/{negocio_id}/anular', {
+      params: { path: { negocio_id: copia!.negocio_id } }, body: { motivo },
+    })),
+    onSuccess: () => {
+      notifications.show({
+        color: 'teal', title: 'Venta anulada',
+        message: 'Sale de la cartera. La fila queda, con quién la anuló y por qué.',
+      })
+      invalidarTodo(cq); cerrar()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo anular la venta'),
+  })
+
+  return (
+    <Modal opened={copia !== null} onClose={cerrar} title={`Anular la venta #${copia?.negocio_id}`}>
+      <Stack>
+        <Text size="sm">
+          La venta deja de contar en la cartera y en los informes. <b>No se borra:</b> la fila
+          queda con quién la anuló, cuándo y por qué.
+        </Text>
+        {!!copia?.pagos && (
+          <Alert color="orange" variant="light">
+            Esta copia tiene {copia.pagos} pago(s) por {formatearPesos(copia.pagado)}. El sistema
+            no va a dejar anularla así: primero marque duplicado el abono repetido, o muévalo a la
+            copia que se queda, desde «Ver y resolver pagos».
+          </Alert>)}
+        <Textarea label="Motivo" autosize minRows={2} value={motivo}
+          placeholder="Repetida: la misma venta ya está cargada desde la hoja PAGOS"
+          onChange={(e) => setMotivo(e.currentTarget.value)} />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={cerrar}>Cancelar</Button>
+          <Button color="red" disabled={motivo.trim().length < 5} loading={m.isPending}
+            onClick={() => m.mutate()}>Anular</Button>
         </Group>
       </Stack>
     </Modal>)

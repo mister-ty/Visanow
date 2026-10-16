@@ -244,6 +244,8 @@ def test_las_cabeceras_que_la_pantalla_lee_estan_declaradas_como_visibles():
 EN_LA_PANTALLA = {
     'casos/lote': 'abrir el tramite de varias personas de una vez (RF-020)',
     'colaboradores': 'decir quien mas trabaja el tramite (RF-020, RF-026)',
+    'ventas/repetidas': 'ver la misma venta anotada dos veces (RF-040)',
+    '/anular': 'sacar de la cartera la venta repetida (RF-040, RN-01)',
 }
 
 

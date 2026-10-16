@@ -2713,6 +2713,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ventas/repetidas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Repetidas
+         * @description Ventas que parecen ser la misma anotada dos veces (RF-040).
+         *
+         *     La carga trajo el mismo negocio dos veces cuando aparecía en dos hojas del
+         *     mismo libro: la idempotencia es por `(archivo, hoja, fila)`, así que el
+         *     mismo hecho en dos sitios son dos filas. Medido sobre producción: 16 casos y
+         *     $18.006.000 de más en la cartera, que es el número con el que se decide a
+         *     quién se le cobra.
+         *
+         *     Exige `pagos.ver` y no `negocios.ver`: lo que esta lista enseña son montos y
+         *     saldos, que es «lo de la contabilidad» que operaciones no ve.
+         */
+        get: operations["repetidas_api_v1_ventas_repetidas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ventas/{negocio_id}": {
         parameters: {
             query?: never;
@@ -2724,6 +2753,31 @@ export interface paths {
         get: operations["detalle_api_v1_ventas__negocio_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ventas/{negocio_id}/anular": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Anular
+         * @description Saca una venta de la cartera sin borrarla (RN-01, RN-08).
+         *
+         *     Se niega si todavía tiene pagos confirmados: en las ventas repetidas los
+         *     pagos están repartidos entre las dos copias, así que anular a secas haría
+         *     desaparecer plata que sí entró. Cada pago se resuelve antes, marcándolo
+         *     duplicado o moviéndolo a la venta que se queda.
+         */
+        post: operations["anular_api_v1_ventas__negocio_id__anular_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2893,6 +2947,14 @@ export interface components {
         /** AnularEntrada */
         AnularEntrada: {
             /** Motivo */
+            motivo: string;
+        };
+        /** AnularVentaEntrada */
+        AnularVentaEntrada: {
+            /**
+             * Motivo
+             * @description Qué cambió y por qué: es lo que explica el movimiento en los totales del mes
+             */
             motivo: string;
         };
         /** AplicarSalida */
@@ -3759,6 +3821,29 @@ export interface components {
              * @default true
              */
             abrir_tramites: boolean;
+        };
+        /**
+         * CopiaDeVenta
+         * @description Una de las fichas que parecen ser la misma venta.
+         */
+        CopiaDeVenta: {
+            /** Negocio Id */
+            negocio_id: number;
+            /**
+             * Origen
+             * @description La hoja del Excel de la que salió, o «creada en el sistema»
+             */
+            origen: string;
+            /** Origen Archivo */
+            origen_archivo?: string | null;
+            /** Origen Fila */
+            origen_fila?: number | null;
+            /** Pagos */
+            pagos: number;
+            /** Pagado */
+            pagado: number;
+            /** Tramites */
+            tramites: number;
         };
         /** CotizacionSalida */
         CotizacionSalida: {
@@ -6263,6 +6348,34 @@ export interface components {
             saldo: number;
             /** Estado Financiero */
             estado_financiero: string;
+        };
+        /**
+         * VentaRepetida
+         * @description Un grupo de ventas que parecen ser la misma anotada dos veces (RF-040).
+         *
+         *     Mismo cliente, mismo servicio, misma fecha y mismo valor. Viene de la carga:
+         *     la idempotencia es por `(archivo, hoja, fila)`, así que el mismo negocio
+         *     anotado en dos hojas del mismo libro entró dos veces.
+         *
+         *     Trae los pagos de cada copia porque sin eso no se puede decidir: en las 16
+         *     que dejó la carga los pagos están repartidos entre las dos, así que no se
+         *     trata de borrar una y ya.
+         */
+        VentaRepetida: {
+            /** Cliente Id */
+            cliente_id: number;
+            /** Cliente */
+            cliente?: string | null;
+            /** Servicio */
+            servicio?: string | null;
+            /** Fecha Venta */
+            fecha_venta?: string | null;
+            /** Valor Pactado */
+            valor_pactado: number;
+            /** Moneda */
+            moneda?: string | null;
+            /** Copias */
+            copias: components["schemas"]["CopiaDeVenta"][];
         };
         /** VentaSalida */
         VentaSalida: {
@@ -11017,6 +11130,26 @@ export interface operations {
             };
         };
     };
+    repetidas_api_v1_ventas_repetidas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VentaRepetida"][];
+                };
+            };
+        };
+    };
     detalle_api_v1_ventas__negocio_id__get: {
         parameters: {
             query?: never;
@@ -11027,6 +11160,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VentaSalida"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anular_api_v1_ventas__negocio_id__anular_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                negocio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnularVentaEntrada"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

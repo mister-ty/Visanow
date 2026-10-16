@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errores import Conflicto, Invalido, NoEncontrado
@@ -35,6 +35,7 @@ from app.models.esquema import (
     EstadosOperativos,
     Grupos,
     Negocios,
+    Pagos,
     Servicios,
     Solicitantes,
     Tarifas,
@@ -265,3 +266,111 @@ def obtener(db: Session, negocio_id: int) -> Negocios:
     if n is None:
         raise NoEncontrado('La venta no existe.')
     return n
+
+
+# ------------------------------------------------- la misma venta, dos veces
+
+def repetidas(db: Session) -> list[dict]:
+    """Ventas que parecen ser la misma anotada dos veces (RF-040).
+
+    Mismo cliente, mismo servicio, misma fecha y mismo valor. No es una
+    heurística floja: que coincidan las cuatro cosas y sean negocios distintos
+    es, en la práctica, imposible por casualidad.
+
+    Viene de la carga de los Excel: la idempotencia es por `(archivo, hoja,
+    fila)`, así que el mismo negocio anotado en dos hojas del mismo libro entró
+    dos veces. Medido sobre producción: 16 casos, $18.006.000 de más, y 13 de
+    ellos son `PAGOS` contra `PAGOS2026`.
+
+    Devuelve cada copia con sus pagos y de qué hoja salió, porque eso es lo que
+    hace falta para decidir cuál se queda. Y hay que decidirlo con la cabeza: en
+    esas 16 los pagos están repartidos entre las dos copias, así que no se
+    trata de borrar una y ya.
+    """
+    filas = db.execute(text("""
+        with grupos as (
+          select cliente_id, servicio_id, fecha_venta, valor_pactado
+            from negocios
+           where anulada_en is null
+           group by cliente_id, servicio_id, fecha_venta, valor_pactado
+          having count(*) > 1
+        )
+        select n.id, n.cliente_id, c.nombre as cliente, s.nombre as servicio,
+               n.fecha_venta, n.valor_pactado, n.moneda,
+               n.origen_archivo, n.origen_hoja, n.origen_fila,
+               (select count(*) from pagos p
+                 where p.negocio_id = n.id and p.estado = 'confirmado')      as pagos,
+               (select coalesce(sum(p.monto_bruto), 0) from pagos p
+                 where p.negocio_id = n.id and p.estado = 'confirmado')      as pagado,
+               (select count(*) from casos ca where ca.negocio_id = n.id)    as tramites
+          from negocios n
+          join grupos g on g.cliente_id = n.cliente_id
+                       and g.servicio_id = n.servicio_id
+                       and g.fecha_venta = n.fecha_venta
+                       and g.valor_pactado = n.valor_pactado
+          left join clientes c on c.id = n.cliente_id
+          left join servicios s on s.id = n.servicio_id
+         where n.anulada_en is null
+         order by c.nombre, n.fecha_venta, n.id
+    """)).mappings().all()
+
+    grupos: dict[tuple, dict] = {}
+    for f in filas:
+        clave = (f['cliente_id'], f['servicio'], f['fecha_venta'], f['valor_pactado'])
+        g = grupos.setdefault(clave, {
+            'cliente_id': f['cliente_id'], 'cliente': f['cliente'],
+            'servicio': f['servicio'], 'fecha_venta': f['fecha_venta'],
+            'valor_pactado': float(f['valor_pactado'] or 0), 'moneda': f['moneda'],
+            'copias': [],
+        })
+        g['copias'].append({
+            'negocio_id': f['id'],
+            'origen': f['origen_hoja'] or 'creada en el sistema',
+            'origen_archivo': f['origen_archivo'], 'origen_fila': f['origen_fila'],
+            'pagos': f['pagos'], 'pagado': float(f['pagado'] or 0),
+            'tramites': f['tramites'],
+        })
+    return list(grupos.values())
+
+
+def anular(db: Session, actor: Usuarios, negocio_id: int, motivo: str,
+           ip: str | None = None) -> Negocios:
+    """Saca una venta de la cartera sin borrarla (RN-01, RN-08).
+
+    Se niega si todavía tiene pagos confirmados, y no es burocracia. En las 16
+    ventas repetidas que dejó la carga, los pagos están repartidos entre las dos
+    copias —$17,6 millones en una y $5,4 en la otra—, así que anular a secas
+    haría desaparecer plata que sí entró y el «cobrado» del mes quedaría mal sin
+    que nadie se entere.
+
+    Cada pago hay que resolverlo primero, y las dos operaciones ya existen:
+    marcarlo **duplicado** si es el mismo anotado dos veces —el caso del libro
+    de ventas contra la caja— o **moverlo** a la venta que se queda si de verdad
+    fue otro abono.
+    """
+    negocio = obtener(db, negocio_id)
+    if negocio.anulada_en is not None:
+        raise Conflicto('Esa venta ya está anulada.', codigo='ya_anulada')
+    if not (motivo or '').strip():
+        raise Invalido('Anular una venta exige un motivo: es lo que explica el '
+                       'cambio en los totales.', codigo='falta_motivo')
+
+    con_pagos = db.scalar(select(func.count()).select_from(Pagos)
+                          .where(Pagos.negocio_id == negocio_id,
+                                 Pagos.estado == 'confirmado')) or 0
+    if con_pagos:
+        raise Conflicto(
+            f'Esta venta todavía tiene {con_pagos} pago(s) confirmado(s). Resuélvalos '
+            'primero: marque como duplicado el que esté anotado dos veces, o muévalo '
+            'a la venta que se queda. Anularla así haría desaparecer esa plata del '
+            'cobrado.', codigo='venta_con_pagos')
+
+    antes = instantanea(negocio)
+    negocio.anulada_en = dt.datetime.now(BOGOTA)
+    negocio.anulada_por = actor.id
+    negocio.motivo_anulacion = motivo.strip()
+    db.flush()
+    auditar(db, operacion='update', entidad='negocios', usuario_id=actor.id,
+            entidad_id=negocio.id, antes=antes, despues=instantanea(negocio), ip=ip)
+    db.commit()
+    return negocio

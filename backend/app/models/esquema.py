@@ -459,7 +459,8 @@ class Usuarios(Base):
     plantillas_mensaje: Mapped[list['PlantillasMensaje']] = relationship('PlantillasMensaje', back_populates='usuarios')
     actividades: Mapped[list['Actividades']] = relationship('Actividades', back_populates='usuario')
     oportunidades: Mapped[list['Oportunidades']] = relationship('Oportunidades', back_populates='asesor')
-    negocios: Mapped[list['Negocios']] = relationship('Negocios', back_populates='vendedor')
+    negocios_anulada_por: Mapped[list['Negocios']] = relationship('Negocios', foreign_keys='[Negocios.anulada_por]', back_populates='usuarios')
+    negocios_vendedor: Mapped[list['Negocios']] = relationship('Negocios', foreign_keys='[Negocios.vendedor_id]', back_populates='vendedor')
     ajustes_negocio: Mapped[list['AjustesNegocio']] = relationship('AjustesNegocio', back_populates='usuarios')
     casos: Mapped[list['Casos']] = relationship('Casos', back_populates='responsable')
     comisiones: Mapped[list['Comisiones']] = relationship('Comisiones', back_populates='vendedor')
@@ -997,6 +998,7 @@ class Negocios(Base):
     __tablename__ = 'negocios'
     __table_args__ = (
         CheckConstraint('valor_lista >= 0::numeric AND descuento >= 0::numeric AND valor_pactado >= 0::numeric', name='ck_negocios_valores'),
+        ForeignKeyConstraint(['anulada_por'], ['usuarios.id'], name='negocios_anulada_por_fkey'),
         ForeignKeyConstraint(['canal_id'], ['canales.id'], name='negocios_canal_id_fkey'),
         ForeignKeyConstraint(['cliente_id'], ['clientes.id'], name='negocios_cliente_id_fkey'),
         ForeignKeyConstraint(['grupo_id'], ['grupos.id'], name='negocios_grupo_id_fkey'),
@@ -1005,6 +1007,7 @@ class Negocios(Base):
         ForeignKeyConstraint(['servicio_id'], ['servicios.id'], name='negocios_servicio_id_fkey'),
         ForeignKeyConstraint(['vendedor_id'], ['usuarios.id'], name='negocios_vendedor_id_fkey'),
         PrimaryKeyConstraint('id', name='negocios_pkey'),
+        Index('ix_negocios_anuladas', 'anulada_en', postgresql_where='(anulada_en IS NOT NULL)'),
         Index('ix_negocios_principal', 'negocio_principal_id', postgresql_where='(negocio_principal_id IS NOT NULL)'),
         Index('ux_negocios_origen', 'origen_archivo', 'origen_hoja', 'origen_fila', postgresql_where='(origen_archivo IS NOT NULL)', unique=True)
     )
@@ -1029,7 +1032,11 @@ class Negocios(Base):
     origen_fila: Mapped[Optional[int]] = mapped_column(Integer)
     migrado_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
     negocio_principal_id: Mapped[Optional[int]] = mapped_column(BigInteger)
+    anulada_en: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
+    anulada_por: Mapped[Optional[int]] = mapped_column(BigInteger)
+    motivo_anulacion: Mapped[Optional[str]] = mapped_column(Text)
 
+    usuarios: Mapped[Optional['Usuarios']] = relationship('Usuarios', foreign_keys=[anulada_por], back_populates='negocios_anulada_por')
     canal: Mapped[Optional['Canales']] = relationship('Canales', back_populates='negocios')
     cliente: Mapped['Clientes'] = relationship('Clientes', back_populates='negocios')
     grupo: Mapped[Optional['Grupos']] = relationship('Grupos', back_populates='negocios')
@@ -1037,7 +1044,7 @@ class Negocios(Base):
     negocio_principal_reverse: Mapped[list['Negocios']] = relationship('Negocios', remote_side=[negocio_principal_id], back_populates='negocio_principal')
     oportunidad: Mapped[Optional['Oportunidades']] = relationship('Oportunidades', back_populates='negocios')
     servicio: Mapped['Servicios'] = relationship('Servicios', back_populates='negocios')
-    vendedor: Mapped[Optional['Usuarios']] = relationship('Usuarios', back_populates='negocios')
+    vendedor: Mapped[Optional['Usuarios']] = relationship('Usuarios', foreign_keys=[vendedor_id], back_populates='negocios_vendedor')
     ajustes_negocio: Mapped[list['AjustesNegocio']] = relationship('AjustesNegocio', back_populates='negocio')
     casos: Mapped[list['Casos']] = relationship('Casos', back_populates='negocio')
     comisiones: Mapped[list['Comisiones']] = relationship('Comisiones', back_populates='negocio')

@@ -66,3 +66,40 @@ class VentaSalida(BaseModel):
     observaciones: str | None
     creado_en: datetime
     casos: list[CasoDeVenta] = []
+
+
+class CopiaDeVenta(BaseModel):
+    """Una de las fichas que parecen ser la misma venta."""
+    negocio_id: int
+    origen: str = Field(description='La hoja del Excel de la que salió, o «creada en el sistema»')
+    origen_archivo: str | None = None
+    origen_fila: int | None = None
+    pagos: int
+    pagado: float
+    tramites: int
+
+
+class VentaRepetida(BaseModel):
+    """Un grupo de ventas que parecen ser la misma anotada dos veces (RF-040).
+
+    Mismo cliente, mismo servicio, misma fecha y mismo valor. Viene de la carga:
+    la idempotencia es por `(archivo, hoja, fila)`, así que el mismo negocio
+    anotado en dos hojas del mismo libro entró dos veces.
+
+    Trae los pagos de cada copia porque sin eso no se puede decidir: en las 16
+    que dejó la carga los pagos están repartidos entre las dos, así que no se
+    trata de borrar una y ya.
+    """
+    cliente_id: int
+    cliente: str | None = None
+    servicio: str | None = None
+    fecha_venta: date | None = None
+    valor_pactado: float
+    moneda: str | None = None
+    copias: list[CopiaDeVenta]
+
+
+class AnularVentaEntrada(BaseModel):
+    motivo: str = Field(min_length=3, max_length=400,
+                        description='Qué cambió y por qué: es lo que explica el movimiento '
+                                    'en los totales del mes')

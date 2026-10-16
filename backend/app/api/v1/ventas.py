@@ -49,7 +49,43 @@ def ganar(oportunidad_id: int, datos: esq.ConvertirEntrada, request: Request,
     return _salida(db, servicio.obtener(db, n.id))
 
 
+# Ojo con el orden: `/ventas/repetidas` va ANTES de `/ventas/{negocio_id}`.
+# FastAPI resuelve por orden de declaración, así que con la variable primero la
+# palabra «repetidas» entra como si fuera un id y la respuesta es un 422 por un
+# entero que no es un entero. La ruta existiría y no se podría llamar. Hay prueba
+# que la llama por su URL, que es la única forma de que esto no vuelva a pasar.
+@router.get('/ventas/repetidas', response_model=list[esq.VentaRepetida])
+def repetidas(_: Usuarios = Depends(requiere('pagos.ver')), db: Session = Depends(get_db)):
+    """Ventas que parecen ser la misma anotada dos veces (RF-040).
+
+    La carga trajo el mismo negocio dos veces cuando aparecía en dos hojas del
+    mismo libro: la idempotencia es por `(archivo, hoja, fila)`, así que el
+    mismo hecho en dos sitios son dos filas. Medido sobre producción: 16 casos y
+    $18.006.000 de más en la cartera, que es el número con el que se decide a
+    quién se le cobra.
+
+    Exige `pagos.ver` y no `negocios.ver`: lo que esta lista enseña son montos y
+    saldos, que es «lo de la contabilidad» que operaciones no ve.
+    """
+    return [esq.VentaRepetida(**g) for g in servicio.repetidas(db)]
+
+
 @router.get('/ventas/{negocio_id}', response_model=esq.VentaSalida)
 def detalle(negocio_id: int, _: Usuarios = Depends(requiere('negocios.ver')),
             db: Session = Depends(get_db)):
     return _salida(db, servicio.obtener(db, negocio_id))
+
+
+@router.post('/ventas/{negocio_id}/anular', response_model=esq.VentaSalida)
+def anular(negocio_id: int, datos: esq.AnularVentaEntrada, request: Request,
+           actor: Usuarios = Depends(requiere('negocios.editar')),
+           db: Session = Depends(get_db)):
+    """Saca una venta de la cartera sin borrarla (RN-01, RN-08).
+
+    Se niega si todavía tiene pagos confirmados: en las ventas repetidas los
+    pagos están repartidos entre las dos copias, así que anular a secas haría
+    desaparecer plata que sí entró. Cada pago se resuelve antes, marcándolo
+    duplicado o moviéndolo a la venta que se queda.
+    """
+    n = servicio.anular(db, actor, negocio_id, datos.motivo, ip=ip_cliente(request))
+    return _salida(db, n)

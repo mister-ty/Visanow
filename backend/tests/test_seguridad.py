@@ -224,7 +224,14 @@ NO_IDENTIFICAN = {
         'id', 'cliente_id', 'grupo_id', 'oportunidad_id', 'servicio_id', 'canal_id',
         'vendedor_id', 'cantidad_solicitantes', 'valor_lista', 'valor_pactado',
         'descuento', 'moneda', 'fecha_venta', 'negocio_principal_id', 'creado_en',
-        'migrado_en', 'origen_archivo', 'origen_hoja', 'origen_fila'},
+        'migrado_en', 'origen_archivo', 'origen_hoja', 'origen_fila',
+        # Anular una venta (0030). `anulada_por` es un usuario interno, como
+        # `liquidada_por` o `autorizado_por`. Y `motivo_anulacion` es texto
+        # libre que se decide NO ocultar a proposito: es lo que explica por que
+        # la cartera bajo, y una auditoria que registra el cambio sin el motivo
+        # no sirve para responder por los totales del mes. Habla de la venta, no
+        # de la persona.
+        'anulada_en', 'anulada_por', 'motivo_anulacion'},
     'oportunidades': {
         'id', 'cliente_id', 'servicio_id', 'pais_id', 'canal_id', 'campania',
         'campania_id', 'asesor_id', 'estado_id', 'valor_estimado',
