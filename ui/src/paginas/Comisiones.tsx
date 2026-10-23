@@ -8,6 +8,7 @@ import { IconCashBanknote, IconInfoCircle } from '@tabler/icons-react'
 import { useState } from 'react'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
+import { BotonExportar } from '../componentes/BotonExportar'
 import { useAsignables } from '../lib/catalogos'
 import { mostrarError } from '../lib/errores'
 import { formatearFecha, formatearPesos } from '../lib/formato'
@@ -71,6 +72,7 @@ export function Comisiones() {
             Lo que se le debe a cada quien, y por qué esa cifra y no otra.
           </Text>
         </div>
+        <BotonExportar recurso="comisiones" />
       </Group>
 
       <Card withBorder padding="sm">
