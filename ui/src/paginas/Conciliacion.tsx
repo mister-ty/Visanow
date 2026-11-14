@@ -6,12 +6,15 @@ import { useDebouncedValue } from '@mantine/hooks'
 import { modals } from '@mantine/modals'
 import { notifications } from '@mantine/notifications'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconSearch, IconWand } from '@tabler/icons-react'
+import { IconSearch, IconUpload, IconWand } from '@tabler/icons-react'
 import { useState } from 'react'
 import { api, exigir, type Esquemas } from '../api/cliente'
 import { useSesion } from '../auth/sesion'
 import { mostrarError } from '../lib/errores'
 import { formatearFechaHora, formatearPesos } from '../lib/formato'
+import {
+  armarMovimientos, leerHojaExtracto, sugerirColumnas, type CampoExtracto, type HojaExtracto,
+} from '../lib/extractoBanco'
 import { PiePaginacion, TAMANO_PAGINA, usePagina } from '../componentes/Paginacion'
 
 type Movimiento = Esquemas['MovimientoSalida']
@@ -51,6 +54,7 @@ export function Conciliacion() {
   const [referencia, setReferencia] = useState('')
   const [buscada] = useDebouncedValue(referencia.trim(), 300)
   const [abierto, setAbierto] = useState<Movimiento | null>(null)
+  const [importando, setImportando] = useState(false)
 
   const rango = { ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}) }
   const resumen = useQuery({
@@ -98,9 +102,14 @@ export function Conciliacion() {
           <Title order={2}>Conciliación bancaria</Title>
           <Text size="sm" c="dimmed">Cuadrar el extracto del banco contra los pagos registrados.</Text>
         </div>
+        <Group>
+        {puede('pagos.crear') && (
+          <Button variant="default" leftSection={<IconUpload size={16} />}
+            onClick={() => setImportando(true)}>Importar extracto</Button>)}
         {puede('pagos.editar') && (
           <Button leftSection={<IconWand size={16} />} loading={cruzar.isPending} onClick={confirmarCruce}>
             Cruzar lo que no tiene duda</Button>)}
+        </Group>
       </Group>
 
       <SimpleGrid cols={{ base: 2, md: 6 }}>
@@ -173,6 +182,7 @@ export function Conciliacion() {
       <PiePaginacion total={movimientos.data?.total} pagina={pagina} onPagina={setPagina}
         unidad="movimiento(s)" extra={` · ${formatearPesos(movimientos.data?.suma)}`} />
 
+      <ModalImportar abierto={importando} cerrar={() => setImportando(false)} />
       <ModalMovimiento key={abierto?.id ?? 'ninguno'} movimiento={abierto} cerrar={() => setAbierto(null)} />
     </Stack>
   )
@@ -361,4 +371,106 @@ function ModalMovimiento({ movimiento, cerrar }: { movimiento: Movimiento | null
             </Group>)}
         </Stack>)}
     </Modal>)
+}
+
+const CAMPOS: { campo: CampoExtracto; etiqueta: string; obligatorio: boolean }[] = [
+  { campo: 'fecha', etiqueta: 'Fecha', obligatorio: true },
+  { campo: 'valor', etiqueta: 'Valor (lo que entró)', obligatorio: true },
+  { campo: 'descripcion', etiqueta: 'Descripción', obligatorio: false },
+  { campo: 'referencia', etiqueta: 'Referencia', obligatorio: false },
+]
+
+/** Importar el extracto del banco. No se conoce el formato de cada banco, así que
+ *  la persona dice qué columna es cada cosa (se sugiere por el nombre) y ve las
+ *  primeras líneas antes de mandar. Importar dos veces el mismo archivo no
+ *  duplica: el backend lleva una huella por línea. */
+function ModalImportar({ abierto, cerrar }: { abierto: boolean; cerrar: () => void }) {
+  const cq = useQueryClient()
+  const [archivo, setArchivo] = useState<File | null>(null)
+  const [hoja, setHoja] = useState<(HojaExtracto & { hoja: string }) | null>(null)
+  const [mapa, setMapa] = useState<Record<CampoExtracto, number | null>>(
+    { fecha: null, valor: null, descripcion: null, referencia: null })
+  const [banco, setBanco] = useState('')
+  const [leyendo, setLeyendo] = useState(false)
+
+  const salir = () => { setArchivo(null); setHoja(null); setBanco(''); cerrar() }
+  const elegir = async (f: File | null) => {
+    setArchivo(f); setHoja(null)
+    if (!f) return
+    setLeyendo(true)
+    try {
+      const h = await leerHojaExtracto(f)
+      setHoja(h); setMapa(sugerirColumnas(h.encabezados))
+    } catch (e) {
+      mostrarError(e, 'No se pudo leer el archivo')
+    } finally { setLeyendo(false) }
+  }
+
+  const listo = hoja && mapa.fecha !== null && mapa.valor !== null && banco.trim() !== ''
+  const armado = listo ? armarMovimientos(hoja, mapa, banco.trim()) : null
+
+  const importar = useMutation({
+    mutationFn: () => exigir(api.POST('/api/v1/conciliacion/importar', {
+      body: { movimientos: armado!.movimientos, archivo: archivo?.name ?? null, hoja: hoja?.hoja ?? null },
+    })),
+    onSuccess: (r) => {
+      notifications.show({
+        color: 'teal', title: 'Extracto importado',
+        message: `${r.nuevos} línea(s) nueva(s) de ${r.leidos} leídas; ${r.repetidos} ya estaban.`
+          + (r.sin_fecha + r.sin_valor ? ` ${r.sin_fecha + r.sin_valor} sin fecha o sin valor.` : ''),
+      })
+      cq.invalidateQueries({ queryKey: ['conciliacion'] })
+      salir()
+    },
+    onError: (e) => mostrarError(e, 'No se pudo importar'),
+  })
+
+  const opciones = (hoja?.encabezados ?? []).map((h, i) => ({ value: String(i), label: h }))
+  return (
+    <Modal opened={abierto} onClose={salir} title="Importar extracto del banco" size="lg">
+      <Stack>
+        <input type="file" accept=".xlsx,.xls,.csv"
+          onChange={(e) => elegir(e.currentTarget.files?.[0] ?? null)} />
+        {leyendo && <Loader size="sm" color="teal" />}
+        {hoja && hoja.encabezados.length === 0 && (
+          <Alert color="red">No se encontró una tabla en el archivo.</Alert>)}
+        {hoja && hoja.encabezados.length > 0 && (
+          <>
+            <TextInput label="Banco" required value={banco} placeholder="Como se quiere ver en la bandeja"
+              onChange={(e) => setBanco(e.currentTarget.value)} />
+            <SimpleGrid cols={2}>
+              {CAMPOS.map(({ campo, etiqueta, obligatorio }) => (
+                <Select key={campo} label={etiqueta} required={obligatorio} clearable={!obligatorio}
+                  data={opciones} value={mapa[campo] === null ? null : String(mapa[campo])}
+                  onChange={(v) => setMapa({ ...mapa, [campo]: v === null ? null : Number(v) })} />))}
+            </SimpleGrid>
+            {armado && (
+              <>
+                <Text size="sm">
+                  {armado.movimientos.length} línea(s) de entrada listas
+                  {armado.descartadas.length > 0 && `; ${armado.descartadas.length} no se mandan (salidas, o sin fecha o valor legible)`}.
+                  Revisa que las primeras se vean bien:</Text>
+                <Table.ScrollContainer minWidth={420}>
+                  <Table verticalSpacing="xs">
+                    <Table.Tbody>
+                      {armado.movimientos.slice(0, 5).map((m) => (
+                        <Table.Tr key={m.fila}>
+                          <Table.Td>{dia(m.fecha)}</Table.Td>
+                          <Table.Td ta="right">{formatearPesos(m.valor)}</Table.Td>
+                          <Table.Td>{m.referencia ?? '—'}</Table.Td>
+                          <Table.Td>{m.descripcion ?? '—'}</Table.Td>
+                        </Table.Tr>))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              </>)}
+            <Group justify="flex-end">
+              <Button variant="default" onClick={salir}>Cancelar</Button>
+              <Button disabled={!armado || armado.movimientos.length === 0} loading={importar.isPending}
+                onClick={() => importar.mutate()}>Importar</Button>
+            </Group>
+          </>)}
+      </Stack>
+    </Modal>
+  )
 }
